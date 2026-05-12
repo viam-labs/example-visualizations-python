@@ -496,6 +496,35 @@ def test_trajectory_preview_line_segments_align_with_segment_directions():
         assert seg_pose["oz"] == pytest.approx(oz_expected, abs=1e-6)
 
 
+# ---------- all preset trajectory-shift behavior ----------
+
+def test_all_preset_shifts_trajectory_animation_waypoints():
+    """When the `all` preset offsets the trajectory_preview items
+    in X+Y, the waypoints INSIDE the runner's animation must shift
+    too — otherwise the runner walks the un-shifted path while the
+    markers and line segments live at the shifted location, and the
+    demo desyncs."""
+    items = load("all")
+    # Find the runner in the all-preset items (label is unchanged).
+    runner = next(
+        (it for it in items if it["label"] == "traj_runner"),
+        None,
+    )
+    assert runner is not None, "trajectory_preview missing from all preset"
+    anim_waypoints = runner["animation"]["waypoints"]
+    # The runner's static pose lines up with its first waypoint (we
+    # set it to dict(waypoints[0]) in trajectory_preview).
+    rp = runner["pose"]
+    awp0 = anim_waypoints[0]
+    assert rp["x"] == pytest.approx(awp0["x"])
+    assert rp["y"] == pytest.approx(awp0["y"])
+    assert rp["z"] == pytest.approx(awp0["z"])
+    # And the runner sits well to the +X side and on the
+    # frame_composition row (+Y), matching the all-preset layout.
+    assert rp["x"] > 2000.0, "trajectory should be x-shifted in all preset"
+    assert rp["y"] > 1500.0, "trajectory should sit on the +Y row"
+
+
 # ---------- registry + load ----------
 
 def test_presets_registry_matches_names_constant():

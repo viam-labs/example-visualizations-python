@@ -659,20 +659,35 @@ def _offset_base_items(
     offset through the frame chain (if the renderer composes through
     chained parents). Used by combined presets so the included
     sub-presets don't overlap visually.
+
+    For trajectory animations, the waypoint coordinates inside
+    ``animation.waypoints`` are shifted too — otherwise the runner
+    would walk an un-shifted path while its static base pose was
+    translated to a different location, leaving the line and markers
+    disconnected from the actual motion.
     """
     if axis not in ("x", "y", "z"):
         raise ValueError(f"axis must be x|y|z, got {axis!r}")
     out: List[Mapping[str, Any]] = []
     for it in items:
         pf = it.get("parent_frame")
+        new_it = dict(it)
         if pf in (None, "", "world"):
             new_pose = dict(it.get("pose") or {})
             new_pose[axis] = float(new_pose.get(axis, 0.0)) + delta
-            new_it = dict(it)
             new_it["pose"] = new_pose
-            out.append(new_it)
-        else:
-            out.append(dict(it))
+            anim = it.get("animation") or {}
+            if (
+                anim.get("mode") == "trajectory"
+                and isinstance(anim.get("waypoints"), list)
+            ):
+                new_anim = dict(anim)
+                new_anim["waypoints"] = [
+                    {**wp, axis: float(wp.get(axis, 0.0)) + delta}
+                    for wp in anim["waypoints"]
+                ]
+                new_it["animation"] = new_anim
+        out.append(new_it)
     return out
 
 
@@ -716,13 +731,27 @@ def all_preset() -> List[Mapping[str, Any]]:
 
       - orientation_vectors  y = -row
       - primitives           y =   0
-      - frame_composition    y = +row  (spinning frame + orbiting wheel + arm)
+      - frame_composition    y = +row, x ∈ [-1000, +1500]
+                                 (spinning frame + orbiting wheel + arm)
+      - trajectory_preview   y = +row, x ∈ [+2500, +3500]
+                                 (added to the same row as the arm +
+                                  spinning frame; offset in X so it
+                                  doesn't overlap)
     """
     row = 1800.0
     items: List[Mapping[str, Any]] = []
     items.extend(_offset_base_items_y(orientation_vectors(), -row))
     items.extend(_offset_base_items_y(primitives(), 0.0))
     items.extend(_offset_base_items_y(frame_composition(), row))
+    # trajectory_preview sits on the frame_composition row but is
+    # shifted in X to clear the arm + spinning-frame demos. Two-step
+    # offset: first along X (sits at x ≈ +2500), then along Y (joins
+    # the frame_composition row). _offset_base_items also shifts the
+    # trajectory animation's internal waypoints so the runner follows
+    # the translated path.
+    traj = _offset_base_items(trajectory_preview(), "x", 2500.0)
+    traj = _offset_base_items(traj, "y", row)
+    items.extend(traj)
     return items
 
 
@@ -748,13 +777,18 @@ def trajectory_preview() -> List[Mapping[str, Any]]:
     centered-difference at that index, so the runner faces along
     the path direction as it travels.
     """
-    # Hand-picked positions tracing a smooth ascending S-curve.
+    # Hand-picked positions tracing a smooth ascending arc, plus
+    # per-waypoint theta values for visible banking around the
+    # tangent direction. The 0 → 120 → 240 → 120 → 0 pattern gives
+    # the runner two full rotation halves to traverse — clearly
+    # visible per-segment rotation on top of the tangent-aligned
+    # facing.
     positions = [
-        {"x":    0, "y":    0, "z":    0},
-        {"x":  300, "y":    0, "z":  200},
-        {"x":  500, "y":  250, "z":  300},
-        {"x":  700, "y":  500, "z":  200},
-        {"x": 1000, "y":  700, "z":    0},
+        {"x":    0, "y":    0, "z":    0, "theta":   0},
+        {"x":  300, "y":  150, "z":  200, "theta": 120},
+        {"x":  500, "y":  300, "z":  300, "theta": 240},
+        {"x":  700, "y":  150, "z":  200, "theta": 120},
+        {"x": 1000, "y":    0, "z":    0, "theta":   0},
     ]
     waypoints = _waypoints_with_tangent_orientations(positions)
 
@@ -766,7 +800,7 @@ def trajectory_preview() -> List[Mapping[str, Any]]:
             "type": "sphere",
             "label": f"traj_wp_{i:02d}",
             "pose": dict(wp),
-            "radius_mm": 25,
+            "radius_mm": 18,
             "color": {"r": 200, "g": 200, "b": 220},
             "opacity": 0.45,
             "show_axes_helper": True,
@@ -809,11 +843,14 @@ def trajectory_preview() -> List[Mapping[str, Any]]:
 
     # The "runner" — moving frame that walks the trajectory and
     # passes through each waypoint with the interpolated rotation.
+    # Kept smaller than the original (45 → 28 mm) so it reads as a
+    # moving cursor rather than dominating the scene; opacity stays
+    # high so the bright red marker is still the focal point.
     items.append({
         "type": "sphere",
         "label": "traj_runner",
         "pose": dict(waypoints[0]),
-        "radius_mm": 45,
+        "radius_mm": 28,
         "color": {"r": 230, "g": 40, "b": 80},
         "opacity": 0.9,
         "show_axes_helper": True,
@@ -831,10 +868,15 @@ def trajectory_preview() -> List[Mapping[str, Any]]:
 def _waypoints_with_tangent_orientations(
     positions: List[Mapping[str, float]],
 ) -> List[Mapping[str, Any]]:
-    """Given a list of position-only waypoints, attach an orientation
-    to each so the entity's local +Z points along the trajectory
-    tangent at that waypoint. Centered differences in the interior;
-    forward / backward differences at the endpoints."""
+    """Given a list of position waypoints, attach an orientation
+    vector so the entity's local +Z points along the trajectory
+    tangent at that waypoint. Tangents are centered differences in
+    the interior; forward / backward differences at the endpoints.
+
+    Any ``theta`` field in the input passes through unchanged (defaults
+    to 0). theta supplies a "banking" rotation around the tangent —
+    useful for making the runner visibly rotate between waypoints
+    when the tangent direction itself doesn't change much."""
     n = len(positions)
     out: List[Mapping[str, Any]] = []
     for i, p in enumerate(positions):
@@ -858,7 +900,7 @@ def _waypoints_with_tangent_orientations(
             "ox": tx / norm,
             "oy": ty / norm,
             "oz": tz / norm,
-            "theta": 0.0,
+            "theta": float(p.get("theta", 0.0)),
         })
     return out
 
