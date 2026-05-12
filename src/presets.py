@@ -181,6 +181,22 @@ def primitives() -> List[Mapping[str, Any]]:
             "opacity": 1.0,
             "animation": {"mode": "none"},
         },
+        # Chunked-delivery sibling of the helix above. Sits right
+        # next to its un-chunked twin so any visual difference
+        # (truncated tail, dropped chunks, wrong stride) is obvious
+        # at a glance. Initial Transform ships first 2000 points
+        # inline; the rest is available via the `get_entity_chunk`
+        # DoCommand. See LESSONS.md::chunked-delivery-schema.
+        {
+            "type": "pointcloud",
+            "label": "demo_pointcloud_chunked",
+            "pose": _identity_pose(x=7 * sp),
+            "pointcloud_path": "assets/helix.pcd",
+            "opacity": 1.0,
+            "chunked": True,
+            "chunk_size": 2000,
+            "animation": {"mode": "none"},
+        },
     ]
 
 

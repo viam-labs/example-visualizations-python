@@ -42,7 +42,8 @@ def test_primitives_emits_one_of_every_supported_type():
     # to render correctly. See LESSONS.md::mesh-metadata-colors-
     # only-uses-first-color.
     assert types.count("mesh") == 4
-    assert types.count("pointcloud") == 2  # helix + colorful_sphere
+    # 3 pointclouds: colorful_sphere + helix + chunked-delivery helix sibling.
+    assert types.count("pointcloud") == 3
     assert set(types) == set(SUPPORTED_TYPES)
 
 
