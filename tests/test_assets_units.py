@@ -93,15 +93,29 @@ def test_helix_pcd_points_are_in_meters_not_millimeters():
     assert max_mag > 0.05
 
 
-def test_helix_pcd_header_matches_rdk_fake_format():
-    """The RDK PCD writer emits ``TYPE F F F I`` for rgb fields (see
-    pointcloud/pointcloud_file.go:104). The reader is lax about the I-vs-U
-    distinction, but the viewer's parser may not be — and this is a free
-    way to keep us aligned with the reference."""
-    text = ASSETS.joinpath("helix.pcd").read_bytes().split(b"DATA")[0].decode("ascii")
-    assert "FIELDS x y z rgb" in text
-    assert "SIZE 4 4 4 4" in text
-    assert "TYPE F F F I" in text, (
-        "PCD TYPE line must match RDK's writer exactly — see "
-        "rdk/pointcloud/pointcloud_file.go:104"
+def test_helix_pcd_header_matches_rdk_writer_byte_for_byte():
+    """The PCD header must match what RDK's ``pointcloud.ToPCD`` emits.
+    The 0.0.4 release had ``TYPE F F F I`` right but still failed in
+    the viewer because (a) a leading ``# ...`` comment line shifted
+    every header field by one position, and (b) ``VERSION 0.7`` was
+    used instead of RDK's literal ``VERSION .7``. The RDK reader
+    handles both, but the viewer's parser apparently doesn't.
+
+    Anchor the exact-byte expectation here. Reference:
+    rdk/pointcloud/pointcloud_file.go:95-126."""
+    data = ASSETS.joinpath("helix.pcd").read_bytes()
+    head = data.split(b"DATA")[0].decode("ascii")
+    # No comment lines allowed.
+    for line in head.splitlines():
+        assert not line.lstrip().startswith("#"), (
+            f"PCD header must not contain comments: {line!r}"
+        )
+    # VERSION line MUST be ".7" exactly, not "0.7".
+    assert head.splitlines()[0] == "VERSION .7", (
+        f"PCD VERSION line must be 'VERSION .7' (RDK convention), "
+        f"got: {head.splitlines()[0]!r}"
     )
+    assert "FIELDS x y z rgb" in head
+    assert "SIZE 4 4 4 4" in head
+    assert "TYPE F F F I" in head
+    assert "VIEWPOINT 0 0 0 1 0 0 0" in head

@@ -150,9 +150,16 @@ def write_helix_pcd(points: int = 2000, height_mm: float = 400.0,
     # Convert user-facing mm dims to meters once.
     radius_m = radius_mm / MM_PER_M
     height_m = height_mm / MM_PER_M
+    # Header MUST match what `pointcloud.ToPCD` in the RDK emits,
+    # byte-for-byte. The reader is permissive (skips comments, accepts
+    # both VERSION 0.7 and VERSION .7), but the viewer's parser is
+    # apparently strict — adding a leading "# ..." comment OR using
+    # VERSION 0.7 instead of VERSION .7 leaves the helix invisible
+    # even though every other field is right. See
+    # rdk/pointcloud/pointcloud_file.go lines 95-126 for the canonical
+    # writer; do not "improve" this header.
     header_lines = [
-        "# .PCD v0.7 - Point Cloud Data file format",
-        "VERSION 0.7",
+        "VERSION .7",
         "FIELDS x y z rgb",
         "SIZE 4 4 4 4",
         "TYPE F F F I",
