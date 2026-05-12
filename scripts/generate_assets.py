@@ -15,7 +15,25 @@ Run from the repo root: ``.venv/bin/python scripts/generate_assets.py``.
 The output files are committed to the repo so users don't need to run
 this script themselves — it exists so the assets are reproducible and
 their provenance is auditable.
+
+**Unit convention.** RDK's PLY/STL/PCD readers all interpret file
+coordinates as **meters** and multiply by 1000 internally to convert
+to the RDK's mm-everywhere convention. See:
+
+  - ``rdk/spatialmath/mesh.go:152`` (PLY vertices × 1000)
+  - ``rdk/spatialmath/mesh.go:230`` (STL vertices × 1000)
+  - ``rdk/pointcloud/pointcloud_file.go:163`` (PCD writes mm ÷ 1000;
+    readers do the inverse)
+
+The user-facing helpers below take dimensions in mm for readability,
+then divide by 1000 right before writing. Don't change this without
+verifying against the RDK readers — putting raw mm in a PLY file
+makes the renderer draw it 1000× too big.
 """
+
+# Conversion factor for file output. Everything that hits disk gets
+# divided by this; everything inside the helpers stays in mm.
+MM_PER_M = 1000.0
 import math
 import struct
 from pathlib import Path
@@ -49,7 +67,11 @@ def _icosahedron(scale_mm: float = 100.0):
 def write_bunny_ply() -> Path:
     """Write a small ASCII PLY for the 'bunny' slot. ASCII PLY is the
     simplest variant and the RDK PLY reader accepts both ascii and
-    binary little-endian. Total size: ~700 bytes."""
+    binary little-endian. Total size: ~700 bytes.
+
+    Vertices are written in **meters** because the RDK PLY reader
+    multiplies file coordinates by 1000 to convert to mm. A 100 mm
+    icosahedron has vertex magnitudes around 0.1 m in the file."""
     verts, faces = _icosahedron(scale_mm=100.0)
     lines = [
         "ply",
@@ -63,7 +85,9 @@ def write_bunny_ply() -> Path:
         "end_header",
     ]
     for (x, y, z) in verts:
-        lines.append(f"{x:.6f} {y:.6f} {z:.6f}")
+        lines.append(
+            f"{x / MM_PER_M:.6f} {y / MM_PER_M:.6f} {z / MM_PER_M:.6f}"
+        )
     for (a, b, c) in faces:
         lines.append(f"3 {a} {b} {c}")
     path = OUT / "bunny.ply"
@@ -75,8 +99,12 @@ def write_bunny_ply() -> Path:
 
 def write_cube_stl(side_mm: float = 200.0) -> Path:
     """Binary STL cube — 12 triangles, 80-byte header + uint32 tri
-    count + 50 bytes per triangle = 684 bytes total."""
-    s = side_mm / 2.0
+    count + 50 bytes per triangle = 684 bytes total.
+
+    Vertices are written in **meters** because the RDK STL reader
+    multiplies file coordinates by 1000. A 200 mm cube has vertex
+    magnitudes around 0.1 m in the file."""
+    s = (side_mm / MM_PER_M) / 2.0
     # 8 corners.
     v = [
         (-s, -s, -s), ( s, -s, -s), ( s,  s, -s), (-s,  s, -s),  # bottom
@@ -112,7 +140,14 @@ def write_cube_stl(side_mm: float = 200.0) -> Path:
 def write_helix_pcd(points: int = 500, height_mm: float = 400.0,
                     radius_mm: float = 75.0, turns: float = 4.0) -> Path:
     """Vertical helix of colored points in PCDBinary format. ~500
-    points keeps the file small (~12 KB) and the renderer happy."""
+    points keeps the file small (~12 KB) and the renderer happy.
+
+    Coordinates are written in **meters** because the RDK PCD writer
+    convention (matched by the reader) is ``mm / 1000``. The user-
+    facing params stay in mm for readability."""
+    # Convert user-facing mm dims to meters once.
+    radius_m = radius_mm / MM_PER_M
+    height_m = height_mm / MM_PER_M
     header_lines = [
         "# .PCD v0.7 - Point Cloud Data file format",
         "VERSION 0.7",
@@ -132,10 +167,10 @@ def write_helix_pcd(points: int = 500, height_mm: float = 400.0,
     for i in range(points):
         frac = i / max(1, points - 1)
         angle = 2 * math.pi * turns * frac
-        x = radius_mm * math.cos(angle)
-        y = radius_mm * math.sin(angle)
+        x = radius_m * math.cos(angle)
+        y = radius_m * math.sin(angle)
         # Center vertically so the helix straddles z=0.
-        z = (frac - 0.5) * height_mm
+        z = (frac - 0.5) * height_m
         # Hue swept along the helix so it's visually striking.
         h = frac
         # HSV -> RGB.
