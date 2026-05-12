@@ -1,5 +1,7 @@
 # ViamVizHelpers — Python library plan
 
+> **Sibling plan:** A Go library plan now lives at [`example-visualizations-go/LIBRARY_PLAN.md`](https://github.com/viam-labs/example-visualizations-go/blob/main/LIBRARY_PLAN.md). It builds on the same gotchas as this one but extracts from the working Go module instead of designing from scratch. The two plans can coexist (Python helps Python authors, Go helps Go authors, neither blocks the other); we'll pick a primary based on which language new module authors actually adopt.
+
 A Python library that wraps the world-state-store + viewer gotchas so a module author writes the interesting code instead of re-deriving the wire format from `moving_geos_world.go`. Designed to live as a standalone `viam-labs` package; could later be absorbed into `viam-python-sdk` if the SDK team wants it.
 
 - **Project name:** ViamVizHelpers
