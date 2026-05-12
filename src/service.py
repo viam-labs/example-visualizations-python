@@ -421,12 +421,24 @@ class SceneSprites(WorldStateStore, EasyResource):
                     was_in_scene = s.get("visible_to_viewer", True)
                     if want_in_scene and not was_in_scene:
                         # Rising edge: bring the entity back into the
-                        # scene. Build a fresh transform so the viewer
-                        # gets up-to-date pose/geom on re-add.
+                        # scene. We ALWAYS issue a fresh UUID on
+                        # re-add, regardless of the service's
+                        # uuid_strategy. Why: the viewer caches UUIDs
+                        # across REMOVED and silently drops a
+                        # subsequent ADDED for the same UUID
+                        # (apriltag-tracker hit the same renderer
+                        # bug; see LESSONS.md::
+                        # scene-graph-mutation-from-animation-tick).
+                        # Without rotating the UUID, the flicker's
+                        # second-and-later ADDED events are dropped
+                        # and the grid items never re-appear until
+                        # the viewer is refreshed.
+                        new_uuid = _versioned_uuid(label)
+                        s["uuid"] = new_uuid
                         geom_proto = _build_geometry(item, geom)
                         new_tf = _build_transform(
                             item, pose, geom_proto,
-                            s["uuid"], self.parent_frame,
+                            new_uuid, self.parent_frame,
                         )
                         s["transform"] = new_tf
                         s["visible_to_viewer"] = True

@@ -729,43 +729,50 @@ def all_preset() -> List[Mapping[str, Any]]:
     primitive, color, orientation convention, and the chained-frame
     composition demo in one viewport.
 
-    Row layout (Y from negative to positive). Spacing tightened to
-    1200 mm; the previous 1800 mm row gap left too much empty space
+    Row layout (Y from negative to positive). Spacing is 1200 mm
     between rows.
 
+      - trajectory_preview   y = -2*row
+                                 (own row, "after" the orientation
+                                  vectors row in the -Y direction)
       - orientation_vectors  y = -row
       - primitives           y =   0
+      - force_vector_demo    y = +row, x = -500
+                                 (left of the pulsing sphere — sits
+                                  on the "other side" of the sphere
+                                  from the rest of the morph row;
+                                  the precessing arrow has the same
+                                  "geometry & property changes"
+                                  theme as the other morph items)
       - geometry_morph       y = +row, x ∈ [0, +1700]
                                  (pulsing sphere, stretching box,
                                   breathing capsule, flickering grid)
-      - force_vector_demo    y = +row, x = +2300
-                                 (on the morph row — its arrow
-                                  changes radius+length+orientation+
-                                  color, matching the "geometry &
-                                  property changes" theme of the row)
       - frame_composition    y = +2*row, x ∈ [-1000, +1500]
-                                 (spinning frame + orbiting wheel + arm)
-      - trajectory_preview   y = +2*row, x ∈ [+2500, +3500]
-                                 (alongside the arm + spinning frame
-                                  on the "moving items" row)
+                                 (spinning frame + orbiting wheel +
+                                  arm — trajectory has been moved
+                                  off this row to its own)
     """
     row = 1200.0
     items: List[Mapping[str, Any]] = []
+    # Trajectory: own row at -2*row, just past the orientation
+    # vectors. _offset_base_items applies the y shift while also
+    # translating the animation's waypoint list, so the runner
+    # follows the shifted path.
+    traj = _offset_base_items(trajectory_preview(), "y", -2 * row)
+    items.extend(traj)
     items.extend(_offset_base_items_y(orientation_vectors(), -row))
     items.extend(_offset_base_items_y(primitives(), 0.0))
     # Morph row with force_vector tucked in alongside the four
-    # geometry/property demos. force_vector demos all four of those
-    # categories at once (geometry size + orientation + color), so
-    # it belongs visually with the rest of the row.
+    # geometry/property demos. force_vector exercises all of those
+    # categories at once (size + orientation + color), so it
+    # belongs visually with the rest of the row.
     items.extend(_offset_base_items_y(geometry_morph(), row))
-    fv = _offset_base_items(force_vector_demo(), "x", 2300.0)
+    fv = _offset_base_items(force_vector_demo(), "x", -500.0)
     fv = _offset_base_items(fv, "y", row)
     items.extend(fv)
-    # Moving-items row: arm + spinning frame + trajectory.
+    # Moving-items row: arm + spinning frame only (trajectory
+    # moved out to its own row).
     items.extend(_offset_base_items_y(frame_composition(), 2 * row))
-    traj = _offset_base_items(trajectory_preview(), "x", 2500.0)
-    traj = _offset_base_items(traj, "y", 2 * row)
-    items.extend(traj)
     return items
 
 

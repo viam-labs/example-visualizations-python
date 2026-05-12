@@ -294,6 +294,27 @@ The intermediate's **orientation** is a separate knob: setting OX/OY/OZ to somet
 
 **How to apply.** When you want to *show* a coordinate frame, host the helper on any small marker (sphere with 0.35 opacity reads well) and set `show_axes_helper: true`. When you want to *use* a coordinate frame as a parent for other items, set it explicitly via `parent_frame` chaining — those are separate concerns.
 
+### renderer-caches-removed-uuids-rotate-on-readd
+
+**Finding (confirmed empirically twice now).** The Viam 3D scene viewer caches every UUID it has ever seen and silently drops a subsequent ``TRANSFORM_CHANGE_TYPE_ADDED`` event for a UUID it has previously received a ``TRANSFORM_CHANGE_TYPE_REMOVED`` for. Result: re-emitting an entity with the same UUID after a REMOVED leaves the entity invisible to the viewer until the page is refreshed (clearing the renderer's cache).
+
+**First sighting.** apriltag-tracker hit this when its per-cycle REMOVED+ADDED with stable UUIDs left detected tags frozen — fix was to suffix the UUID with the epoch ms each cycle so each ADDED carried a fresh identity. Logged in apriltag-tracker's CLAUDE.md.
+
+**Second sighting.** The ``flicker`` animation mode in this module emits REMOVED on the falling edge of its duty cycle and ADDED on the rising edge (see ``scene-graph-mutation-from-animation-tick`` below). Initial implementation kept the entity's UUID stable across cycles. User reported "the grid of circles will not reappear until I refresh the page" — exactly the apriltag-tracker symptom, two years later, in a different code path.
+
+**Fix.** ``service._tick_once`` now allocates a fresh UUID on every flicker rising edge regardless of the service's overall ``uuid_strategy``:
+
+```python
+new_uuid = _versioned_uuid(label)  # always rotates, even in stable mode
+s["uuid"] = new_uuid
+```
+
+The label is preserved for human readability; only the on-wire UUID rotates. ``list_uuids``, ``get_transform``, and the stream initial burst all use ``s["uuid"]``, so they automatically see the new value.
+
+**Why this isn't elsewhere.** Modes that update via UPDATED (oscillate, spin, swing, pulse, trajectory, force_vector, breathe) don't hit the cache: those entities never emit REMOVED. Modes that DO emit REMOVED+ADDED — versioned-strategy ticks and flicker — must rotate UUIDs. The service's versioned-strategy branch already does this; the flicker branch now does too.
+
+**File for the viz team.** The renderer should treat a REMOVED UUID as eligible for re-ADD. Caching it as "ever seen → ignore" silently breaks every animation that wants to mutate scene membership over time, AND every page refresh is its own correctness fix. Workaround cost: modules have to rotate UUIDs they otherwise want to keep stable for clean ``list_uuids`` semantics.
+
 ### scene-graph-mutation-from-animation-tick
 
 **Finding.** Animations don't have to be UPDATED-only — they can drive scene-graph membership too. The ``flicker`` mode emits real ``TRANSFORM_CHANGE_TYPE_REMOVED`` on the falling edge of its duty cycle and ``TRANSFORM_CHANGE_TYPE_ADDED`` on the rising edge, instead of toggling ``metadata.opacity`` between 0 and 1. The user reported "the balls are not being removed" when we used opacity-only — the viewer renders fully transparent geometry as "almost invisible" but the entity is still there in subscribers' state, and on some viewer paths "almost invisible" reads as a faint outline rather than as gone.
@@ -468,7 +489,9 @@ Related: `validate_config` must return `Tuple[Sequence[str], Sequence[str]]` —
 
 10. **`metadata.colors` with N>1 entries collapses to one color for meshes.** The same channel carries N-per-point colors correctly for point clouds, so the inconsistency is hard to spot from outside. Either honor N colors per vertex (or per face) for meshes the same way point clouds work, OR explicitly cap mesh colors at 1 and surface a warning when N>1 is sent. The current silent-collapse-to-first-color behavior costs a debugging cycle and confuses the schema contract that the library's WithMetadataColors docstring sets up.
 
-11. **No first-class line / curve geometry in the world-state-store channel.** The viewer supports lines (with width + dot size), arrows, points (with size!), 3D models, and NURBS curves natively — but as `drawv1.Shape` variants on the drawing-API channel, not as `commonpb.Geometry` variants. A world-state-store service can't emit any of them. Either expose them as additional `commonpb.Geometry` oneof variants, OR add a sibling service type (`rdk:service:drawing` or similar) that modules can implement alongside `world_state_store` to get access to the drawing channel. Today the only way for a world-state-store module to draw a line is to fake it with a thin capsule.
+11. **Renderer caches REMOVED UUIDs and drops subsequent ADDED for the same UUID.** Confirmed empirically twice — apriltag-tracker's per-cycle re-add was the first sighting; the new flicker animation mode in this module is the second. Modules end up forced to rotate UUIDs on every emit that follows a REMOVED, which makes `list_uuids` semantically lossy ("the entity you saw last query has a new identity now"). Renderer should treat REMOVED as eligible for re-ADD with the same UUID — that's the format-natural behavior and the only way scene-graph animations stay clean. See LESSONS.md::renderer-caches-removed-uuids-rotate-on-readd.
+
+12. **No first-class line / curve geometry in the world-state-store channel.** The viewer supports lines (with width + dot size), arrows, points (with size!), 3D models, and NURBS curves natively — but as `drawv1.Shape` variants on the drawing-API channel, not as `commonpb.Geometry` variants. A world-state-store service can't emit any of them. Either expose them as additional `commonpb.Geometry` oneof variants, OR add a sibling service type (`rdk:service:drawing` or similar) that modules can implement alongside `world_state_store` to get access to the drawing channel. Today the only way for a world-state-store module to draw a line is to fake it with a thin capsule.
 
 ## Features to request from the viz team
 

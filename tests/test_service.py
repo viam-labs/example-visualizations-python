@@ -347,6 +347,45 @@ async def test_flicker_emits_removed_then_added_on_phase_transitions():
     await gen.aclose()
 
 
+async def test_flicker_uses_fresh_uuid_on_each_rising_edge():
+    """The viewer caches UUIDs across REMOVED and silently drops a
+    subsequent ADDED for the same UUID — apriltag-tracker's prior
+    finding. So flicker must rotate the UUID on every re-add, or
+    second-cycle items never come back without a viewer refresh.
+
+    Pins the workaround: after one REMOVED+ADDED cycle, the entity's
+    UUID is different from what it was on install."""
+    import time
+    s = _bare_service(strategy="stable")
+    s.tick_hz = 100
+    await s.do_command({
+        "command": "add",
+        "item": _sphere_item("blink", animated_mode="flicker",
+                             period_s=4.0, duty_cycle=0.5),
+    })
+    initial_uuid = s._state["blink"]["uuid"]
+    # Stable strategy → UUID matches the label.
+    assert initial_uuid == b"blink"
+
+    # Tick at t=3s → out of scene.
+    s._animation_t0 = time.monotonic() - 3.0
+    await s._tick_once()
+    assert s._state["blink"]["visible_to_viewer"] is False
+
+    # Tick at t=4s → back in scene. UUID must rotate so the viewer
+    # doesn't drop this ADDED as a duplicate of the prior REMOVED.
+    s._animation_t0 = time.monotonic() - 4.0
+    await s._tick_once()
+    assert s._state["blink"]["visible_to_viewer"] is True
+    new_uuid = s._state["blink"]["uuid"]
+    assert new_uuid != initial_uuid, (
+        "flicker re-add must use a fresh UUID; the viewer caches "
+        "removed UUIDs and silently drops repeats"
+    )
+    # The new UUID still encodes the label so it's debuggable.
+    assert new_uuid.startswith(b"blink_")
+
+
 async def test_flicker_removed_item_is_filtered_from_list_uuids_and_get_transform():
     """While an entity is in the flicker 'off' phase, it must be
     invisible to subscribers: list_uuids omits its UUID, and

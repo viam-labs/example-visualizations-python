@@ -559,30 +559,30 @@ def test_force_vector_demo_animation_carries_all_four_attributes():
 # ---------- all preset trajectory-shift behavior ----------
 
 def test_all_preset_shifts_trajectory_animation_waypoints():
-    """When the `all` preset offsets the trajectory_preview items
-    in X+Y, the waypoints INSIDE the runner's animation must shift
-    too — otherwise the runner walks the un-shifted path while the
-    markers and line segments live at the shifted location, and the
-    demo desyncs."""
+    """When the `all` preset offsets the trajectory_preview items in
+    Y, the waypoints INSIDE the runner's animation must shift too —
+    otherwise the runner walks the un-shifted path while the markers
+    and line segments live at the shifted row, and the demo desyncs.
+    Trajectory now lives on its own row at y=-2*row, below the
+    orientation_vectors row."""
     items = load("all")
-    # Find the runner in the all-preset items (label is unchanged).
     runner = next(
         (it for it in items if it["label"] == "traj_runner"),
         None,
     )
     assert runner is not None, "trajectory_preview missing from all preset"
     anim_waypoints = runner["animation"]["waypoints"]
-    # The runner's static pose lines up with its first waypoint (we
-    # set it to dict(waypoints[0]) in trajectory_preview).
     rp = runner["pose"]
     awp0 = anim_waypoints[0]
+    # Runner's static pose and the first waypoint of its animation
+    # must agree (else the static line/markers and the runner desync).
     assert rp["x"] == pytest.approx(awp0["x"])
     assert rp["y"] == pytest.approx(awp0["y"])
     assert rp["z"] == pytest.approx(awp0["z"])
-    # And the runner sits well to the +X side and on the
-    # frame_composition row (+Y), matching the all-preset layout.
-    assert rp["x"] > 2000.0, "trajectory should be x-shifted in all preset"
-    assert rp["y"] > 1500.0, "trajectory should sit on the +Y row"
+    # The trajectory row sits at y=-2*row=-2400 in the all preset
+    # layout. The waypoints' static y was 0; after the offset it
+    # should land near -2400.
+    assert rp["y"] < -1500.0, "trajectory should sit on its own -Y row"
 
 
 # ---------- registry + load ----------
