@@ -178,7 +178,7 @@ async def test_tick_once_with_stable_uuid_emits_updated_event_with_fieldmask():
     # Same UUID — stable strategy.
     assert msg.transform.uuid == b"spin_me"
     # Field-mask carries the y path.
-    assert list(msg.updated_fields.paths) == ["pose_in_observer_frame.pose.y"]
+    assert list(msg.updated_fields.paths) == ["poseInObserverFrame.pose.y"]
     # Y is at the max excursion (~200 mm).
     assert msg.transform.pose_in_observer_frame.pose.y == pytest.approx(200.0, abs=1e-6)
     await gen.aclose()

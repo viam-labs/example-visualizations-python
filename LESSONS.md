@@ -415,6 +415,31 @@ colors. Logged this as bug #9 — the override should at least be
 documented, ideally visible in the metadata struct so authors know
 what's winning.
 
+### snake-case-field-mask-paths-do-not-work
+
+**Symptom.** 0.0.32 attempted to switch all field-mask paths from
+camelCase (e.g. `poseInObserverFrame.pose.theta`) to snake_case
+(`pose_in_observer_frame.pose.theta`) per the official
+worldstatestore guide's "Path strings are proto field names
+(snake_case)" line. Result on `desktop-dell-2`: **zero visible
+animations**. Every UPDATED event was silently dropped by the
+renderer.
+
+**Root cause.** The renderer at this commit only honors the
+camelCase path variants — the same form the RDK fake at
+`rdk/services/worldstatestore/fake/moving_geos_world.go:207,228,255`
+emits. The guide and the renderer disagree, and the renderer wins
+empirically.
+
+**Fix (0.0.33).** Reverted to camelCase paths. PATH_METADATA_COLOR
+and PATH_METADATA_OPACITY also reverted to `metadata.color` /
+`metadata.opacity` (the coarse `metadata` form was untested and
+risky to retry given the previous miss).
+
+**Filed:** bug #13 with the viz team. Until the renderer accepts
+snake_case OR the guide is corrected, modules MUST use camelCase
+paths for `UPDATED` events to be honored.
+
 ### chunked-delivery-schema
 
 **Symptom.** The visualization library's `protos/draw/v1/metadata.proto`
@@ -439,7 +464,7 @@ field names in the chunks sub-struct. Field names from the e2e
 fixture are not available; the names here are best-effort from
 "what a chunked-delivery schema would plausibly carry".
 
-**Module implementation (0.0.32):** A `pointcloud` item config can
+**Module implementation (0.0.33):** A `pointcloud` item config can
 opt into chunked delivery via `chunked: true` and `chunk_size: N`.
 The service parses the full PCD, ships only the first chunk inline
 on the initial Transform (with the chunks metadata declaring the

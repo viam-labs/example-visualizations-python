@@ -39,6 +39,7 @@ PRESET_NAMES = (
     "force_vector_demo",
     "geometry_morph",
     "lifecycle_demo",
+    "chunked_pcd_demo",
 )
 
 # Default spacing between primitives in the row-style preset (mm).
@@ -167,16 +168,6 @@ def primitives() -> List[Mapping[str, Any]]:
             "opacity": 1.0,
             "animation": {"mode": "none"},
         },
-        # Helix point cloud — chunked-delivery demo. `chunked: true`
-        # tells the service to ship only the first ~1000 points
-        # inline; the rest is fetched chunk-by-chunk via the
-        # `get_entity_chunk` DoCommand. The chunks metadata declares
-        # the total point count and stride so the viewer (when it
-        # supports chunks) knows what to ask for. Even without
-        # chunked-aware rendering, the initial Transform carries a
-        # valid first-chunk PCD that renders as a smaller slice of
-        # the spiral. See LESSONS.md::chunked-delivery-schema.
-        #
         # NOTE: no `color` on purpose — when metadata.colors is set on
         # a point cloud, the viewer uses it as a uniform tint and
         # IGNORES the per-point RGB embedded in the PCD body. Omitting
@@ -188,8 +179,6 @@ def primitives() -> List[Mapping[str, Any]]:
             "pose": _identity_pose(x=6 * sp),
             "pointcloud_path": "assets/helix.pcd",
             "opacity": 1.0,
-            "chunked": True,
-            "chunk_size": 2000,
             "animation": {"mode": "none"},
         },
     ]
@@ -1112,6 +1101,33 @@ def lifecycle_demo() -> List[Mapping[str, Any]]:
     return items
 
 
+def chunked_pcd_demo() -> List[Mapping[str, Any]]:
+    """Standalone demo for the chunked-delivery pathway.
+
+    Ships the helix with `chunked: true` and a small chunk size so
+    the initial Transform only carries the first slice of the spiral.
+    The remaining chunks are available via the `get_entity_chunk`
+    DoCommand, which the viewer can call to fill in the rest.
+
+    Kept OUT of the `all` preset on purpose: until the viewer
+    actually issues `get_entity_chunk` requests, this preset reads
+    as a truncated point cloud, which looks broken rather than like
+    a working demo. Load it explicitly when you want to test the
+    chunked-delivery wire (or call `get_entity_chunk` yourself via
+    DoCommand to inspect the chunk bytes).
+    """
+    return [{
+        "type": "pointcloud",
+        "label": "chunked_helix",
+        "pose": _identity_pose(),
+        "pointcloud_path": "assets/helix.pcd",
+        "opacity": 1.0,
+        "chunked": True,
+        "chunk_size": 2000,
+        "animation": {"mode": "none"},
+    }]
+
+
 def _waypoints_with_tangent_orientations(
     positions: List[Mapping[str, float]],
 ) -> List[Mapping[str, Any]]:
@@ -1161,6 +1177,7 @@ PRESETS = {
     "force_vector_demo": force_vector_demo,
     "geometry_morph": geometry_morph,
     "lifecycle_demo": lifecycle_demo,
+    "chunked_pcd_demo": chunked_pcd_demo,
 }
 
 

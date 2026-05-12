@@ -146,7 +146,7 @@ async def test_update_pose_x_emits_pose_x_fieldmask_path():
     out = await s.do_command({
         "command": "update", "label": "u3", "patch": {"pose": {"x": 500}},
     })
-    assert out["updated_fields"] == ["pose_in_observer_frame.pose.x"]
+    assert out["updated_fields"] == ["poseInObserverFrame.pose.x"]
     assert s._state["u3"]["base_pose"]["x"] == 500
 
 
@@ -158,7 +158,7 @@ async def test_update_pose_multi_axis_emits_one_path_per_axis():
         "patch": {"pose": {"x": 100, "y": 200}},
     })
     assert set(out["updated_fields"]) == {
-        "pose_in_observer_frame.pose.x", "pose_in_observer_frame.pose.y",
+        "poseInObserverFrame.pose.x", "poseInObserverFrame.pose.y",
     }
 
 
@@ -170,9 +170,9 @@ async def test_update_box_dims_emits_all_three_dim_paths():
         "patch": {"dims_mm": {"x": 200, "y": 300, "z": 50}},
     })
     assert set(out["updated_fields"]) >= {
-        "physical_object.geometry_type.value.dims_mm.x",
-        "physical_object.geometry_type.value.dims_mm.y",
-        "physical_object.geometry_type.value.dims_mm.z",
+        "physicalObject.geometryType.value.dimsMm.x",
+        "physicalObject.geometryType.value.dimsMm.y",
+        "physicalObject.geometryType.value.dimsMm.z",
     }
     assert s._state["u5"]["item"]["dims_mm"] == {"x": 200, "y": 300, "z": 50}
 
@@ -188,7 +188,7 @@ async def test_update_sphere_radius():
     out = await s.do_command({
         "command": "update", "label": "u6", "patch": {"radius_mm": 120},
     })
-    assert "physical_object.geometry_type.value.radius_mm" in out["updated_fields"]
+    assert "physicalObject.geometryType.value.radiusMm" in out["updated_fields"]
     assert s._state["u6"]["item"]["radius_mm"] == 120
 
 

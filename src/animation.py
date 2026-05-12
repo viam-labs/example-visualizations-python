@@ -56,24 +56,25 @@ import math
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 
 
-# Field-mask paths used in the UPDATED event. Per the official
-# worldstatestore guide ("Path strings are proto field names
-# (snake_case), per the worldstatestore spec"), these use proto
-# snake_case names. The RDK fake at
-# rdk/services/worldstatestore/fake/moving_geos_world.go uses
-# camelCase paths — that's a documented inconsistency we've filed
-# with the viz team (LESSONS.md, bug #12). We match the spec, not
-# the fake.
-PATH_THETA = "pose_in_observer_frame.pose.theta"
-PATH_X = "pose_in_observer_frame.pose.x"
-PATH_Y = "pose_in_observer_frame.pose.y"
-PATH_Z = "pose_in_observer_frame.pose.z"
-PATH_SPHERE_RADIUS = "physical_object.geometry_type.value.radius_mm"
-PATH_CAPSULE_RADIUS = "physical_object.geometry_type.value.radius_mm"
-PATH_CAPSULE_LENGTH = "physical_object.geometry_type.value.length_mm"
-PATH_BOX_DIMS_X = "physical_object.geometry_type.value.dims_mm.x"
-PATH_BOX_DIMS_Y = "physical_object.geometry_type.value.dims_mm.y"
-PATH_BOX_DIMS_Z = "physical_object.geometry_type.value.dims_mm.z"
+# Field-mask paths used in the UPDATED event. The official
+# worldstatestore guide says these should be snake_case proto field
+# names, BUT empirically the renderer at this commit only honors the
+# camelCase variants the RDK fake uses
+# (rdk/services/worldstatestore/fake/moving_geos_world.go:207,228,255).
+# Snake_case paths cause the viewer to silently drop every UPDATED
+# event — verified by trying it in 0.0.32: animations stopped
+# entirely. Filed as bug #13 with the viz team; reverting to
+# camelCase until the renderer accepts snake_case.
+PATH_THETA = "poseInObserverFrame.pose.theta"
+PATH_X = "poseInObserverFrame.pose.x"
+PATH_Y = "poseInObserverFrame.pose.y"
+PATH_Z = "poseInObserverFrame.pose.z"
+PATH_SPHERE_RADIUS = "physicalObject.geometryType.value.radiusMm"
+PATH_CAPSULE_RADIUS = "physicalObject.geometryType.value.radiusMm"
+PATH_CAPSULE_LENGTH = "physicalObject.geometryType.value.lengthMm"
+PATH_BOX_DIMS_X = "physicalObject.geometryType.value.dimsMm.x"
+PATH_BOX_DIMS_Y = "physicalObject.geometryType.value.dimsMm.y"
+PATH_BOX_DIMS_Z = "physicalObject.geometryType.value.dimsMm.z"
 
 SUPPORTED_MODES = (
     "none", "orbit", "oscillate", "spin", "swing", "pulse", "trajectory",
@@ -87,18 +88,16 @@ SUPPORTED_AXES = ("x", "y", "z")
 # these is unverified — the RDK fake only ever updates theta. If the
 # trajectory orientation looks frozen mid-segment, switch the item's
 # uuid_strategy to "versioned" so the whole pose is re-emitted each tick.
-PATH_OX = "pose_in_observer_frame.pose.o_x"
-PATH_OY = "pose_in_observer_frame.pose.o_y"
-PATH_OZ = "pose_in_observer_frame.pose.o_z"
+PATH_OX = "poseInObserverFrame.pose.oX"
+PATH_OY = "poseInObserverFrame.pose.oY"
+PATH_OZ = "poseInObserverFrame.pose.oZ"
 
-# Metadata field-mask paths. The official guide's example uses
-# top-level "metadata" rather than nested sub-fields — that's the
-# coarsest possible mask, telling the viewer "the metadata changed,
-# re-read it." Since we send the whole transform each tick (the
-# field-mask is metadata about WHAT changed, not the delta itself),
-# the coarse path is sufficient AND matches the spec.
-PATH_METADATA_COLOR = "metadata"
-PATH_METADATA_OPACITY = "metadata"
+# Metadata field-mask paths. The RDK fake uses nested
+# "metadata.color" / "metadata.opacity". Sticking with that —
+# coarse "metadata" was untested and the 0.0.32 try of snake_case
+# already burned us.
+PATH_METADATA_COLOR = "metadata.color"
+PATH_METADATA_OPACITY = "metadata.opacity"
 
 
 # Lifecycle convention colors from the official worldstatestore guide:

@@ -60,7 +60,7 @@ def test_orbit_at_t_zero_lands_on_positive_x_axis():
     )
     assert pose["x"] == pytest.approx(200.0)
     assert pose["y"] == pytest.approx(0.0)
-    assert paths == ["pose_in_observer_frame.pose.x", "pose_in_observer_frame.pose.y"]
+    assert paths == ["poseInObserverFrame.pose.x", "poseInObserverFrame.pose.y"]
 
 
 def test_orbit_at_quarter_period_lands_on_positive_y_axis():
@@ -100,7 +100,7 @@ def test_oscillate_default_axis_is_y():
     assert pose["y"] == pytest.approx(100.0)
     assert pose["x"] == 0.0
     assert pose["z"] == 0.0
-    assert paths == ["pose_in_observer_frame.pose.y"]
+    assert paths == ["poseInObserverFrame.pose.y"]
 
 
 def test_oscillate_axis_x_moves_only_x():
@@ -114,7 +114,7 @@ def test_oscillate_axis_x_moves_only_x():
     )
     assert pose["x"] == pytest.approx(250.0)
     assert pose["y"] == 0.0
-    assert paths == ["pose_in_observer_frame.pose.x"]
+    assert paths == ["poseInObserverFrame.pose.x"]
 
 
 def test_oscillate_axis_z_moves_only_z():
@@ -127,7 +127,7 @@ def test_oscillate_axis_z_moves_only_z():
         t=1.0,
     )
     assert pose["z"] == pytest.approx(50.0)
-    assert paths == ["pose_in_observer_frame.pose.z"]
+    assert paths == ["poseInObserverFrame.pose.z"]
 
 
 def test_oscillate_zero_at_t_zero_and_half_period():
@@ -154,7 +154,7 @@ def test_spin_at_quarter_period_is_90_degrees():
         t=1.0,
     )
     assert pose["theta"] == pytest.approx(90.0)
-    assert paths == ["pose_in_observer_frame.pose.theta"]
+    assert paths == ["poseInObserverFrame.pose.theta"]
 
 
 def test_spin_wraps_modulo_360():
@@ -180,7 +180,7 @@ def test_swing_at_t_zero_is_at_base_theta():
         t=0.0,
     )
     assert pose["theta"] == pytest.approx(30.0)
-    assert paths == ["pose_in_observer_frame.pose.theta"]
+    assert paths == ["poseInObserverFrame.pose.theta"]
 
 
 def test_swing_at_quarter_period_reaches_max_amplitude():
@@ -242,7 +242,7 @@ def test_pulse_on_sphere_modulates_radius():
         t=1.0,  # T/4 -> sin = 1, max bulge
     )
     assert geom["radius_mm"] == pytest.approx(70.0)
-    assert paths == ["physical_object.geometry_type.value.radius_mm"]
+    assert paths == ["physicalObject.geometryType.value.radiusMm"]
 
 
 def test_pulse_clamps_radius_above_zero():
@@ -268,8 +268,8 @@ def test_pulse_on_capsule_modulates_both_radius_and_length():
     assert geom["radius_mm"] == pytest.approx(80.0)
     assert geom["length_mm"] == pytest.approx(230.0)
     assert paths == [
-        "physical_object.geometry_type.value.radius_mm",
-        "physical_object.geometry_type.value.length_mm",
+        "physicalObject.geometryType.value.radiusMm",
+        "physicalObject.geometryType.value.lengthMm",
     ]
 
 
@@ -284,9 +284,9 @@ def test_pulse_on_box_modulates_all_three_dims():
     assert geom["dims_mm"]["y"] == pytest.approx(250.0)
     assert geom["dims_mm"]["z"] == pytest.approx(350.0)
     assert paths == [
-        "physical_object.geometry_type.value.dims_mm.x",
-        "physical_object.geometry_type.value.dims_mm.y",
-        "physical_object.geometry_type.value.dims_mm.z",
+        "physicalObject.geometryType.value.dimsMm.x",
+        "physicalObject.geometryType.value.dimsMm.y",
+        "physicalObject.geometryType.value.dimsMm.z",
     ]
 
 
@@ -335,13 +335,13 @@ def test_trajectory_at_t_zero_is_at_first_waypoint():
     assert pose["z"] == 0
     # Trajectory animation emits all 7 pose paths every tick.
     assert set(paths) == {
-        "pose_in_observer_frame.pose.x",
-        "pose_in_observer_frame.pose.y",
-        "pose_in_observer_frame.pose.z",
-        "pose_in_observer_frame.pose.o_x",
-        "pose_in_observer_frame.pose.o_y",
-        "pose_in_observer_frame.pose.o_z",
-        "pose_in_observer_frame.pose.theta",
+        "poseInObserverFrame.pose.x",
+        "poseInObserverFrame.pose.y",
+        "poseInObserverFrame.pose.z",
+        "poseInObserverFrame.pose.oX",
+        "poseInObserverFrame.pose.oY",
+        "poseInObserverFrame.pose.oZ",
+        "poseInObserverFrame.pose.theta",
     }
 
 
@@ -469,12 +469,12 @@ def test_force_vector_modulates_length_radius_orientation_and_emits_color():
     assert len(color) == 3
     assert all(0 <= c <= 255 for c in color)
     # Field-mask paths cover all four changing attributes.
-    assert "physical_object.geometry_type.value.length_mm" in paths
-    assert "physical_object.geometry_type.value.radius_mm" in paths
-    assert "pose_in_observer_frame.pose.o_x" in paths
-    assert "pose_in_observer_frame.pose.o_y" in paths
-    assert "pose_in_observer_frame.pose.o_z" in paths
-    assert "metadata" in paths
+    assert "physicalObject.geometryType.value.lengthMm" in paths
+    assert "physicalObject.geometryType.value.radiusMm" in paths
+    assert "poseInObserverFrame.pose.oX" in paths
+    assert "poseInObserverFrame.pose.oY" in paths
+    assert "poseInObserverFrame.pose.oZ" in paths
+    assert "metadata.color" in paths
 
 
 def test_force_vector_color_cycles_through_hue():
@@ -528,7 +528,7 @@ def test_pulse_box_axis_z_modulates_only_z_dim():
     assert geom["dims_mm"]["y"] == 100
     assert geom["dims_mm"]["z"] == pytest.approx(200)
     # Only the z field-mask path is emitted.
-    assert paths == ["physical_object.geometry_type.value.dims_mm.z"]
+    assert paths == ["physicalObject.geometryType.value.dimsMm.z"]
 
 
 def test_pulse_box_default_axis_all_keeps_isotropic_behavior():
@@ -560,7 +560,7 @@ def test_breathe_oscillates_opacity_around_base():
     _, _, paths, meta = compute_tick(item, BASE_POSE, base_geom, t=1.0)
     assert meta is not None
     assert meta["opacity"] == pytest.approx(1.0)  # 0.7 + 0.3 clamped
-    assert paths == ["metadata"]
+    assert paths == ["metadata.opacity"]
 
 
 def test_breathe_clamps_opacity_below_zero():
