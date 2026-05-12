@@ -352,20 +352,31 @@ def compute_tick(
         return new_pose, new_geom, paths, {"opacity": opacity}
 
     if mode == "flicker":
-        # Square-wave on/off via opacity 0 vs 1. period_s is one full
-        # on→off→on cycle; duty_cycle is the fraction of the cycle
-        # that the entity is visible (default 0.5 = even on/off).
-        # phase_offset_s shifts the cycle so a row of items with the
-        # same period but different offsets reads as a wave.
+        # True scene-graph mutation — the entity is actually REMOVED
+        # from the world state when it should be gone and ADDED back
+        # when it should be visible, not just made transparent. We
+        # signal this via a special ``_in_scene`` key in the metadata
+        # override; the service tick interprets the transition and
+        # emits REMOVED / ADDED change events accordingly (and
+        # ``list_uuids``/``get_transform``/``stream_transform_changes``
+        # filter the entity out while it's "removed").
+        #
+        # period_s is one full off→on cycle; duty_cycle is the fraction
+        # of the cycle the entity is in the scene. phase_offset_s
+        # shifts the cycle so a grid of items with the same period
+        # but different offsets reads as a wave of insertions and
+        # removals.
         period_s = float(anim.get("period_s", 3.0))
         if period_s <= 0:
             period_s = 3.0
         duty_cycle = max(0.0, min(1.0, float(anim.get("duty_cycle", 0.5))))
         phase_offset_s = float(anim.get("phase_offset_s", 0.0))
         phase = ((t + phase_offset_s) % period_s) / period_s
-        opacity = 1.0 if phase < duty_cycle else 0.0
-        paths = [PATH_METADATA_OPACITY]
-        return new_pose, new_geom, paths, {"opacity": opacity}
+        in_scene = phase < duty_cycle
+        # Empty paths — REMOVED/ADDED don't use field-mask paths, the
+        # service handles transitions specially.
+        paths: List[str] = []
+        return new_pose, new_geom, paths, {"_in_scene": in_scene}
 
     # Unknown mode: treat as static. validate_config should have
     # rejected it before we got here.

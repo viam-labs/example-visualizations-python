@@ -294,6 +294,22 @@ The intermediate's **orientation** is a separate knob: setting OX/OY/OZ to somet
 
 **How to apply.** When you want to *show* a coordinate frame, host the helper on any small marker (sphere with 0.35 opacity reads well) and set `show_axes_helper: true`. When you want to *use* a coordinate frame as a parent for other items, set it explicitly via `parent_frame` chaining — those are separate concerns.
 
+### scene-graph-mutation-from-animation-tick
+
+**Finding.** Animations don't have to be UPDATED-only — they can drive scene-graph membership too. The ``flicker`` mode emits real ``TRANSFORM_CHANGE_TYPE_REMOVED`` on the falling edge of its duty cycle and ``TRANSFORM_CHANGE_TYPE_ADDED`` on the rising edge, instead of toggling ``metadata.opacity`` between 0 and 1. The user reported "the balls are not being removed" when we used opacity-only — the viewer renders fully transparent geometry as "almost invisible" but the entity is still there in subscribers' state, and on some viewer paths "almost invisible" reads as a faint outline rather than as gone.
+
+**Mechanism.** The animation mode signals scene-graph intent via a special key in the metadata-override dict: ``{"_in_scene": True/False}``. The service tick interprets transitions:
+
+  - rising edge (was out → now in): emit ADDED with a freshly-built transform, set ``visible_to_viewer = True``
+  - falling edge (was in → now out): emit REMOVED with the cached transform, set ``visible_to_viewer = False``
+  - no edge: emit nothing
+
+The ``visible_to_viewer`` flag lives on each item's state row. ``list_uuids`` filters it out, ``get_transform`` raises rather than returning the stale tf, and the ``stream_transform_changes`` initial burst skips them. Subscribers connecting mid-flicker see a consistent scene.
+
+**Side note: items stay in self._state.** The "removed" entity is still in the service's internal state map (the tick keeps running to detect when to re-add it). What's "removed" is the entity's presence in the wire-level state the viewer sees. This is cleaner than actually deleting and recreating the item — the user's animation config and base pose persist across cycles, which is what they wanted.
+
+**Pattern for new "scene-graph" modes.** Any future animation mode that needs to add/remove/reparent entities at tick time can follow the same pattern: signal intent via a key in the metadata-override dict, and have the service tick interpret it. Keeps compute_tick pure and the service tick the single source of side effects.
+
 ### asymmetric-geometry-for-orientation
 
 **Symptom.** The orientation_vectors preset used capsules to show

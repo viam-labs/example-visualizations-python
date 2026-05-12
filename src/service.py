@@ -366,6 +366,14 @@ class SceneSprites(WorldStateStore, EasyResource):
             "base_geom": base_geom,
             "uuid": uuid,
             "transform": tf,
+            # visible_to_viewer tracks whether the entity is currently
+            # in the viewer's scene from the renderer's perspective.
+            # True by default — the flicker animation flips this to
+            # False between phases and emits REMOVED/ADDED on
+            # transitions. list_uuids, get_transform, and the stream
+            # initial burst all filter by this flag so a "removed"
+            # flicker item really looks gone to subscribers.
+            "visible_to_viewer": True,
         }
 
     def _remove_item(self, label: str) -> Optional[Transform]:
@@ -402,6 +410,39 @@ class SceneSprites(WorldStateStore, EasyResource):
                 pose, geom, paths, meta_override = anim_mod.compute_tick(
                     item, s["base_pose"], s["base_geom"], t,
                 )
+                # Special path: animations that mutate scene-graph
+                # membership (currently only `flicker`). The override
+                # carries `_in_scene` — True if the entity should be
+                # in the viewer's scene this tick, False if it should
+                # be removed. We emit REMOVED/ADDED on the transition
+                # edges and skip the normal UPDATED-with-paths path.
+                if meta_override and "_in_scene" in meta_override:
+                    want_in_scene = bool(meta_override["_in_scene"])
+                    was_in_scene = s.get("visible_to_viewer", True)
+                    if want_in_scene and not was_in_scene:
+                        # Rising edge: bring the entity back into the
+                        # scene. Build a fresh transform so the viewer
+                        # gets up-to-date pose/geom on re-add.
+                        geom_proto = _build_geometry(item, geom)
+                        new_tf = _build_transform(
+                            item, pose, geom_proto,
+                            s["uuid"], self.parent_frame,
+                        )
+                        s["transform"] = new_tf
+                        s["visible_to_viewer"] = True
+                        self._broadcast(StreamTransformChangesResponse(
+                            change_type=TransformChangeType.TRANSFORM_CHANGE_TYPE_ADDED,
+                            transform=new_tf,
+                        ))
+                    elif not want_in_scene and was_in_scene:
+                        # Falling edge: REMOVED.
+                        s["visible_to_viewer"] = False
+                        self._broadcast(StreamTransformChangesResponse(
+                            change_type=TransformChangeType.TRANSFORM_CHANGE_TYPE_REMOVED,
+                            transform=s["transform"],
+                        ))
+                    # else: no state change → no event this tick.
+                    continue
                 if not paths:
                     # Animation mode had no effect for this type
                     # (e.g. pulse on a point) — skip.
@@ -471,7 +512,15 @@ class SceneSprites(WorldStateStore, EasyResource):
         timeout: Optional[float] = None,
     ) -> List[bytes]:
         async with self._lock:
-            return [s["uuid"] for s in self._state.values()]
+            # Filter out items that the flicker animation has
+            # temporarily removed from the scene. They're still in
+            # self._state (we need them to keep ticking), but to the
+            # viewer they don't exist right now.
+            return [
+                s["uuid"]
+                for s in self._state.values()
+                if s.get("visible_to_viewer", True)
+            ]
 
     async def get_transform(
         self,
@@ -483,6 +532,12 @@ class SceneSprites(WorldStateStore, EasyResource):
         async with self._lock:
             for s in self._state.values():
                 if s["uuid"] == uuid:
+                    if not s.get("visible_to_viewer", True):
+                        # Flicker has this entity in its "off" phase.
+                        raise Exception(
+                            f"uuid {uuid!r} is currently not in the scene "
+                            "(flicker animation has it temporarily removed)"
+                        )
                     return s["transform"]
         raise Exception(f"unknown uuid {uuid!r}")
 
@@ -495,9 +550,14 @@ class SceneSprites(WorldStateStore, EasyResource):
         q: asyncio.Queue = asyncio.Queue(maxsize=256)
         async with self._lock:
             self._subscribers.append(q)
-            # Burst the current world to the new subscriber so it
-            # doesn't need to wait for the next tick.
+            # Burst the current world to the new subscriber. Skip
+            # items the flicker animation has currently removed —
+            # they're not in the viewer's scene right now, so a fresh
+            # subscriber shouldn't see them as ADDED only to be
+            # REMOVED again moments later.
             for s in self._state.values():
+                if not s.get("visible_to_viewer", True):
+                    continue
                 q.put_nowait(StreamTransformChangesResponse(
                     change_type=TransformChangeType.TRANSFORM_CHANGE_TYPE_ADDED,
                     transform=s["transform"],

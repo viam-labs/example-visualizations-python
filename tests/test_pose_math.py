@@ -577,25 +577,31 @@ def test_breathe_clamps_opacity_below_zero():
 
 # ---------- flicker ----------
 
-def test_flicker_on_off_by_duty_cycle():
-    """Square wave: visible for duty_cycle fraction of period,
-    invisible for the rest. With duty_cycle=0.5, half on half off."""
+def test_flicker_signals_scene_membership_not_opacity():
+    """Flicker emits ``_in_scene`` so the service can fire real
+    REMOVED/ADDED events. We pin the schema here so a regression
+    back to opacity-only (where the entity stayed in the scene but
+    just went transparent) fails CI."""
     item = {"type": "sphere", "animation": {
         "mode": "flicker", "period_s": 4.0, "duty_cycle": 0.5,
     }}
     base_geom = {"radius_mm": 30}
-    # t=0: phase=0 < 0.5 → ON (opacity 1.0)
-    _, _, _, meta_on = compute_tick(item, BASE_POSE, base_geom, t=0.0)
-    assert meta_on["opacity"] == 1.0
-    # t=3: phase = 3/4 = 0.75, not < 0.5 → OFF (opacity 0.0)
+    # t=0: phase=0 < 0.5 → in scene.
+    _, _, paths_on, meta_on = compute_tick(item, BASE_POSE, base_geom, t=0.0)
+    assert meta_on["_in_scene"] is True
+    # Paths are empty — REMOVED/ADDED don't use field-mask paths.
+    assert paths_on == []
+    # opacity isn't part of the override; the service drives
+    # visibility via scene-graph operations.
+    assert "opacity" not in meta_on
+    # t=3: phase = 0.75, not < 0.5 → out of scene.
     _, _, _, meta_off = compute_tick(item, BASE_POSE, base_geom, t=3.0)
-    assert meta_off["opacity"] == 0.0
+    assert meta_off["_in_scene"] is False
 
 
 def test_flicker_phase_offset_shifts_the_cycle():
     """phase_offset_s lets a row of items with the same period
-    flicker out-of-phase, producing a wave effect. With offset
-    = period/2 the cycle is flipped."""
+    flicker out-of-phase, producing a wave of removals/insertions."""
     base_geom = {"radius_mm": 30}
     item_a = {"type": "sphere", "animation": {
         "mode": "flicker", "period_s": 4.0,
@@ -603,11 +609,11 @@ def test_flicker_phase_offset_shifts_the_cycle():
     item_b = {"type": "sphere", "animation": {
         "mode": "flicker", "period_s": 4.0, "phase_offset_s": 2.0,
     }}
-    # At t=0: A is ON (phase 0), B is OFF (phase 0.5).
+    # At t=0: A is in-scene (phase 0), B is out (phase 0.5).
     _, _, _, meta_a = compute_tick(item_a, BASE_POSE, base_geom, t=0.0)
     _, _, _, meta_b = compute_tick(item_b, BASE_POSE, base_geom, t=0.0)
-    assert meta_a["opacity"] == 1.0
-    assert meta_b["opacity"] == 0.0
+    assert meta_a["_in_scene"] is True
+    assert meta_b["_in_scene"] is False
 
 
 def test_supported_modes_constant():

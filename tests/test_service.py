@@ -308,6 +308,72 @@ async def test_reconfigure_starts_tick_task_only_when_items_are_animated():
 
 # ---------- close cleans up the tick task ----------
 
+# ---------- flicker REMOVED/ADDED scene-graph operations ----------
+
+async def test_flicker_emits_removed_then_added_on_phase_transitions():
+    """Flicker truly removes and re-adds the entity to the scene
+    instead of just toggling opacity. Subscribers see REMOVED on the
+    falling edge of the duty cycle and ADDED on the rising edge."""
+    import time
+    s = _bare_service(strategy="stable")
+    s.tick_hz = 100
+    await s.do_command({
+        "command": "add",
+        "item": _sphere_item("blink", animated_mode="flicker",
+                             period_s=4.0, duty_cycle=0.5),
+    })
+    # Initial state: visible.
+    assert s._state["blink"]["visible_to_viewer"] is True
+
+    gen = s.stream_transform_changes()
+    # Drain initial ADDED burst.
+    await gen.__anext__()
+
+    # Drive a tick at t=3s (3/4 of the period → out of scene).
+    s._animation_t0 = time.monotonic() - 3.0
+    tick_task = asyncio.create_task(s._tick_once())
+    msg = await gen.__anext__()
+    await tick_task
+    assert msg.change_type == TransformChangeType.TRANSFORM_CHANGE_TYPE_REMOVED
+    assert s._state["blink"]["visible_to_viewer"] is False
+
+    # Drive a tick at t=4s (full period wrap → back in scene).
+    s._animation_t0 = time.monotonic() - 4.0
+    tick_task = asyncio.create_task(s._tick_once())
+    msg = await gen.__anext__()
+    await tick_task
+    assert msg.change_type == TransformChangeType.TRANSFORM_CHANGE_TYPE_ADDED
+    assert s._state["blink"]["visible_to_viewer"] is True
+    await gen.aclose()
+
+
+async def test_flicker_removed_item_is_filtered_from_list_uuids_and_get_transform():
+    """While an entity is in the flicker 'off' phase, it must be
+    invisible to subscribers: list_uuids omits its UUID, and
+    get_transform raises rather than returning the stale transform
+    (which would otherwise leak the 'removed' entity back into the
+    viewer through a subsequent burst)."""
+    import time
+    s = _bare_service(strategy="stable")
+    s.tick_hz = 100
+    await s.do_command({
+        "command": "add",
+        "item": _sphere_item("blink", animated_mode="flicker",
+                             period_s=4.0, duty_cycle=0.5),
+    })
+    # Drive a tick that flips it out of the scene.
+    s._animation_t0 = time.monotonic() - 3.0
+    await s._tick_once()
+    assert s._state["blink"]["visible_to_viewer"] is False
+
+    # The UUID should be absent from list_uuids while removed.
+    uuids = await s.list_uuids()
+    assert b"blink" not in uuids
+    # And get_transform raises rather than returning the stale tf.
+    with pytest.raises(Exception, match="not in the scene"):
+        await s.get_transform(b"blink")
+
+
 async def test_close_cancels_tick_task():
     s = _bare_service()
     s.reconfigure(_cfg({

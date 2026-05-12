@@ -729,47 +729,43 @@ def all_preset() -> List[Mapping[str, Any]]:
     primitive, color, orientation convention, and the chained-frame
     composition demo in one viewport.
 
-    Row layout (Y from negative to positive):
+    Row layout (Y from negative to positive). Spacing tightened to
+    1200 mm; the previous 1800 mm row gap left too much empty space
+    between rows.
 
       - orientation_vectors  y = -row
       - primitives           y =   0
-      - frame_composition    y = +row, x ∈ [-1000, +1500]
-                                 (spinning frame + orbiting wheel + arm)
-      - trajectory_preview   y = +row, x ∈ [+2500, +3500]
-                                 (added to the same row as the arm +
-                                  spinning frame; offset in X so it
-                                  doesn't overlap)
-      - force_vector_demo    y = +row, x = +4500
-                                 (also on the moving-items row; one
-                                  arrow whose length, radius,
-                                  orientation, and color all change
-                                  over time)
-      - geometry_morph       y = -2*row
+      - geometry_morph       y = +row, x ∈ [0, +1700]
                                  (pulsing sphere, stretching box,
-                                  breathing capsule, flickering grid
-                                  — geometry + metadata animation
-                                  beyond pose)
+                                  breathing capsule, flickering grid)
+      - force_vector_demo    y = +row, x = +2300
+                                 (on the morph row — its arrow
+                                  changes radius+length+orientation+
+                                  color, matching the "geometry &
+                                  property changes" theme of the row)
+      - frame_composition    y = +2*row, x ∈ [-1000, +1500]
+                                 (spinning frame + orbiting wheel + arm)
+      - trajectory_preview   y = +2*row, x ∈ [+2500, +3500]
+                                 (alongside the arm + spinning frame
+                                  on the "moving items" row)
     """
-    row = 1800.0
+    row = 1200.0
     items: List[Mapping[str, Any]] = []
-    items.extend(_offset_base_items_y(geometry_morph(), -2 * row))
     items.extend(_offset_base_items_y(orientation_vectors(), -row))
     items.extend(_offset_base_items_y(primitives(), 0.0))
-    items.extend(_offset_base_items_y(frame_composition(), row))
-    # trajectory_preview sits on the frame_composition row but is
-    # shifted in X to clear the arm + spinning-frame demos. Two-step
-    # offset: first along X (sits at x ≈ +2500), then along Y (joins
-    # the frame_composition row). _offset_base_items also shifts the
-    # trajectory animation's internal waypoints so the runner follows
-    # the translated path.
-    traj = _offset_base_items(trajectory_preview(), "x", 2500.0)
-    traj = _offset_base_items(traj, "y", row)
-    items.extend(traj)
-    # force_vector_demo lives even further along X so its precessing
-    # arrow doesn't sweep through the trajectory runner's path.
-    fv = _offset_base_items(force_vector_demo(), "x", 4500.0)
+    # Morph row with force_vector tucked in alongside the four
+    # geometry/property demos. force_vector demos all four of those
+    # categories at once (geometry size + orientation + color), so
+    # it belongs visually with the rest of the row.
+    items.extend(_offset_base_items_y(geometry_morph(), row))
+    fv = _offset_base_items(force_vector_demo(), "x", 2300.0)
     fv = _offset_base_items(fv, "y", row)
     items.extend(fv)
+    # Moving-items row: arm + spinning frame + trajectory.
+    items.extend(_offset_base_items_y(frame_composition(), 2 * row))
+    traj = _offset_base_items(trajectory_preview(), "x", 2500.0)
+    traj = _offset_base_items(traj, "y", 2 * row)
+    items.extend(traj)
     return items
 
 
@@ -934,7 +930,9 @@ def geometry_morph() -> List[Mapping[str, Any]]:
     })
     slot_x += 350
 
-    # Capsule breathing in opacity.
+    # Capsule breathing in opacity. Period dropped from 4 s to 1.5 s
+    # so the change is obvious at a glance — at 4 s the cycle was
+    # slow enough to read as "static, ish".
     items.append({
         "type": "capsule",
         "label": "morph_breathe_capsule",
@@ -946,7 +944,7 @@ def geometry_morph() -> List[Mapping[str, Any]]:
         "animation": {
             "mode": "breathe",
             "amplitude": 0.55,
-            "period_s": 4,
+            "period_s": 1.5,
         },
     })
     slot_x += 380
