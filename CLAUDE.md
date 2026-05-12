@@ -1,6 +1,6 @@
 # CLAUDE.md — example-visualizations
 
-Operational context for future agents working on this repo. Read alongside `README.md` (user-facing) and `LESSONS.md` (accumulating findings that feed the tutorial, bug/feature requests for the viz team, and helper-library design).
+Operational context for future agents working on this repo. Read alongside `README.md` (user-facing), `LESSONS.md` (accumulating findings that feed the tutorial and bug/feature requests for the viz team), and `GO_LIBRARY_PLAN.md` (design for the Go helper library this module's findings are aimed at).
 
 ## What this is
 
@@ -20,11 +20,11 @@ The module is also a renderer-behavior probe. Several features — chained frame
 src/main.py             # Module entrypoint. Imports SceneSprites so EasyResource registers it, then Module.run_from_registry().
 src/service.py          # SceneSprites — the WorldStateStore implementation. Owns state, subscribers, animation tick, do_command dispatch.
 src/geometries.py       # Pure proto builders: build_box/sphere/capsule/point/mesh/pointcloud, build_metadata, build_pose, stl_to_ply, asset path resolution.
-src/animation.py        # Per-mode pose math: none, orbit, oscillate, spin, pulse. Returns (pose, geom, updated_fields) — the third is the field-mask path list for UPDATED events.
-src/presets.py          # Named scene bundles: primitives (every type + torus + teapot + bunny in one 10-item row), color_wheel, orientation_vectors (sphere markers with show_axes_helper), frame_composition (spinning frame + robot arm side-by-side), all (Y-stacked). The reference_frame_demo and robot_arm helper functions remain in this module — they're the building blocks frame_composition glues together, and the tests still exercise them individually.
+src/animation.py        # Per-mode pose math: none, orbit, oscillate, spin, swing, pulse, trajectory, force_vector, breathe, flicker, lifecycle. Returns (pose, geom, updated_fields, metadata_overrides) — third is the field-mask path list for UPDATED, fourth carries per-tick color/opacity/_in_scene overrides.
+src/presets.py          # Named scene bundles: primitives (every type + torus + teapot + bunny + side-by-side helices), orientation_vectors, frame_composition (spinning frame + robot arm), trajectory_preview, force_vector_demo, geometry_morph (pulse/breathe/flicker), lifecycle_demo (5 staggered boxes through appear→alive→disappear→gone), chunked_pcd_demo, all (Y-stacked).
 scripts/generate_assets.py  # Regenerates every asset. Pure-math sources: icosahedron, arrow, torus, teapot (Newell Bezier patches), helix PCD. One external source committed at scripts/bunny_source.stl (decimated Stanford bunny, ASCII STL — converted to binary STL with meter-scale coords at build time).
 assets/                 # Shipped reference geometry — see assets/README.md for provenance.
-tests/                  # pytest. Run from repo root via `make test`. 179+ tests as of 0.0.6.
+tests/                  # pytest. Run from repo root via `make test`. 253 tests as of 0.0.36.
 meta.json               # Module metadata. namespace/model must match src/service.py::SceneSprites.MODEL.
 VERSION                 # Single-line semver. Bump before `make upload` — registry rejects duplicates.
 run.sh                  # viam-server entrypoint. Creates venv, installs deps, exec's `python -m src.main`.
@@ -81,8 +81,10 @@ To deploy on `desktop-dell-2`, either:
 
 `_tick_loop` runs at `tick_hz` (default 30, max 30). Each tick calls `_tick_once`, which iterates animated items and dispatches based on `uuid_strategy`:
 
-- **`stable`** — recompute the pose/geom, update the cached transform in place, push `UPDATED` with `FieldMask(paths=...)`. The field-mask paths come from `animation.py` and must match the conventions in `rdk/services/worldstatestore/fake/moving_geos_world.go` (e.g. `poseInObserverFrame.pose.theta`, `physicalObject.geometryType.value.radiusMm`).
+- **`stable`** — recompute the pose/geom, update the cached transform in place, push `UPDATED` with `FieldMask(paths=...)`. The field-mask paths come from `animation.py` and MUST be the camelCase form (e.g. `poseInObserverFrame.pose.theta`, `physicalObject.geometryType.value.radiusMm`) — see "field-mask paths" gotcha below.
 - **`versioned`** — allocate a new UUID (`<label>_<epoch_ms>_<counter>`), build a fresh transform, push `REMOVED` for the old + `ADDED` for the new.
+
+Animations that mutate scene-graph membership (`flicker`, `lifecycle`) return `_in_scene` in `metadata_overrides`. The tick emits REMOVED/ADDED on transition edges (with UUID rotation on the rising edge to dodge the renderer cache), then falls through to UPDATED for any non-membership overrides (color/opacity) while the entity is visible.
 
 Static items emit once on install and never on tick. If no items animate, the tick task isn't started — saves CPU and produces a cleaner debug snapshot.
 
@@ -92,7 +94,7 @@ Same pattern as apriltag-tracker. Each subscriber owns an `asyncio.Queue(maxsize
 
 ### DoCommand surface
 
-Eight verbs: `list`, `add`, `remove`, `update`, `clear`, `preset`, `snapshot`, `set_uuid_strategy`. Unrecognized or missing `command` returns a debug snapshot. The `update` verb computes `updated_fields` paths based on which item fields the patch touched; the `set_uuid_strategy` verb lets users flip between stable and versioned at runtime without reconfigure.
+Nine verbs: `list`, `add`, `remove`, `update`, `clear`, `preset`, `snapshot`, `set_uuid_strategy`, `get_entity_chunk`. Unrecognized or missing `command` returns a debug snapshot. The `update` verb computes `updated_fields` paths based on which item fields the patch touched; the `set_uuid_strategy` verb lets users flip between stable and versioned at runtime without reconfigure; the `get_entity_chunk` verb returns base64-encoded PCD bytes for chunked-delivery pointclouds (see chunked-delivery gotcha below).
 
 ## Conventions and gotchas (cross-reference LESSONS.md)
 
@@ -109,6 +111,9 @@ These are the load-bearing facts an agent working in this repo needs to know up 
 - **`viam machines part add-resource` adds the service but NOT the module declaration.** Use `viam module reload --part-id ... --model-name ... --resource-name ...` to add both together. Or paste a config snippet containing both `modules` and `services` arrays.
 - **The viam-dev org's registry namespace is `viam`** (not `viam-dev`). Run `viam organizations list` to see org-name → namespace mapping. The module ID is `viam:example-visualizations`.
 - **`viam-labs` is a GitHub org but not a Viam registry namespace** on this account. Apriltag-tracker uses the same split: GitHub at viam-labs, registry at the user's org namespace.
+- **Field-mask paths MUST be camelCase, not snake_case.** The official worldstatestore guide says snake_case, but the renderer empirically only honors the camelCase paths the RDK fake at `moving_geos_world.go` emits. 0.0.32 attempted snake_case → every UPDATED event silently dropped → zero visible animations. Reverted in 0.0.33; the camelCase constants in `animation.py::PATH_*` are now the source of truth. See `LESSONS.md::snake-case-field-mask-paths-do-not-work`.
+- **Chunked delivery for point clouds is experimental, schema unverified.** `pointcloud` items can carry `chunked: true` + `chunk_size: N`. The service splits the PCD into N-point slices, ships chunk 0 inline with a `metadata.chunks` sub-struct, and exposes the rest via the `get_entity_chunk` DoCommand. Whether the viewer actually calls `get_entity_chunk` or reads `metadata.chunks` is **not verified** — the `viamrobotics/visualization` repo (the canonical source) is not on this filesystem. The chunked sibling of the helix in `primitives` sits next to the un-chunked one specifically so any rendering gap is visible at a glance. See `LESSONS.md::chunked-delivery-schema`.
+- **Lifecycle animation mode emits both `_in_scene` and color/opacity overrides per tick.** The service tick handles `_in_scene` transitions specially (REMOVE on falling edge, ADD with UUID rotation on rising edge) AND falls through to UPDATED for color/opacity while the entity is visible. This is the contract that lets the lifecycle convention colors (blue@50% / orange / red@50%) animate during their phases instead of only flashing at phase boundaries. See `LESSONS.md::scene-graph-mutation-from-animation-tick` and `LESSONS.md::renderer-caches-removed-uuids-rotate-on-readd`.
 
 ## Don't
 
@@ -133,6 +138,12 @@ These are the load-bearing facts an agent working in this repo needs to know up 
 
 Current pre-release version sequence (latest first):
 
+- 0.0.36 — tighten `all` row spacing (1200→500 mm) except the arm row (1500 mm extra gap)
+- 0.0.35 — lifecycle row moved between primitives and morph
+- 0.0.34 — chunked helix placed next to the un-chunked one in `primitives` for visual diff
+- 0.0.33 — revert field-mask paths to camelCase (snake_case made all animations silently fail); chunked helix moved into its own `chunked_pcd_demo` preset
+- 0.0.32 — *broken*: switched paths to snake_case per spec; broke every UPDATED event. Added lifecycle mode/preset and chunked-delivery code path. Rolled back paths in 0.0.33.
+- 0.0.7..0.0.31 — many: arrow + force_vector + breathe + flicker animations; trajectory mode; frame_composition (spinning frame + 2-finger arm); orientation_vectors; geometry_morph; renderer-UUID-cache workarounds.
 - 0.0.7 — namespace move from `shrews-testing` to `viam`
 - 0.0.6 — rewrite metadata to drawing.proto schema (colors/opacities/color_format/show_axes_helper/invisible base64-packed bytes); fixes color + opacity silently being ignored
 - 0.0.5 — PCD header matches RDK byte-for-byte (no `#` comment, `VERSION .7` not `VERSION 0.7`)

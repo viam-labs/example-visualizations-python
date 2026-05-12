@@ -585,68 +585,19 @@ Related: `validate_config` must return `Tuple[Sequence[str], Sequence[str]]` —
 
 8. **Point cloud render size knob is in the wrong channel.** The viewer has a per-point size control — `drawv1.Points.PointSize` (see `viamrobotics/visualization::draw/drawing.go::Shape.ToProto`). But that lives on the `drawv1.Shape` proto used by the drawing API, not on the `commonpb.PointCloud` proto used by world-state-store. So a world-state-store service has no way to set per-point size; it ships dense / radially-thickened point clouds as a workaround. Either expose a `point_size` field on `commonpb.PointCloud`, or let world-state-store services emit a `commonpb.Geometry` variant that carries a size hint.
 
-## Library sketch — `viam-viz-helpers`
+## Library plan
 
-A thin Python library that wraps the gotchas so module authors don't repeat them. Working name: `viam-viz-helpers`. Could live under `viam-labs/` or as part of `viam-python-sdk`.
+The accumulated gotchas in this doc all want to live in a reusable library. The original sketch here was a Python design pointed at the `viam-python-sdk`. Decision (2026-05-12): the library should be **Go**, not Python — the canonical viewer-side reference (`viamrobotics/visualization`) is Go, and the eventual upstream merge target is that repo. A Go library can live next to the protos, share types with the viewer, and graduate from `viam-labs/` into the official package with minimal API churn.
 
-### API sketch
+The full Go library design lives in `GO_LIBRARY_PLAN.md` in this repo. That document is the source of truth for:
 
-```python
-from viam_viz import Scene, Color, items, animation
+- Package layout and import paths
+- Public API surface (Scene builder, geometry constructors, animation specs, embeddable service base)
+- The phased delivery plan and which gotchas each phase resolves
+- Testing strategy
+- The migration path toward merging into `viamrobotics/visualization`
 
-scene = Scene(parent_frame="world", tick_hz=5)
-
-# Primitives with sensible defaults; mesh and pointcloud auto-handle
-# format conversion + asset path resolution.
-scene.add(items.Box("demo_box",
-    pose=(0, 0, 0), dims_mm=(100, 100, 100),
-    color=Color.rgb(230, 25, 75), opacity=0.8))
-
-scene.add(items.Sphere("demo_sphere",
-    pose=(300, 0, 0), radius_mm=90,
-    color=Color.name("green"),
-    animation=animation.Oscillate(axis="y", amplitude_mm=100, period_s=3)))
-
-# Mesh: accepts PLY *or* STL — converts STL→PLY transparently.
-scene.add(items.Mesh("demo_mesh", pose=(600, 0, 0),
-    path="assets/cube.stl",
-    color=Color.hex("#FF8000")))
-
-# Point cloud: writes PCD with RDK-exact header + meter coords.
-scene.add(items.PointCloud.from_points("demo_cloud",
-    points=[(x, y, z, rgb) for ...],
-    pose=(900, 0, 0)))
-
-# Compose frames: child items inherit parent's animated pose.
-scene.add(items.Sphere("anchor", pose=(0, 0, 500),
-    show_axes_helper=True,
-    animation=animation.Spin(period_s=6)))
-scene.add(items.Capsule("attached", parent="anchor",
-    pose=(200, 0, 0), radius_mm=20, length_mm=150,
-    animation=animation.Spin(period_s=2)))
-
-# In your service's WorldStateStoreService methods, defer to the scene:
-async def list_uuids(self, **kw): return scene.list_uuids()
-async def get_transform(self, uuid, **kw): return scene.get_transform(uuid)
-async def stream_transform_changes(self, **kw):
-    async for change in scene.stream(): yield change
-```
-
-### What the library would handle
-
-- **Asset loading** — read PLY/STL bytes, convert STL→PLY, validate paths relative to module dir.
-- **PCD writing** — match RDK header byte-for-byte, encode meters automatically, pack colors to bytes.
-- **Metadata building** — produce the canonical `viamrobotics/visualization` struct from a `Color`-like input.
-- **Pose composition** — let users specify poses as `(x, y, z)` tuples in mm; library handles meter conversion if/when the viewer ever changes that.
-- **Animation registry** — pluggable `Animation` types with `(t, base_pose, base_geom) -> (pose, geom, updated_fields)` contract. Field-mask paths centralized so a renderer-side rename only changes one place.
-- **UUID strategy abstraction** — `Scene` knows about both stable and versioned, exposes a single `set_uuid_strategy(...)` knob and runs the appropriate event sequence.
-- **Subscriber fanout boilerplate** — most modules implement the same queue/broadcast pattern; library exposes a `scene.stream()` that handles backpressure, initial-burst, and unsubscribe-on-cancel.
-- **DoCommand sugar** — optional `scene.do_command(...)` dispatcher with `add`/`remove`/`update`/`clear`/`preset`/`snapshot` already wired so module authors don't reimplement every time.
-- **Validation helpers** — `validate_config(...) -> Tuple[Sequence[str], Sequence[str]]` with the right return shape and useful error messages.
-
-### Versioning strategy
-
-Library version pinned to a tested-against `viamrobotics/visualization` version. When the viewer changes the metadata schema (it has, between RDK-fake and current viz lib), the library bumps a major version and the migration path is documented.
+The Python equivalent of the planned library — `src/{geometries,animation,presets,service}.py` in this repo — is the prototype the Go API is derived from. Anything the Python module does and was painful, the Go library should make trivial.
 
 ## Tutorial outline (to be expanded)
 
