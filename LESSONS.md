@@ -101,6 +101,43 @@ The RDK fake at `services/worldstatestore/fake/moving_geos_world.go` uses the ob
 
 **Status.** TBD. User will report what they see on `desktop-dell-2` after switching to the `reference_frame_demo` preset.
 
+### asymmetric-geometry-for-orientation
+
+**Symptom.** The orientation_vectors preset used capsules to show
+which way each axis pointed (capsule's long axis aligned to the
+orientation vector). User reported the capsules weren't useful — they
+were rotationally symmetric along their length axis, so you could
+see *that* a capsule was aligned with +X but not which **end** was
+the tip.
+
+**Root cause.** Capsules (and spheres, and most primitives at default
+proportions) are symmetric in ways that hide direction information.
+The viewer renders the geometry faithfully, but a symmetric primitive
+has no visible "head" or "tail" — so an asymmetric input is the only
+way to make pointing direction unambiguous.
+
+**Fix.** Generate `assets/arrow.ply` — a cylindrical shaft + wider
+conical tip along local +Z, total length 250 mm. The orientation_vectors
+preset now uses arrow meshes; the pose's `(OX, OY, OZ)` rotates the
+arrow's local +Z to that world direction, and the cone tip makes the
+pointing direction obvious. The theta-sweep demo became more useful
+too — the cone's asymmetric cross-section makes the rotation about
+the orientation vector visible (vs invisible on a capsule).
+
+### misleading-asset-name
+
+**Symptom.** Asset shipped as `assets/bunny.ply` is a 12-vertex
+icosahedron, not anything bunny-shaped. User asked "what is the bunny
+mesh supposed to be? it looks like a polyhedron" — the name was
+misleading because the actual Stanford bunny is 16 MB and we ship a
+much smaller stand-in.
+
+**Fix.** Renamed `assets/bunny.ply` → `assets/icosahedron.ply` so the
+filename matches what's actually in the file. Updated all presets and
+asset README. Pattern: name shipped assets after what they ARE, not
+what they're a stand-in for. If we ever do ship the real Stanford
+bunny, *then* the file can be `bunny.ply`.
+
 ### metadata-keys-must-all-be-present
 
 **Symptom.** After dropping `color` from the point cloud preset item at 0.0.9 (because metadata.colors overrides PCD per-point RGB), the helix disappeared entirely. Properties pane still showed 14,400 points; viewport rendered nothing.

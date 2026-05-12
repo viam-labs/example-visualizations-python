@@ -202,7 +202,7 @@ async def test_update_mesh_path_swaps_file_at_runtime(tmp_path):
     mesh_item = {
         "type": "mesh", "label": "u7",
         "pose": {"x": 0, "y": 0, "z": 0, "oz": 1},
-        "mesh_path": "assets/bunny.ply",
+        "mesh_path": "assets/icosahedron.ply",
         "animation": {"mode": "none"},
     }
     await s.do_command({"command": "add", "item": mesh_item})

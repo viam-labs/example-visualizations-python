@@ -11,9 +11,11 @@ Presets:
   - ``color_wheel``: ten spheres arranged around a circle, HSV-swept hue.
   - ``mesh_gallery``: bunny PLY + cube STL + helix point cloud, side by
     side. Useful for inspecting the three "file-asset" primitives at once.
-  - ``orientation_vectors``: same capsule replicated at OX/OY/OZ
-    permutations with theta sweeps — teaches Viam's orientation-vector
-    convention by showing what each axis does.
+  - ``orientation_vectors``: same arrow mesh replicated at OX/OY/OZ
+    permutations with a theta-sweep demo. Arrows (not capsules)
+    because the asymmetric shaft+tip geometry makes the pointing
+    direction unambiguous; a capsule is rotationally symmetric along
+    its length axis and the user can't tell which end is which.
 """
 import colorsys
 import math
@@ -83,7 +85,7 @@ def primitives() -> List[Mapping[str, Any]]:
             "type": "mesh",
             "label": "demo_mesh_ply",
             "pose": _identity_pose(x=1 * sp),
-            "mesh_path": "assets/bunny.ply",
+            "mesh_path": "assets/icosahedron.ply",
             "color": {"r": 240, "g": 50, "b": 230},
             "opacity": 1.0,
             "animation": {"mode": "none"},
@@ -146,7 +148,7 @@ def mesh_gallery() -> List[Mapping[str, Any]]:
             "type": "mesh",
             "label": "gallery_ply",
             "pose": _identity_pose(x=-sp),
-            "mesh_path": "assets/bunny.ply",
+            "mesh_path": "assets/icosahedron.ply",
             "color": {"r": 220, "g": 220, "b": 220},
             "opacity": 1.0,
             "animation": {"mode": "none"},
@@ -174,69 +176,77 @@ def mesh_gallery() -> List[Mapping[str, Any]]:
 
 
 def orientation_vectors() -> List[Mapping[str, Any]]:
-    """The same capsule replicated at axis-aligned orientation vectors
-    so the user can see how OX/OY/OZ + theta combine. The capsule's
-    length axis is the most legible primitive for this — sphere is
-    rotation-invariant, box requires reading dim labels."""
+    """An arrow mesh replicated at axis-aligned orientation vectors so
+    the user can see how OX/OY/OZ + theta combine.
+
+    Arrows beat capsules here because a capsule is rotationally
+    symmetric along its length axis — you can tell it's lying along
+    +X but not which end points which way. The arrow's wide cone tip
+    + narrow shaft makes the pointing direction unmistakable.
+
+    The arrow mesh extends along its local +Z axis (see
+    ``scripts/generate_assets.py::write_arrow_ply``). The pose's
+    orientation vector ``(OX, OY, OZ)`` rotates the local +Z to that
+    world direction, so the arrow points in the configured direction.
+    """
     base_pose = lambda ox, oy, oz, theta, x: {
         "x": x, "y": 0, "z": 0,
         "ox": ox, "oy": oy, "oz": oz, "theta": theta,
     }
-    items = []
     sp = PRIMITIVE_ROW_SPACING_MM
-    # +Z (identity) — capsule extends upward.
+    mesh_path = "assets/arrow.ply"
+    items = []
+    # +Z (identity) — arrow points upward.
     items.append({
-        "type": "capsule",
+        "type": "mesh",
         "label": "ov_+Z",
         "pose": base_pose(0, 0, 1, 0, -2 * sp),
-        "radius_mm": 35,
-        "length_mm": 250,
+        "mesh_path": mesh_path,
         "color": {"r": 60, "g": 180, "b": 75},
         "opacity": 1.0,
         "animation": {"mode": "none"},
     })
-    # +X — capsule extends along world X.
+    # +X — arrow points along world +X.
     items.append({
-        "type": "capsule",
+        "type": "mesh",
         "label": "ov_+X",
-        "pose": base_pose(1, 0, 0, 90, -sp),
-        "radius_mm": 35,
-        "length_mm": 250,
+        "pose": base_pose(1, 0, 0, 0, -sp),
+        "mesh_path": mesh_path,
         "color": {"r": 230, "g": 25, "b": 75},
         "opacity": 1.0,
         "animation": {"mode": "none"},
     })
-    # +Y — capsule extends along world Y.
+    # +Y — arrow points along world +Y.
     items.append({
-        "type": "capsule",
+        "type": "mesh",
         "label": "ov_+Y",
-        "pose": base_pose(0, 1, 0, 90, 0),
-        "radius_mm": 35,
-        "length_mm": 250,
+        "pose": base_pose(0, 1, 0, 0, 0),
+        "mesh_path": mesh_path,
         "color": {"r": 0, "g": 130, "b": 200},
         "opacity": 1.0,
         "animation": {"mode": "none"},
     })
-    # 45° in XY: OX=OY=1/sqrt(2). Same OZ=0 plane but tilted.
+    # 45° in XY plane: arrow points equally along X and Y.
     s = 1.0 / math.sqrt(2.0)
     items.append({
-        "type": "capsule",
+        "type": "mesh",
         "label": "ov_+XY",
-        "pose": base_pose(s, s, 0, 90, sp),
-        "radius_mm": 35,
-        "length_mm": 250,
+        "pose": base_pose(s, s, 0, 0, sp),
+        "mesh_path": mesh_path,
         "color": {"r": 245, "g": 130, "b": 49},
         "opacity": 1.0,
         "animation": {"mode": "none"},
     })
-    # +Z with theta=45 — same axis, in-plane rotation. Highlights that
-    # theta is the spin around the orientation vector, not a tilt.
+    # +Z with theta=45 — same axis as ov_+Z, but rotated 45° around
+    # that axis. Highlights that theta is the spin about the
+    # orientation vector, not a tilt of it. With the arrow mesh this
+    # is visible because the asymmetric cross-section of the cone tip
+    # rotates with theta even though the pointing direction doesn't.
     items.append({
-        "type": "capsule",
+        "type": "mesh",
         "label": "ov_+Z_theta45",
         "pose": base_pose(0, 0, 1, 45, 2 * sp),
-        "radius_mm": 35,
-        "length_mm": 250,
+        "mesh_path": mesh_path,
         "color": {"r": 145, "g": 30, "b": 180},
         "opacity": 1.0,
         "animation": {"mode": "none"},
@@ -335,7 +345,7 @@ def reference_frame_demo() -> List[Mapping[str, Any]]:
             "parent_frame": "spinning_frame",
             "pose": {"x": 350, "y": 0, "z": 0,
                      "ox": 0, "oy": 0, "oz": 1, "theta": 0},
-            "mesh_path": "assets/bunny.ply",
+            "mesh_path": "assets/icosahedron.ply",
             "color": {"r": 240, "g": 200, "b": 50},
             "opacity": 1.0,
             "animation": {"mode": "spin", "period_s": 2},

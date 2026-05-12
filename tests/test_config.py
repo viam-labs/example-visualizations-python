@@ -44,7 +44,7 @@ def test_items_list_with_each_primitive_type_validates():
             {"type": "sphere", "label": "s", "radius_mm": 1.0},
             {"type": "capsule", "label": "c", "radius_mm": 1.0, "length_mm": 2.0},
             {"type": "point", "label": "p"},
-            {"type": "mesh", "label": "m", "mesh_path": "assets/bunny.ply"},
+            {"type": "mesh", "label": "m", "mesh_path": "assets/icosahedron.ply"},
             {"type": "pointcloud", "label": "pc", "pointcloud_path": "assets/helix.pcd"},
         ],
     }))

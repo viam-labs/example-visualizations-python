@@ -17,11 +17,11 @@ from pathlib import Path
 ASSETS = Path(__file__).resolve().parent.parent / "assets"
 
 
-def test_bunny_ply_vertices_are_in_meters_not_millimeters():
+def test_icosahedron_ply_vertices_are_in_meters_not_millimeters():
     """A 100 mm icosahedron: vertex magnitude should be ~0.1 m. If
     this regresses to ~100 (= mm in the file), the renderer will draw
-    the bunny 1000× too big."""
-    text = ASSETS.joinpath("bunny.ply").read_text()
+    it 1000× too big."""
+    text = ASSETS.joinpath("icosahedron.ply").read_text()
     # Walk past the header.
     body = text.split("end_header", 1)[1].strip().splitlines()
     # Vertex lines come first; first 12 are the icosahedron verts.
@@ -40,6 +40,66 @@ def test_bunny_ply_vertices_are_in_meters_not_millimeters():
     )
     # And the values should be substantive — not all-zero.
     assert max_mag > 0.01
+
+
+def test_arrow_ply_vertices_are_in_meters_not_millimeters():
+    """Arrow is ~250 mm long along +Z (shaft 180 + tip 70), widest
+    radius ~25 mm. Vertices should be ≲0.25 m in the file."""
+    text = ASSETS.joinpath("arrow.ply").read_text()
+    body = text.split("end_header", 1)[1].strip().splitlines()
+    # Pull vertex lines (3-float lines) until we hit the face section
+    # (lines starting with a digit and a space — face counts).
+    verts = []
+    for line in body:
+        parts = line.split()
+        if len(parts) == 3:
+            try:
+                verts.append(tuple(float(p) for p in parts))
+            except ValueError:
+                break
+        else:
+            break
+    assert len(verts) > 10, f"arrow.ply should have many vertices, got {len(verts)}"
+    max_mag = max(abs(c) for v in verts for c in v)
+    assert max_mag < 1.0, (
+        f"arrow.ply vertex magnitudes look mm-scaled (max={max_mag}); "
+        "file should be in METERS — RDK reader multiplies by 1000."
+    )
+    assert max_mag > 0.05, (
+        f"arrow.ply vertices unexpectedly tiny (max={max_mag}); "
+        "expected ≳0.05 m"
+    )
+
+
+def test_arrow_ply_points_along_local_plus_z():
+    """The arrow asset must extend along +Z in its local frame. The
+    orientation_vectors preset relies on this — the pose's orientation
+    vector aligns local +Z to world (OX, OY, OZ). If the arrow points
+    elsewhere by default, every orientation demo points the wrong way."""
+    text = ASSETS.joinpath("arrow.ply").read_text()
+    body = text.split("end_header", 1)[1].strip().splitlines()
+    verts = []
+    for line in body:
+        parts = line.split()
+        if len(parts) == 3:
+            try:
+                verts.append(tuple(float(p) for p in parts))
+            except ValueError:
+                break
+        else:
+            break
+    # All Z coords must be non-negative (arrow starts at z=0, goes up).
+    min_z = min(v[2] for v in verts)
+    max_z = max(v[2] for v in verts)
+    assert min_z >= 0.0, f"arrow has vertices below z=0 (min={min_z})"
+    # Apex Z should be the largest by a noticeable margin.
+    assert max_z >= 0.2, f"arrow apex Z too short ({max_z}); expected ≳0.2 m"
+    # Vertex with max Z must be on the central axis (small XY radius).
+    apex_candidates = [v for v in verts if abs(v[2] - max_z) < 1e-6]
+    for ax, ay, _az in apex_candidates:
+        assert ax * ax + ay * ay < 1e-6, (
+            f"arrow apex not on z-axis: ({ax}, {ay}); expected (0, 0)"
+        )
 
 
 def test_cube_stl_vertices_are_in_meters_not_millimeters():

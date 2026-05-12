@@ -1,15 +1,19 @@
 """Generate the assets shipped with example-visualizations:
 
-  - ``assets/bunny.ply``: a small low-poly PLY mesh (icosahedron). The
-    canonical Stanford bunny would be ideal but ships as a 16 MB PLY
-    which is heavier than we need for a teaching playground. An
-    icosahedron exercises the PLY renderer with a clearly recognizable
-    shape and is fully reproducible without external downloads.
+  - ``assets/icosahedron.ply``: a 12-vertex icosahedron in ASCII PLY.
+    Stands in for "any PLY mesh" — a real Stanford bunny would be
+    16 MB which is too heavy for a playground tarball. Named for what
+    it actually is so users aren't confused when it doesn't look like
+    a rabbit.
   - ``assets/cube.stl``: a 200 mm cube in binary STL format. 12
     triangles. Fully reproducible.
-  - ``assets/helix.pcd``: ~500 colored points on a vertical helix, in
-    binary PCD format (PCDBinary — matches the format the RDK fake
-    uses in pointcloud/point_cloud_world.go).
+  - ``assets/arrow.ply``: a 250 mm arrow along the local +Z axis —
+    a cylindrical shaft topped by a wider conical tip. Used by the
+    ``orientation_vectors`` preset because capsules, the previous
+    indicator, are rotationally symmetric and can't show direction.
+  - ``assets/helix.pcd``: ~14400 colored points on a vertical helix
+    rendered as a tube (2400 path steps × 6 ring points per step), in
+    binary PCD format (PCDBinary — matches RDK's pointcloud.ToPCD).
 
 Run from the repo root: ``.venv/bin/python scripts/generate_assets.py``.
 The output files are committed to the repo so users don't need to run
@@ -64,19 +68,13 @@ def _icosahedron(scale_mm: float = 100.0):
     return verts, faces
 
 
-def write_bunny_ply() -> Path:
-    """Write a small ASCII PLY for the 'bunny' slot. ASCII PLY is the
-    simplest variant and the RDK PLY reader accepts both ascii and
-    binary little-endian. Total size: ~700 bytes.
-
-    Vertices are written in **meters** because the RDK PLY reader
-    multiplies file coordinates by 1000 to convert to mm. A 100 mm
-    icosahedron has vertex magnitudes around 0.1 m in the file."""
-    verts, faces = _icosahedron(scale_mm=100.0)
+def _write_ply_ascii(filename: str, verts_mm, faces) -> Path:
+    """Write an ASCII PLY with the given vertices (in mm) and faces.
+    Converts coordinates to meters as required by the RDK reader."""
     lines = [
         "ply",
         "format ascii 1.0",
-        f"element vertex {len(verts)}",
+        f"element vertex {len(verts_mm)}",
         "property float x",
         "property float y",
         "property float z",
@@ -84,15 +82,106 @@ def write_bunny_ply() -> Path:
         "property list uchar int vertex_indices",
         "end_header",
     ]
-    for (x, y, z) in verts:
+    for (x, y, z) in verts_mm:
         lines.append(
             f"{x / MM_PER_M:.6f} {y / MM_PER_M:.6f} {z / MM_PER_M:.6f}"
         )
-    for (a, b, c) in faces:
-        lines.append(f"3 {a} {b} {c}")
-    path = OUT / "bunny.ply"
+    for face in faces:
+        lines.append(f"{len(face)} " + " ".join(str(i) for i in face))
+    path = OUT / filename
     path.write_text("\n".join(lines) + "\n")
     return path
+
+
+def write_icosahedron_ply() -> Path:
+    """The "PLY mesh" stand-in: a 12-vertex icosahedron at 100 mm scale.
+
+    Stand-in for any PLY mesh in the playground. We don't ship the
+    real Stanford bunny because it's 16 MB; we don't ship a procedural
+    bunny because authoring one is out of scope. Naming the asset
+    after what it actually is avoids "what is this supposed to be?"
+    confusion."""
+    verts, faces = _icosahedron(scale_mm=100.0)
+    return _write_ply_ascii("icosahedron.ply", verts, faces)
+
+
+def write_arrow_ply(
+    shaft_length_mm: float = 180.0,
+    shaft_radius_mm: float = 12.0,
+    tip_length_mm: float = 70.0,
+    tip_radius_mm: float = 25.0,
+    sides: int = 12,
+) -> Path:
+    """3D arrow pointing along local +Z: cylindrical shaft + wider
+    conical tip. ~250 mm total length, ~25 mm widest radius. Used by
+    the ``orientation_vectors`` preset — a capsule can't show
+    direction (rotationally symmetric along its length axis), but an
+    arrow's asymmetric profile makes "which way is this pointing"
+    unmistakable."""
+    verts = []
+    # v0: shaft bottom center (for the bottom cap).
+    verts.append((0.0, 0.0, 0.0))
+    # v[1..sides]: shaft bottom ring at z=0, radius shaft_radius.
+    for i in range(sides):
+        theta = 2 * math.pi * i / sides
+        verts.append((
+            shaft_radius_mm * math.cos(theta),
+            shaft_radius_mm * math.sin(theta),
+            0.0,
+        ))
+    # v[1+sides..2*sides]: shaft top ring at z=shaft_length, narrow.
+    for i in range(sides):
+        theta = 2 * math.pi * i / sides
+        verts.append((
+            shaft_radius_mm * math.cos(theta),
+            shaft_radius_mm * math.sin(theta),
+            shaft_length_mm,
+        ))
+    # v[1+2*sides..3*sides]: cone base ring at z=shaft_length, wide.
+    for i in range(sides):
+        theta = 2 * math.pi * i / sides
+        verts.append((
+            tip_radius_mm * math.cos(theta),
+            tip_radius_mm * math.sin(theta),
+            shaft_length_mm,
+        ))
+    # v[apex_idx]: cone apex at z=shaft_length+tip_length.
+    apex_idx = 1 + 3 * sides
+    verts.append((0.0, 0.0, shaft_length_mm + tip_length_mm))
+
+    bot_ring_start = 1
+    top_ring_start = 1 + sides
+    cone_ring_start = 1 + 2 * sides
+
+    faces = []
+    # Shaft bottom cap: fan around v0.
+    for i in range(sides):
+        v_curr = bot_ring_start + i
+        v_next = bot_ring_start + (i + 1) % sides
+        faces.append((0, v_next, v_curr))
+    # Shaft side: quads as two triangles each.
+    for i in range(sides):
+        b = bot_ring_start + i
+        bn = bot_ring_start + (i + 1) % sides
+        t = top_ring_start + i
+        tn = top_ring_start + (i + 1) % sides
+        faces.append((b, bn, t))
+        faces.append((bn, tn, t))
+    # Washer between shaft top (small ring) and cone base (wide ring).
+    for i in range(sides):
+        inner = top_ring_start + i
+        inner_next = top_ring_start + (i + 1) % sides
+        outer = cone_ring_start + i
+        outer_next = cone_ring_start + (i + 1) % sides
+        faces.append((inner, outer, inner_next))
+        faces.append((inner_next, outer, outer_next))
+    # Cone side: triangles from each base edge up to the apex.
+    for i in range(sides):
+        b = cone_ring_start + i
+        bn = cone_ring_start + (i + 1) % sides
+        faces.append((b, bn, apex_idx))
+
+    return _write_ply_ascii("arrow.ply", verts, faces)
 
 
 # ---------- binary STL cube ----------
@@ -263,6 +352,11 @@ def write_helix_pcd(steps: int = 2400, height_mm: float = 400.0,
 
 
 if __name__ == "__main__":
-    paths = [write_bunny_ply(), write_cube_stl(), write_helix_pcd()]
+    paths = [
+        write_icosahedron_ply(),
+        write_arrow_ply(),
+        write_cube_stl(),
+        write_helix_pcd(),
+    ]
     for p in paths:
         print(f"wrote {p} ({p.stat().st_size} bytes)")

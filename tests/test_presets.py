@@ -133,13 +133,22 @@ def test_mesh_gallery_has_two_meshes_plus_one_pointcloud():
 
 # ---------- orientation_vectors ----------
 
-def test_orientation_vectors_all_capsules():
-    """The orientation-vector teaching preset uses capsules because
-    their length axis makes the orientation visible (vs sphere which
-    is rotation-invariant)."""
+def test_orientation_vectors_uses_arrow_mesh_not_capsules():
+    """Orientation viz needs ASYMMETRIC geometry — a capsule is
+    rotationally symmetric along its length axis, so the user can't
+    tell which end points which way. The arrow mesh (shaft + cone tip)
+    fixes that."""
     items = orientation_vectors()
     for it in items:
-        assert it["type"] == "capsule"
+        assert it["type"] == "mesh", (
+            f"{it['label']!r} is a {it['type']!r}; orientation viz "
+            "requires asymmetric geometry (the arrow mesh) so the "
+            "pointing direction is unambiguous"
+        )
+        assert it["mesh_path"].endswith("arrow.ply"), (
+            f"{it['label']!r} mesh_path is {it['mesh_path']!r}; "
+            "expected the shipped arrow.ply asset"
+        )
 
 
 def test_orientation_vectors_covers_x_y_z_and_theta_demo():

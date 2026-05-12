@@ -9,11 +9,12 @@ them at any time with:
 make assets
 ```
 
-| File         | Format             | Size   | Description |
-| ------------ | ------------------ | ------ | ----------- |
-| `bunny.ply`  | ASCII PLY          | ~700 B | 100 mm icosahedron. The "bunny" slot in the playground — named for the canonical Stanford bunny but kept tiny so the module tarball stays small. |
-| `cube.stl`   | Binary STL         | ~700 B | 200 mm cube, 12 triangles, 80-byte header + uint32 tri count + 50 B/triangle. |
-| `helix.pcd`  | Binary PCD (`PCDBinary`) | ~8 KB | 500 colored points on a vertical helix, hue-swept along the curve. Matches the format the RDK fake uses (see `pointcloud/point_cloud_world.go`). |
+| File               | Format             | Size    | Description |
+| ------------------ | ------------------ | ------- | ----------- |
+| `icosahedron.ply`  | ASCII PLY          | ~700 B  | 100 mm icosahedron (12 vertices, 20 faces). The "any PLY mesh" stand-in in the playground. Named after what it is. |
+| `arrow.ply`        | ASCII PLY          | ~2 KB   | 250 mm arrow along local +Z. Cylindrical shaft + wider conical tip; 12-sided polygons. Used by the `orientation_vectors` preset so pointing direction is unambiguous. |
+| `cube.stl`         | Binary STL         | ~700 B  | 200 mm cube, 12 triangles, 80-byte header + uint32 tri count + 50 B/triangle. |
+| `helix.pcd`        | Binary PCD (`PCDBinary`) | ~225 KB | Tube of points (2400 path steps × 6 ring points per step = 14,400 points), hue-swept along the curve. Header matches RDK's `pointcloud.ToPCD` byte-for-byte. |
 
 ## Provenance and licensing
 
@@ -21,15 +22,27 @@ All three files are generated mathematically by `scripts/generate_assets.py`
 in this repo. No third-party assets are bundled. Files are Apache-2.0
 licensed alongside the rest of the module.
 
-## Why not the real Stanford bunny?
+## Why an icosahedron instead of a real bunny?
 
 The Stanford bunny PLY is ~16 MB — large enough to slow down `viam
 module upload` cycles, the module tarball, and the registry download
-on first install. The teaching point of the "bunny" slot is "this is
-how PLY meshes flow through the world-state-store API," not "look at
-this beautiful rabbit." A 700-byte icosahedron makes that point with
-none of the weight. If you want the real bunny, see
-http://graphics.stanford.edu/data/3Dscanrep/.
+on first install. The teaching point of the PLY slot is "this is how
+PLY meshes flow through the world-state-store API," not "look at this
+beautiful rabbit." A 700-byte icosahedron makes that point with none
+of the weight. The file is named `icosahedron.ply` so users aren't
+confused when it doesn't look like a rabbit. If you want the real
+bunny, see http://graphics.stanford.edu/data/3Dscanrep/ — drop a
+`.ply` in here and reference it via `mesh_path` in your config.
+
+## Why an arrow for orientation visualization?
+
+A capsule lying along an axis can show alignment but not direction
+— both endpoints look identical, so the user can't tell which way it
+points. An arrow's cone tip on a narrow shaft makes the pointing
+direction unmistakable. The arrow asset extends along local +Z; the
+pose's orientation vector `(OX, OY, OZ)` rotates that +Z to the world
+direction, and the theta field rotates the arrow about its own axis
+(which is visible because the cone cross-section is asymmetric).
 
 ## Format notes
 
