@@ -131,10 +131,10 @@ def _build_geometry(item: Mapping[str, Any], override_geom: Mapping[str, Any]) -
         return geometries.build_point(label)
     if t == "mesh":
         path = item["mesh_path"]
-        content_type = geometries.infer_mesh_content_type(path)
-        return geometries.build_mesh(
-            geometries.read_asset(path, MODULE_DIR), content_type, label
-        )
+        raw = geometries.read_asset(path, MODULE_DIR)
+        ply_bytes = geometries.load_mesh_bytes_as_ply(raw, path)
+        # build_mesh requires content_type="ply"; STL got converted above.
+        return geometries.build_mesh(ply_bytes, "ply", label)
     if t == "pointcloud":
         return geometries.build_pointcloud(
             geometries.read_asset(item["pointcloud_path"], MODULE_DIR), label

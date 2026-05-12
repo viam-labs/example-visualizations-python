@@ -9,6 +9,7 @@ do no validation — that lives in service.validate_config. They do not
 read files for the mesh/pointcloud builders either; the caller passes
 the bytes in, so tests can drive the builders without touching disk.
 """
+import struct
 from pathlib import Path
 from typing import Any, Mapping, Optional, Tuple
 
@@ -28,6 +29,20 @@ from viam.utils import dict_to_struct
 
 SUPPORTED_TYPES = ("box", "sphere", "capsule", "point", "mesh", "pointcloud")
 SUPPORTED_MESH_CONTENT_TYPES = ("ply", "stl")
+
+# The Viam 3D viewer only renders PLY meshes. STL is accepted as an
+# INPUT format (the RDK's STL parser is real), but on the wire to the
+# viewer the content_type must be "ply". See the comment in
+# rdk/spatialmath/mesh.go: "Meshes are always converted to PLY format
+# for compatibility with the visualizer." build_mesh always sends
+# content_type="ply"; load_mesh_bytes_as_ply converts STL inputs first.
+RENDERER_MESH_CONTENT_TYPE = "ply"
+
+# Radius used for the "point" primitive. Proto-wise a point is a
+# sphere with radius=0, but the viewer skips zero-radius geometries.
+# A small but visible radius gives the user something to see and is
+# still small enough to read as a "marker" rather than a sphere.
+POINT_MARKER_RADIUS_MM = 8.0
 
 
 def build_metadata(
@@ -103,22 +118,97 @@ def build_capsule(radius_mm: float, length_mm: float, label: str) -> Geometry:
 
 
 def build_point(label: str) -> Geometry:
-    """A point is a sphere with radius=0 — the 3D viewer renders it as
-    a single dot. See spatialmath.NewPoint in the RDK."""
+    """A "point" — proto-wise a sphere with a small but visible radius.
+
+    The Geometry oneof has no Point variant; the RDK calls a
+    zero-radius sphere a Point internally (see spatialmath.NewPoint),
+    but the viewer doesn't render zero-radius geometries. We use a
+    small fixed radius so users can see the primitive."""
     return Geometry(
         label=label,
-        sphere=Sphere(radius_mm=0.0),
+        sphere=Sphere(radius_mm=POINT_MARKER_RADIUS_MM),
     )
 
 
 def build_mesh(mesh_bytes: bytes, content_type: str, label: str) -> Geometry:
-    """Embed mesh bytes into a Geometry. content_type must be lowercase
-    'ply' or 'stl' (matches rdk/spatialmath/mesh.go expectations).
-    Caller is responsible for reading the file and supplying bytes."""
+    """Embed mesh bytes into a Geometry.
+
+    content_type MUST be ``"ply"`` for the viewer to render it. STL
+    input must be converted to PLY first via ``stl_to_ply``. The RDK
+    parses both formats, but on the wire to the viewer it converts
+    everything to PLY; the comment in ``rdk/spatialmath/mesh.go``
+    states the visualizer expects PLY only."""
+    if content_type != RENDERER_MESH_CONTENT_TYPE:
+        raise ValueError(
+            f"build_mesh requires content_type {RENDERER_MESH_CONTENT_TYPE!r}; "
+            f"got {content_type!r}. STL must be converted via stl_to_ply first."
+        )
     return Geometry(
         label=label,
         mesh=Mesh(content_type=content_type, mesh=mesh_bytes),
     )
+
+
+def stl_to_ply(stl_bytes: bytes) -> bytes:
+    """Convert binary STL bytes to ASCII PLY bytes.
+
+    STL is the only other format the RDK can parse, so users who want
+    to ship STL assets are a real audience — but the viewer only
+    renders PLY on the wire (see ``rdk/spatialmath/mesh.go``: "The
+    visualizer expects all meshes to be in PLY format"). We convert
+    at load time, no external dependency needed.
+
+    Output is an ASCII PLY with per-triangle vertices (no dedup) —
+    fine for small assets, would balloon for production-size meshes.
+    Use ``trimesh`` offline if you need a smaller PLY from a large STL.
+    """
+    if len(stl_bytes) < 84:
+        raise ValueError("STL data too small (need >=84 bytes for header)")
+    n_tris = struct.unpack("<I", stl_bytes[80:84])[0]
+    expected_size = 84 + n_tris * 50
+    if len(stl_bytes) < expected_size:
+        raise ValueError(
+            f"STL truncated: expected {expected_size} bytes for "
+            f"{n_tris} triangles, got {len(stl_bytes)}"
+        )
+    verts = []
+    faces = []
+    offset = 84
+    for _ in range(n_tris):
+        offset += 12  # skip per-tri normal
+        face_idx = []
+        for _v in range(3):
+            x, y, z = struct.unpack("<fff", stl_bytes[offset:offset + 12])
+            offset += 12
+            face_idx.append(len(verts))
+            verts.append((x, y, z))
+        offset += 2  # skip attribute byte count
+        faces.append(tuple(face_idx))
+    lines = [
+        "ply",
+        "format ascii 1.0",
+        f"element vertex {len(verts)}",
+        "property float x",
+        "property float y",
+        "property float z",
+        f"element face {len(faces)}",
+        "property list uchar int vertex_indices",
+        "end_header",
+    ]
+    for (x, y, z) in verts:
+        lines.append(f"{x:.6f} {y:.6f} {z:.6f}")
+    for (a, b, c) in faces:
+        lines.append(f"3 {a} {b} {c}")
+    return ("\n".join(lines) + "\n").encode("ascii")
+
+
+def load_mesh_bytes_as_ply(asset_bytes: bytes, source_path: str) -> bytes:
+    """Read mesh asset bytes, returning PLY bytes regardless of input
+    format. Dispatches on the source path's extension."""
+    fmt = infer_mesh_content_type(source_path)
+    if fmt == "stl":
+        return stl_to_ply(asset_bytes)
+    return asset_bytes  # already PLY
 
 
 def build_pointcloud(pcd_bytes: bytes, label: str) -> Geometry:

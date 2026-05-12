@@ -137,14 +137,16 @@ def write_cube_stl(side_mm: float = 200.0) -> Path:
 
 # ---------- binary PCD helix ----------
 
-def write_helix_pcd(points: int = 500, height_mm: float = 400.0,
+def write_helix_pcd(points: int = 2000, height_mm: float = 400.0,
                     radius_mm: float = 75.0, turns: float = 4.0) -> Path:
-    """Vertical helix of colored points in PCDBinary format. ~500
-    points keeps the file small (~12 KB) and the renderer happy.
+    """Vertical helix of colored points in PCDBinary format.
 
-    Coordinates are written in **meters** because the RDK PCD writer
-    convention (matched by the reader) is ``mm / 1000``. The user-
-    facing params stay in mm for readability."""
+    Coordinates are written in **meters** (RDK PCD writer convention,
+    ``mm / 1000``). The RGB ``TYPE`` letter is **I** (signed int) to
+    match exactly what RDK's ``pointcloud.ToPCD`` writes — see
+    rdk/pointcloud/pointcloud_file.go line 104:
+    ``"TYPE F F F I\\n"``. The reader is permissive about U-vs-I but
+    the viewer's parser may not be."""
     # Convert user-facing mm dims to meters once.
     radius_m = radius_mm / MM_PER_M
     height_m = height_mm / MM_PER_M
@@ -153,7 +155,7 @@ def write_helix_pcd(points: int = 500, height_mm: float = 400.0,
         "VERSION 0.7",
         "FIELDS x y z rgb",
         "SIZE 4 4 4 4",
-        "TYPE F F F U",
+        "TYPE F F F I",
         "COUNT 1 1 1 1",
         f"WIDTH {points}",
         "HEIGHT 1",

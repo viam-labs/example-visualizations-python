@@ -16,7 +16,9 @@ from src.geometries import (
     build_pose,
     build_sphere,
     infer_mesh_content_type,
+    load_mesh_bytes_as_ply,
     read_asset,
+    stl_to_ply,
 )
 
 
@@ -100,26 +102,115 @@ def test_build_capsule_carries_radius_length_and_label():
 
 # ---------- build_point ----------
 
-def test_build_point_is_sphere_with_zero_radius():
-    """Points are zero-radius spheres in the RDK convention — confirms
-    we don't accidentally emit something the renderer can't handle."""
+def test_build_point_emits_visible_marker_not_zero_radius():
+    """RDK convention says a point is a radius-0 sphere, but the viewer
+    skips zero-radius geometries — leaving the user with nothing to
+    see. We use a small but visible marker radius instead."""
+    from src.geometries import POINT_MARKER_RADIUS_MM
     g = build_point(label="dot")
     assert g.label == "dot"
-    assert g.sphere.radius_mm == 0.0
+    assert g.sphere.radius_mm == POINT_MARKER_RADIUS_MM
+    assert g.sphere.radius_mm > 0
+
+
+def test_point_marker_is_small_enough_to_read_as_a_point():
+    """The marker should be visible but small enough that it reads as
+    a point rather than a sphere. Pin a sensible upper bound."""
+    from src.geometries import POINT_MARKER_RADIUS_MM
+    assert 1.0 <= POINT_MARKER_RADIUS_MM <= 20.0
 
 
 # ---------- build_mesh ----------
 
-def test_build_mesh_embeds_bytes_and_lowercase_content_type():
+def test_build_mesh_embeds_bytes_and_requires_ply():
+    """The viewer only renders PLY. STL must be converted via
+    stl_to_ply before reaching build_mesh."""
     g = build_mesh(b"\x80PLYBYTES", "ply", label="bunny")
     assert g.label == "bunny"
     assert g.mesh.mesh == b"\x80PLYBYTES"
     assert g.mesh.content_type == "ply"
 
 
-def test_build_mesh_accepts_stl_content_type():
-    g = build_mesh(b"\x00stlbytes", "stl", label="cube")
-    assert g.mesh.content_type == "stl"
+def test_build_mesh_rejects_non_ply_content_type():
+    """Surface the renderer-only-takes-PLY constraint at the build
+    site rather than letting it silently fail in the viewer."""
+    with pytest.raises(ValueError, match="ply"):
+        build_mesh(b"\x00stlbytes", "stl", label="cube")
+
+
+# ---------- stl_to_ply ----------
+
+def _build_minimal_stl_bytes(triangles):
+    """Build a binary STL containing the given list of triangles, each
+    a 3-tuple of (x,y,z) tuples. Header 80 bytes, count uint32, then
+    per-tri: 12 zero bytes (normal) + 36 bytes (3 vertices) + 2 bytes."""
+    import struct as _s
+    buf = bytearray(80)
+    buf += _s.pack("<I", len(triangles))
+    for tri in triangles:
+        buf += _s.pack("<fff", 0.0, 0.0, 0.0)  # normal
+        for (x, y, z) in tri:
+            buf += _s.pack("<fff", x, y, z)
+        buf += _s.pack("<H", 0)  # attribute
+    return bytes(buf)
+
+
+def test_stl_to_ply_one_triangle_roundtrip():
+    stl = _build_minimal_stl_bytes([
+        ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
+    ])
+    ply = stl_to_ply(stl).decode("ascii")
+    assert ply.startswith("ply\n")
+    assert "format ascii 1.0" in ply
+    assert "element vertex 3" in ply
+    assert "element face 1" in ply
+    # Vertex coords preserved.
+    assert "0.000000 0.000000 0.000000" in ply
+    assert "1.000000 0.000000 0.000000" in ply
+    assert "0.000000 1.000000 0.000000" in ply
+    # Face references the three vertices.
+    assert "3 0 1 2" in ply
+
+
+def test_stl_to_ply_twelve_triangles_emits_36_vertices():
+    """No-dedup conversion: each triangle's three vertices become three
+    fresh vertex entries. 12 triangles → 36 vertices, 12 faces."""
+    tris = [
+        ((float(i), 0.0, 0.0), (0.0, float(i), 0.0), (0.0, 0.0, float(i)))
+        for i in range(1, 13)
+    ]
+    ply = stl_to_ply(_build_minimal_stl_bytes(tris)).decode("ascii")
+    assert "element vertex 36" in ply
+    assert "element face 12" in ply
+
+
+def test_stl_to_ply_rejects_short_input():
+    with pytest.raises(ValueError, match="too small"):
+        stl_to_ply(b"\x00" * 50)
+
+
+def test_stl_to_ply_rejects_truncated_input():
+    """Header claims 5 triangles but only one is present."""
+    import struct as _s
+    buf = bytearray(80) + _s.pack("<I", 5) + b"\x00" * 50  # only 1 tri
+    with pytest.raises(ValueError, match="truncated"):
+        stl_to_ply(bytes(buf))
+
+
+# ---------- load_mesh_bytes_as_ply ----------
+
+def test_load_mesh_bytes_as_ply_passes_ply_through():
+    ply_in = b"ply\nformat ascii 1.0\nend_header\n"
+    out = load_mesh_bytes_as_ply(ply_in, "asset.ply")
+    assert out == ply_in
+
+
+def test_load_mesh_bytes_as_ply_converts_stl():
+    stl = _build_minimal_stl_bytes([
+        ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
+    ])
+    out = load_mesh_bytes_as_ply(stl, "asset.stl")
+    assert out.startswith(b"ply\n")
 
 
 # ---------- build_pointcloud ----------

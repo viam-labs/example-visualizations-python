@@ -91,3 +91,17 @@ def test_helix_pcd_points_are_in_meters_not_millimeters():
     # The helix has 200mm half-height = 0.2 m, plus 75 mm radius.
     # Reasonable lower bound on the largest coord.
     assert max_mag > 0.05
+
+
+def test_helix_pcd_header_matches_rdk_fake_format():
+    """The RDK PCD writer emits ``TYPE F F F I`` for rgb fields (see
+    pointcloud/pointcloud_file.go:104). The reader is lax about the I-vs-U
+    distinction, but the viewer's parser may not be — and this is a free
+    way to keep us aligned with the reference."""
+    text = ASSETS.joinpath("helix.pcd").read_bytes().split(b"DATA")[0].decode("ascii")
+    assert "FIELDS x y z rgb" in text
+    assert "SIZE 4 4 4 4" in text
+    assert "TYPE F F F I" in text, (
+        "PCD TYPE line must match RDK's writer exactly — see "
+        "rdk/pointcloud/pointcloud_file.go:104"
+    )
