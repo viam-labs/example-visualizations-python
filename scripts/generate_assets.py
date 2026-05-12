@@ -40,7 +40,14 @@ makes the renderer draw it 1000× too big.
 MM_PER_M = 1000.0
 import math
 import struct
+import sys
 from pathlib import Path
+
+# Allow `from src.geometries import ...` when running this script
+# from anywhere (including via `make assets`).
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 OUT = Path(__file__).resolve().parent.parent / "assets"
 OUT.mkdir(exist_ok=True)
@@ -113,11 +120,26 @@ def write_arrow_ply(
     sides: int = 12,
 ) -> Path:
     """3D arrow pointing along local +Z: cylindrical shaft + wider
-    conical tip. ~250 mm total length, ~25 mm widest radius. Used by
-    the ``orientation_vectors`` preset — a capsule can't show
-    direction (rotationally symmetric along its length axis), but an
-    arrow's asymmetric profile makes "which way is this pointing"
-    unmistakable."""
+    conical tip. ~250 mm total length, ~25 mm widest radius.
+    Geometry comes from ``src.geometries.arrow_ply_bytes`` so the
+    asset file matches what the ``arrow`` primitive type generates
+    at runtime."""
+    # Delegate to the runtime arrow generator (one source of truth).
+    from src.geometries import arrow_ply_bytes
+    total_length = shaft_length_mm + tip_length_mm
+    ply_bytes = arrow_ply_bytes(
+        length_mm=total_length,
+        shaft_radius_mm=shaft_radius_mm,
+        tip_radius_mm=tip_radius_mm,
+        tip_length_mm=tip_length_mm,
+        sides=sides,
+    )
+    path = OUT / "arrow.ply"
+    path.write_bytes(ply_bytes)
+    return path
+
+    # Original imperative implementation kept below as reference but
+    # unreachable — `return path` above is the live code path.
     verts = []
     # v0: shaft bottom center (for the bottom cap).
     verts.append((0.0, 0.0, 0.0))
@@ -351,10 +373,138 @@ def write_helix_pcd(steps: int = 2400, height_mm: float = 400.0,
     return path
 
 
+def write_torus_ply(
+    major_radius_mm: float = 90.0,
+    minor_radius_mm: float = 30.0,
+    major_segments: int = 36,
+    minor_segments: int = 18,
+) -> Path:
+    """Procedural torus (donut). 36×18 = 648 vertices, 1296 triangles —
+    "more complex" than an icosahedron, recognizable at a glance,
+    fully reproducible. Centered at origin, ring in the XY plane,
+    axis of symmetry along +Z."""
+    from src.geometries import _ply_ascii_bytes
+    verts = []
+    for i in range(major_segments):
+        u = 2 * math.pi * i / major_segments
+        cos_u = math.cos(u)
+        sin_u = math.sin(u)
+        for j in range(minor_segments):
+            v = 2 * math.pi * j / minor_segments
+            cos_v = math.cos(v)
+            sin_v = math.sin(v)
+            x = (major_radius_mm + minor_radius_mm * cos_v) * cos_u
+            y = (major_radius_mm + minor_radius_mm * cos_v) * sin_u
+            z = minor_radius_mm * sin_v
+            verts.append((x, y, z))
+    faces = []
+    for i in range(major_segments):
+        for j in range(minor_segments):
+            i_next = (i + 1) % major_segments
+            j_next = (j + 1) % minor_segments
+            v00 = i * minor_segments + j
+            v01 = i * minor_segments + j_next
+            v10 = i_next * minor_segments + j
+            v11 = i_next * minor_segments + j_next
+            faces.append((v00, v10, v01))
+            faces.append((v01, v10, v11))
+    path = OUT / "torus.ply"
+    path.write_bytes(_ply_ascii_bytes(verts, faces))
+    return path
+
+
+def write_teapot_ply(samples_per_patch: int = 6) -> Path:
+    """Newell/Utah teapot from its 32 Bezier patches.
+
+    The control-point grid is the well-known public-domain dataset
+    from the 1975 SIGGRAPH paper. Each patch is a 4×4 control point
+    grid evaluated on a (samples × samples) parametric grid, giving
+    ``samples × samples`` vertices and ``2 × (samples-1)^2`` triangles
+    per patch. With the default 6 samples, the teapot has ~1152
+    vertices and ~1800 triangles.
+
+    Scaled to ~180 mm tall (similar to other shipped meshes). The
+    canonical teapot's Y-up convention is rotated so its axis of
+    symmetry lies along +Z to match the rest of this module's
+    primitives."""
+    from src.geometries import _ply_ascii_bytes
+    from scripts.teapot_data import TEAPOT_PATCHES, TEAPOT_CONTROL_POINTS
+    # Per-patch evaluation grid.
+    s_count = samples_per_patch
+    inv = 1.0 / (s_count - 1)
+    SCALE = 50.0  # Bezier coords are unit-ish; scales teapot to ~250 mm
+    all_verts = []
+    all_faces = []
+    for patch in TEAPOT_PATCHES:
+        # patch is a 4×4 grid of vertex INDICES into TEAPOT_CONTROL_POINTS.
+        cp = [
+            [TEAPOT_CONTROL_POINTS[idx] for idx in row]
+            for row in patch
+        ]
+        # Evaluate the Bezier surface on the (s, t) grid.
+        patch_verts = []
+        for si in range(s_count):
+            s_param = si * inv
+            for ti in range(s_count):
+                t_param = ti * inv
+                x, y, z = _eval_bezier_patch(cp, s_param, t_param)
+                # Rotate Y-up → Z-up: (x, y, z) → (x, -z, y).
+                # Scale to mm.
+                patch_verts.append((SCALE * x, SCALE * -z, SCALE * y))
+        # Triangulate. Indices are local to this patch; offset by len(all_verts).
+        offset = len(all_verts)
+        for si in range(s_count - 1):
+            for ti in range(s_count - 1):
+                v00 = offset + si * s_count + ti
+                v01 = offset + si * s_count + (ti + 1)
+                v10 = offset + (si + 1) * s_count + ti
+                v11 = offset + (si + 1) * s_count + (ti + 1)
+                all_faces.append((v00, v10, v01))
+                all_faces.append((v01, v10, v11))
+        all_verts.extend(patch_verts)
+    path = OUT / "teapot.ply"
+    path.write_bytes(_ply_ascii_bytes(all_verts, all_faces))
+    return path
+
+
+def _eval_bezier_patch(cp, s, t):
+    """Evaluate a 4×4 Bezier patch at (s, t) ∈ [0,1]².
+
+    Each cp[i][j] is an (x, y, z) tuple. Uses cubic Bernstein basis."""
+    bs = _bernstein_cubic(s)
+    bt = _bernstein_cubic(t)
+    x = y = z = 0.0
+    for i in range(4):
+        for j in range(4):
+            w = bs[i] * bt[j]
+            cx, cy, cz = cp[i][j]
+            x += w * cx
+            y += w * cy
+            z += w * cz
+    return (x, y, z)
+
+
+def _bernstein_cubic(u):
+    """Cubic Bernstein basis [B0, B1, B2, B3] at parameter u ∈ [0, 1]."""
+    u2 = u * u
+    u3 = u2 * u
+    one_minus = 1 - u
+    one_minus2 = one_minus * one_minus
+    one_minus3 = one_minus2 * one_minus
+    return [
+        one_minus3,
+        3 * one_minus2 * u,
+        3 * one_minus * u2,
+        u3,
+    ]
+
+
 if __name__ == "__main__":
     paths = [
         write_icosahedron_ply(),
         write_arrow_ply(),
+        write_torus_ply(),
+        write_teapot_ply(),
         write_cube_stl(),
         write_helix_pcd(),
     ]

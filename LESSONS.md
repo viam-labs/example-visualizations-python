@@ -101,6 +101,14 @@ The RDK fake at `services/worldstatestore/fake/moving_geos_world.go` uses the ob
 
 **Status.** TBD. User will report what they see on `desktop-dell-2` after switching to the `reference_frame_demo` preset.
 
+### coordinate-frame-via-show-axes-helper
+
+**Finding.** The `show_axes_helper: true` metadata flag (from `protos/draw/v1/metadata.proto`) renders an RGB XYZ triad at the entity's origin **without** needing to emit three colored arrows manually. The helper rotates with the entity's orientation, so a small sphere host at any `(OX, OY, OZ, theta)` becomes a fully-readable coordinate frame.
+
+**Why it matters.** Building XYZ triads from three arrow meshes requires either the renderer to compose chained parent frames (still unverified — see `frame-chaining`) or composing the rotations yourself in code. `show_axes_helper` sidesteps both: the viewer does the composition, you just toggle a flag. The orientation_vectors preset uses this instead of emitting per-axis arrows.
+
+**How to apply.** When you want to *show* a coordinate frame, host the helper on any small marker (sphere with 0.35 opacity reads well) and set `show_axes_helper: true`. When you want to *use* a coordinate frame as a parent for other items, set it explicitly via `parent_frame` chaining — those are separate concerns.
+
 ### asymmetric-geometry-for-orientation
 
 **Symptom.** The orientation_vectors preset used capsules to show

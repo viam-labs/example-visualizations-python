@@ -10,9 +10,10 @@ read files for the mesh/pointcloud builders either; the caller passes
 the bytes in, so tests can drive the builders without touching disk.
 """
 import base64
+import math
 import struct
 from pathlib import Path
-from typing import Any, Mapping, Optional, Tuple
+from typing import Any, List, Mapping, Optional, Tuple
 
 from google.protobuf.struct_pb2 import Struct
 from viam.proto.common import (
@@ -28,7 +29,7 @@ from viam.proto.common import (
 from viam.utils import dict_to_struct
 
 
-SUPPORTED_TYPES = ("box", "sphere", "capsule", "point", "mesh", "pointcloud")
+SUPPORTED_TYPES = ("box", "sphere", "capsule", "point", "arrow", "mesh", "pointcloud")
 SUPPORTED_MESH_CONTENT_TYPES = ("ply", "stl")
 
 # The Viam 3D viewer only renders PLY meshes. STL is accepted as an
@@ -159,6 +160,139 @@ def build_capsule(radius_mm: float, length_mm: float, label: str) -> Geometry:
             radius_mm=float(radius_mm),
             length_mm=float(length_mm),
         ),
+    )
+
+
+def arrow_ply_bytes(
+    length_mm: float,
+    shaft_radius_mm: float,
+    tip_radius_mm: Optional[float] = None,
+    tip_length_mm: Optional[float] = None,
+    sides: int = 12,
+) -> bytes:
+    """Procedural arrow mesh along local +Z, returned as ASCII PLY bytes.
+
+    Coordinates are written in METERS (RDK PLY reader multiplies by
+    1000 to convert to mm). ``tip_radius_mm`` defaults to 2× the shaft
+    radius and ``tip_length_mm`` defaults to 28% of total length —
+    proportions chosen so the arrow head reads clearly without
+    overwhelming the shaft. Used both by the shipped ``assets/arrow.ply``
+    generator and by the ``arrow`` primitive type at runtime.
+    """
+    if tip_radius_mm is None:
+        tip_radius_mm = 2.0 * shaft_radius_mm
+    if tip_length_mm is None:
+        tip_length_mm = max(0.05 * length_mm, 0.28 * length_mm)
+    shaft_length_mm = max(0.0, length_mm - tip_length_mm)
+
+    verts: List[Tuple[float, float, float]] = []
+    # v0: shaft bottom center (for the cap fan).
+    verts.append((0.0, 0.0, 0.0))
+    # v[1..sides]: shaft bottom ring at z=0, shaft_radius.
+    for i in range(sides):
+        theta = 2 * math.pi * i / sides
+        verts.append((
+            shaft_radius_mm * math.cos(theta),
+            shaft_radius_mm * math.sin(theta),
+            0.0,
+        ))
+    # v[1+sides..2*sides]: shaft top ring at z=shaft_length, shaft_radius.
+    for i in range(sides):
+        theta = 2 * math.pi * i / sides
+        verts.append((
+            shaft_radius_mm * math.cos(theta),
+            shaft_radius_mm * math.sin(theta),
+            shaft_length_mm,
+        ))
+    # v[1+2*sides..3*sides]: cone base ring at z=shaft_length, tip_radius.
+    for i in range(sides):
+        theta = 2 * math.pi * i / sides
+        verts.append((
+            tip_radius_mm * math.cos(theta),
+            tip_radius_mm * math.sin(theta),
+            shaft_length_mm,
+        ))
+    # apex.
+    apex_idx = 1 + 3 * sides
+    verts.append((0.0, 0.0, shaft_length_mm + tip_length_mm))
+
+    bot_ring_start = 1
+    top_ring_start = 1 + sides
+    cone_ring_start = 1 + 2 * sides
+
+    faces: List[Tuple[int, ...]] = []
+    # Shaft bottom cap fan around v0.
+    for i in range(sides):
+        v_curr = bot_ring_start + i
+        v_next = bot_ring_start + (i + 1) % sides
+        faces.append((0, v_next, v_curr))
+    # Shaft side quads → triangles.
+    for i in range(sides):
+        b = bot_ring_start + i
+        bn = bot_ring_start + (i + 1) % sides
+        t = top_ring_start + i
+        tn = top_ring_start + (i + 1) % sides
+        faces.append((b, bn, t))
+        faces.append((bn, tn, t))
+    # Washer between shaft top (narrow) and cone base (wide).
+    for i in range(sides):
+        inner = top_ring_start + i
+        inner_next = top_ring_start + (i + 1) % sides
+        outer = cone_ring_start + i
+        outer_next = cone_ring_start + (i + 1) % sides
+        faces.append((inner, outer, inner_next))
+        faces.append((inner_next, outer, outer_next))
+    # Cone side triangles.
+    for i in range(sides):
+        b = cone_ring_start + i
+        bn = cone_ring_start + (i + 1) % sides
+        faces.append((b, bn, apex_idx))
+
+    return _ply_ascii_bytes(verts, faces)
+
+
+def _ply_ascii_bytes(
+    verts_mm: List[Tuple[float, float, float]],
+    faces: List[Tuple[int, ...]],
+) -> bytes:
+    """Build an ASCII PLY byte buffer from vertices (in mm) and faces.
+    Coordinates are divided by 1000 so the file is in meters (the
+    convention RDK's PLY reader expects)."""
+    lines = [
+        "ply",
+        "format ascii 1.0",
+        f"element vertex {len(verts_mm)}",
+        "property float x",
+        "property float y",
+        "property float z",
+        f"element face {len(faces)}",
+        "property list uchar int vertex_indices",
+        "end_header",
+    ]
+    for (x, y, z) in verts_mm:
+        lines.append(
+            f"{x / 1000.0:.6f} {y / 1000.0:.6f} {z / 1000.0:.6f}"
+        )
+    for face in faces:
+        lines.append(f"{len(face)} " + " ".join(str(i) for i in face))
+    return ("\n".join(lines) + "\n").encode("ascii")
+
+
+def build_arrow(
+    length_mm: float,
+    radius_mm: float,
+    label: str,
+) -> Geometry:
+    """First-class arrow primitive. Procedurally generates a PLY mesh
+    sized to ``(length_mm, radius_mm)`` and embeds it as a Mesh
+    geometry. Arrow points along local +Z; the pose's orientation
+    vector aligns local +Z to the desired world direction."""
+    ply = arrow_ply_bytes(length_mm=length_mm, shaft_radius_mm=radius_mm)
+    # Constructed inline (not via build_mesh) because build_mesh is
+    # defined below and we want a single, linear file order.
+    return Geometry(
+        label=label,
+        mesh=Mesh(content_type=RENDERER_MESH_CONTENT_TYPE, mesh=ply),
     )
 
 

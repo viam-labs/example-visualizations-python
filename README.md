@@ -43,11 +43,12 @@ orange STL cube → cyan helical PCD point cloud.
 
 Want a different default scene? Set `preset` to one of:
 
-- `primitives` (default) — one of every type, static, distinct colors
-- `color_wheel` — 10 spheres around a ring, HSV-swept hue
-- `mesh_gallery` — bunny, cube, helix side by side
-- `orientation_vectors` — same capsule at OX/OY/OZ permutations, with a `theta` demo
-- `reference_frame_demo` — a spinning anchor + colored X/Y/Z triad parented to it + a child mesh that spins on its own axis. Demonstrates that the renderer composes poses through the Viam frame system: each child's `parent_frame` is the **label of another emitted Transform**, and the child inherits the parent's rotation through the chain.
+- `primitives` (default) — one of every supported primitive type (box, sphere, capsule, point, arrow, PLY mesh, STL mesh, point cloud).
+- `color_wheel` — 10 spheres around a ring, HSV-swept hue.
+- `mesh_gallery` — icosahedron + STL cube + torus + Utah teapot + binary PCD. The "more complex meshes" tour.
+- `orientation_vectors` — small sphere markers at axis-aligned orientation vectors, with `show_axes_helper: true` so the viewer renders an RGB XYZ triad at each entity's origin. Shows how `(OX, OY, OZ, theta)` maps to a coordinate frame.
+- `reference_frame_demo` — a spinning anchor + colored X/Y/Z triad parented to it + a child mesh that spins on its own axis. Probes the renderer's parent-chain composition.
+- `robot_arm` — articulated arm built from primitives (base + shoulder + upper arm + elbow + forearm + wrist + arrow end-effector), each link parented to the previous. Spinning base/elbow drives the chain if frame composition works.
 - `all` — every preset above, stacked along Y at ~1.8 m intervals. One-stop tour.
 
 ## Config reference
@@ -67,7 +68,7 @@ Every item carries `type`, `label`, `pose`, optional `color` /
 
 ```jsonc
 {
-  "type": "box",                          // box|sphere|capsule|point|mesh|pointcloud
+  "type": "box",                          // box|sphere|capsule|point|arrow|mesh|pointcloud
   "label": "my_box",                      // unique, user-facing
   "parent_frame": "world",                // optional; overrides service parent_frame
   "pose": {                               // all sub-fields optional
@@ -76,12 +77,14 @@ Every item carries `type`, `label`, `pose`, optional `color` /
     "theta": 0                            //   spin around (ox,oy,oz), degrees
   },
   "dims_mm": {"x": 100, "y": 100, "z": 100},   // box only
-  "radius_mm": 50,                              // sphere, capsule
-  "length_mm": 200,                             // capsule
-  "mesh_path": "assets/bunny.ply",              // mesh only — resolved relative to module dir
+  "radius_mm": 50,                              // sphere, capsule, arrow (shaft radius)
+  "length_mm": 200,                             // capsule, arrow (total length along local +Z)
+  "mesh_path": "assets/icosahedron.ply",        // mesh only — resolved relative to module dir
   "pointcloud_path": "assets/helix.pcd",        // pointcloud only
   "color": {"r": 255, "g": 128, "b": 0},        // 0..255
   "opacity": 0.8,                               // 0..1
+  "show_axes_helper": false,                    // viewer's RGB XYZ triad at entity origin
+  "invisible": false,                           // hide entity; user can toggle on
   "animation": {"mode": "none"}                 // see below
 }
 ```

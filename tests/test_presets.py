@@ -12,6 +12,7 @@ from src.presets import (
     mesh_gallery,
     orientation_vectors,
     reference_frame_demo,
+    robot_arm,
 )
 
 
@@ -19,15 +20,17 @@ from src.presets import (
 
 def test_primitives_emits_one_of_every_supported_type():
     """The default scene is the user's first impression — every
-    primitive type must be represented exactly once (with the box +
-    mesh+ply + mesh+stl counted as separate mesh entries)."""
+    primitive type must be represented at least once (box + mesh +
+    mesh+stl shown separately so the user sees both formats)."""
     items = primitives()
     types = [it["type"] for it in items]
-    # 1 box, 1 sphere, 1 capsule, 1 point, 2 mesh (ply + stl), 1 pointcloud.
     assert types.count("box") == 1
     assert types.count("sphere") == 1
     assert types.count("capsule") == 1
     assert types.count("point") == 1
+    assert types.count("arrow") == 1
+    # mesh appears twice — one PLY, one STL — to demonstrate both
+    # supported file formats.
     assert types.count("mesh") == 2
     assert types.count("pointcloud") == 1
     assert set(types) == set(SUPPORTED_TYPES)
@@ -124,39 +127,86 @@ def test_color_wheel_positions_form_a_ring():
 
 # ---------- mesh_gallery ----------
 
-def test_mesh_gallery_has_two_meshes_plus_one_pointcloud():
+def test_mesh_gallery_features_complex_meshes_plus_pointcloud():
+    """Gallery shows the assets that aren't trivially-shaped: torus,
+    teapot, plus icosahedron + STL cube + binary PCD for contrast."""
     items = mesh_gallery()
     types = [it["type"] for it in items]
-    assert types.count("mesh") == 2
+    assert types.count("mesh") == 4  # icosahedron, cube, torus, teapot
     assert types.count("pointcloud") == 1
+
+
+def test_mesh_gallery_includes_torus_and_teapot():
+    """The user-requested complex meshes — both must be present."""
+    paths = [it.get("mesh_path") for it in mesh_gallery() if it.get("mesh_path")]
+    assert any(p.endswith("torus.ply") for p in paths), \
+        "torus.ply missing from mesh_gallery"
+    assert any(p.endswith("teapot.ply") for p in paths), \
+        "teapot.ply missing from mesh_gallery"
+
+
+# ---------- robot_arm ----------
+
+def test_robot_arm_forms_a_parent_frame_chain():
+    """The arm is a kinematic chain: each link parents to the
+    previous one. Confirms the chain is wired correctly so changes
+    upstream propagate downstream via the frame system."""
+    items = robot_arm()
+    by_label = {it["label"]: it for it in items}
+    expected_chain = [
+        ("arm_base", None),
+        ("arm_shoulder", "arm_base"),
+        ("arm_upper", "arm_shoulder"),
+        ("arm_elbow", "arm_upper"),
+        ("arm_forearm", "arm_elbow"),
+        ("arm_wrist", "arm_forearm"),
+        ("arm_end_effector", "arm_wrist"),
+    ]
+    for label, expected_parent in expected_chain:
+        assert label in by_label, f"missing arm link {label!r}"
+        actual_parent = by_label[label].get("parent_frame")
+        if expected_parent is None:
+            assert actual_parent in (None, "", "world")
+        else:
+            assert actual_parent == expected_parent, (
+                f"{label!r} should parent to {expected_parent!r}, "
+                f"got {actual_parent!r}"
+            )
+
+
+def test_robot_arm_end_effector_is_an_arrow():
+    """End effector uses the asymmetric arrow primitive so users
+    can see which direction the tool is pointing at any tick."""
+    by_label = {it["label"]: it for it in robot_arm()}
+    assert by_label["arm_end_effector"]["type"] == "arrow"
 
 
 # ---------- orientation_vectors ----------
 
-def test_orientation_vectors_uses_arrow_mesh_not_capsules():
-    """Orientation viz needs ASYMMETRIC geometry — a capsule is
-    rotationally symmetric along its length axis, so the user can't
-    tell which end points which way. The arrow mesh (shaft + cone tip)
-    fixes that."""
+def test_orientation_vectors_uses_show_axes_helper_coordinate_frames():
+    """Orientation viz uses ``show_axes_helper: True`` on small
+    sphere markers — the viewer renders an RGB XYZ triad at each
+    entity's origin rotated to match its orientation. This shows ALL
+    three axes at once (vs a single arrow), which is what users
+    actually want when reading 'which way is this oriented'."""
     items = orientation_vectors()
     for it in items:
-        assert it["type"] == "mesh", (
+        assert it["type"] == "sphere", (
             f"{it['label']!r} is a {it['type']!r}; orientation viz "
-            "requires asymmetric geometry (the arrow mesh) so the "
-            "pointing direction is unambiguous"
+            "items should be sphere hosts carrying show_axes_helper"
         )
-        assert it["mesh_path"].endswith("arrow.ply"), (
-            f"{it['label']!r} mesh_path is {it['mesh_path']!r}; "
-            "expected the shipped arrow.ply asset"
+        assert it.get("show_axes_helper") is True, (
+            f"{it['label']!r} missing show_axes_helper=True; without "
+            "it the viewer renders no axes triad"
         )
 
 
 def test_orientation_vectors_covers_x_y_z_and_theta_demo():
     labels = {it["label"] for it in orientation_vectors()}
     # Must include each axis demo and at least one theta-sweep demo.
-    assert "ov_+X" in labels
-    assert "ov_+Y" in labels
-    assert "ov_+Z" in labels
+    assert "frame_+X" in labels
+    assert "frame_+Y" in labels
+    assert "frame_+Z" in labels
     assert any("theta" in l.lower() for l in labels)
 
 

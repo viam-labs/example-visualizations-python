@@ -249,8 +249,8 @@ async def test_tick_with_versioned_strategy_emits_removed_plus_added():
 async def test_reconfigure_loads_default_preset_when_no_items_or_preset():
     s = _bare_service()
     s.reconfigure(_cfg({}), {})
-    # Default preset is primitives -> 7 items.
-    assert len(s._state) == 7
+    # Default preset is primitives -> 8 items.
+    assert len(s._state) == 8
     # Then close it cleanly so the test runner doesn't warn about
     # unawaited tasks (only animated configs spawn a tick task; this
     # one is static).

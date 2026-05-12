@@ -21,7 +21,7 @@ src/main.py             # Module entrypoint. Imports SceneSprites so EasyResourc
 src/service.py          # SceneSprites — the WorldStateStore implementation. Owns state, subscribers, animation tick, do_command dispatch.
 src/geometries.py       # Pure proto builders: build_box/sphere/capsule/point/mesh/pointcloud, build_metadata, build_pose, stl_to_ply, asset path resolution.
 src/animation.py        # Per-mode pose math: none, orbit, oscillate, spin, pulse. Returns (pose, geom, updated_fields) — the third is the field-mask path list for UPDATED events.
-src/presets.py          # Named scene bundles: primitives, color_wheel, mesh_gallery, orientation_vectors, reference_frame_demo, all (merges every other preset along Y).
+src/presets.py          # Named scene bundles: primitives (every type), color_wheel, mesh_gallery (icosahedron+cube+torus+teapot+PCD), orientation_vectors (sphere markers with show_axes_helper), reference_frame_demo, robot_arm (kinematic chain), all (Y-stacked).
 scripts/generate_assets.py  # Regenerates assets/bunny.ply, assets/cube.stl, assets/helix.pcd from math. No external assets are bundled.
 assets/                 # Shipped reference geometry — see assets/README.md for provenance.
 tests/                  # pytest. Run from repo root via `make test`. 179+ tests as of 0.0.6.

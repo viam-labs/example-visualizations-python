@@ -7,6 +7,8 @@ from viam.utils import struct_to_dict
 from src.geometries import (
     SUPPORTED_MESH_CONTENT_TYPES,
     SUPPORTED_TYPES,
+    arrow_ply_bytes,
+    build_arrow,
     build_box,
     build_capsule,
     build_mesh,
@@ -207,6 +209,56 @@ def test_point_marker_is_small_enough_to_read_as_a_point():
     assert 1.0 <= POINT_MARKER_RADIUS_MM <= 20.0
 
 
+# ---------- build_arrow ----------
+
+def test_build_arrow_emits_a_ply_mesh():
+    """The arrow primitive is procedural mesh — caller doesn't need to
+    ship an asset. Mesh content_type must be 'ply' for the viewer."""
+    g = build_arrow(length_mm=200, radius_mm=10, label="arr")
+    assert g.label == "arr"
+    assert g.mesh.content_type == "ply"
+    # Bytes look like an ASCII PLY header.
+    assert g.mesh.mesh.startswith(b"ply\n")
+
+
+def test_arrow_ply_bytes_meter_scale():
+    """The arrow PLY is written in METERS (RDK reader convention).
+    A 200 mm arrow has vertex magnitudes ≤ 0.2 m in the file."""
+    ply = arrow_ply_bytes(length_mm=200, shaft_radius_mm=10).decode("ascii")
+    body = ply.split("end_header", 1)[1].strip().splitlines()
+    verts = []
+    for line in body:
+        parts = line.split()
+        if len(parts) == 3:
+            try:
+                verts.append(tuple(float(p) for p in parts))
+            except ValueError:
+                break
+        else:
+            break
+    max_mag = max(abs(c) for v in verts for c in v)
+    assert max_mag < 1.0
+    assert max_mag > 0.05
+
+
+def test_arrow_ply_bytes_points_along_local_plus_z():
+    """All vertices have z ≥ 0 (arrow base at z=0, apex at z=length)."""
+    ply = arrow_ply_bytes(length_mm=200, shaft_radius_mm=10).decode("ascii")
+    body = ply.split("end_header", 1)[1].strip().splitlines()
+    verts = []
+    for line in body:
+        parts = line.split()
+        if len(parts) == 3:
+            try:
+                verts.append(tuple(float(p) for p in parts))
+            except ValueError:
+                break
+        else:
+            break
+    min_z = min(v[2] for v in verts)
+    assert min_z >= -1e-9, f"arrow has vertex below z=0: {min_z}"
+
+
 # ---------- build_mesh ----------
 
 def test_build_mesh_embeds_bytes_and_requires_ply():
@@ -358,7 +410,7 @@ def test_infer_mesh_content_type_rejects_unknown(path):
 
 def test_supported_types_constant_covers_all_builders():
     assert set(SUPPORTED_TYPES) == {
-        "box", "sphere", "capsule", "point", "mesh", "pointcloud",
+        "box", "sphere", "capsule", "point", "arrow", "mesh", "pointcloud",
     }
 
 

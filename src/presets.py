@@ -29,6 +29,7 @@ PRESET_NAMES = (
     "mesh_gallery",
     "orientation_vectors",
     "reference_frame_demo",
+    "robot_arm",
 )
 
 # Default spacing between primitives in the row-style preset (mm).
@@ -81,10 +82,22 @@ def primitives() -> List[Mapping[str, Any]]:
             "opacity": 1.0,
             "animation": {"mode": "none"},
         },
+        # Arrow primitive (procedural mesh, asymmetric — direction
+        # is unambiguous unlike a capsule).
+        {
+            "type": "arrow",
+            "label": "demo_arrow",
+            "pose": _identity_pose(x=1 * sp),
+            "length_mm": 220,
+            "radius_mm": 12,
+            "color": {"r": 145, "g": 30, "b": 180},
+            "opacity": 1.0,
+            "animation": {"mode": "none"},
+        },
         {
             "type": "mesh",
             "label": "demo_mesh_ply",
-            "pose": _identity_pose(x=1 * sp),
+            "pose": _identity_pose(x=2 * sp),
             "mesh_path": "assets/icosahedron.ply",
             "color": {"r": 240, "g": 50, "b": 230},
             "opacity": 1.0,
@@ -93,7 +106,7 @@ def primitives() -> List[Mapping[str, Any]]:
         {
             "type": "mesh",
             "label": "demo_mesh_stl",
-            "pose": _identity_pose(x=2 * sp),
+            "pose": _identity_pose(x=3 * sp),
             "mesh_path": "assets/cube.stl",
             "color": {"r": 245, "g": 130, "b": 49},
             "opacity": 1.0,
@@ -107,7 +120,7 @@ def primitives() -> List[Mapping[str, Any]]:
         {
             "type": "pointcloud",
             "label": "demo_pointcloud",
-            "pose": _identity_pose(x=3 * sp),
+            "pose": _identity_pose(x=4 * sp),
             "pointcloud_path": "assets/helix.pcd",
             "opacity": 1.0,
             "animation": {"mode": "none"},
@@ -140,25 +153,53 @@ def color_wheel(count: int = 10, ring_radius_mm: float = 300.0) -> List[Mapping[
 
 
 def mesh_gallery() -> List[Mapping[str, Any]]:
-    """Three file-asset primitives side by side: PLY mesh, STL mesh,
-    binary PCD point cloud."""
-    sp = PRIMITIVE_ROW_SPACING_MM
+    """Showcase of "more complex than a cube" meshes the world-state-
+    store API can handle: torus, Utah teapot, plus the standard
+    icosahedron, cube STL, and binary PCD point cloud for comparison.
+    Each item gets a distinct color so the row reads as a gallery.
+
+    Positions: 5 items spaced along X. Torus and teapot are the new
+    "more complex" exemplars — the user's hint was "teapot and a
+    robot arm"; teapot lives here, robot arm is its own preset so it
+    can use multiple parented primitives."""
+    sp = 600.0  # mesh items are larger; widen the row.
     return [
         {
             "type": "mesh",
-            "label": "gallery_ply",
-            "pose": _identity_pose(x=-sp),
+            "label": "gallery_icosahedron",
+            "pose": _identity_pose(x=-2 * sp),
             "mesh_path": "assets/icosahedron.ply",
-            "color": {"r": 220, "g": 220, "b": 220},
+            "color": {"r": 240, "g": 50, "b": 230},
             "opacity": 1.0,
             "animation": {"mode": "none"},
         },
         {
             "type": "mesh",
-            "label": "gallery_stl",
-            "pose": _identity_pose(x=0),
+            "label": "gallery_cube_stl",
+            "pose": _identity_pose(x=-sp),
             "mesh_path": "assets/cube.stl",
-            "color": {"r": 220, "g": 220, "b": 220},
+            "color": {"r": 245, "g": 130, "b": 49},
+            "opacity": 1.0,
+            "animation": {"mode": "none"},
+        },
+        # Torus — 36×18 ring of vertices, recognizable donut shape.
+        {
+            "type": "mesh",
+            "label": "gallery_torus",
+            "pose": _identity_pose(x=0),
+            "mesh_path": "assets/torus.ply",
+            "color": {"r": 70, "g": 240, "b": 240},
+            "opacity": 1.0,
+            "animation": {"mode": "none"},
+        },
+        # Utah teapot — classic 3D graphics test mesh, Bezier-patch
+        # evaluated. ~1152 verts, ~1800 triangles.
+        {
+            "type": "mesh",
+            "label": "gallery_teapot",
+            "pose": _identity_pose(x=sp),
+            "mesh_path": "assets/teapot.ply",
+            "color": {"r": 60, "g": 180, "b": 75},
             "opacity": 1.0,
             "animation": {"mode": "none"},
         },
@@ -167,7 +208,7 @@ def mesh_gallery() -> List[Mapping[str, Any]]:
         {
             "type": "pointcloud",
             "label": "gallery_pcd",
-            "pose": _identity_pose(x=sp),
+            "pose": _identity_pose(x=2 * sp),
             "pointcloud_path": "assets/helix.pcd",
             "opacity": 1.0,
             "animation": {"mode": "none"},
@@ -175,80 +216,199 @@ def mesh_gallery() -> List[Mapping[str, Any]]:
     ]
 
 
+def robot_arm() -> List[Mapping[str, Any]]:
+    """Stylized articulated robot arm built from primitives, chained
+    via ``parent_frame``. Demonstrates how a kinematic structure
+    naturally falls out of the world-state-store API:
+
+      base (cylinder-ish box) → shoulder → upper_arm → elbow → forearm → wrist → end_effector (arrow)
+
+    Each link parents to the previous; an animation on the shoulder
+    rotates everything downstream (if the renderer composes through
+    chained parents — same probe as ``reference_frame_demo``). A
+    Viam-relevant scene for users building real arm modules.
+    """
+    LINK_RADIUS = 25.0
+    BASE_HEIGHT = 80.0
+    UPPER_LENGTH = 220.0
+    FOREARM_LENGTH = 180.0
+    JOINT_RADIUS = 35.0
+    EE_LENGTH = 90.0
+    items: List[Mapping[str, Any]] = []
+    # Base — a stout cylinder (modeled as a capsule for visual
+    # interest; could be a box). Spins slowly to drive the chain.
+    items.append({
+        "type": "capsule",
+        "label": "arm_base",
+        "pose": _identity_pose(x=0, y=0, z=BASE_HEIGHT / 2),
+        "radius_mm": LINK_RADIUS * 1.6,
+        "length_mm": BASE_HEIGHT,
+        "color": {"r": 70, "g": 70, "b": 75},
+        "opacity": 1.0,
+        "animation": {"mode": "spin", "period_s": 8},
+    })
+    # Shoulder joint — sphere at top of base.
+    items.append({
+        "type": "sphere",
+        "label": "arm_shoulder",
+        "parent_frame": "arm_base",
+        # Anchor at the top of the base (capsule centered on its
+        # pose, half-height above).
+        "pose": {"x": 0, "y": 0, "z": BASE_HEIGHT / 2 + LINK_RADIUS,
+                 "ox": 0, "oy": 1, "oz": 0, "theta": 0},
+        "radius_mm": JOINT_RADIUS,
+        "color": {"r": 230, "g": 25, "b": 75},
+        "opacity": 1.0,
+        "animation": {"mode": "none"},
+    })
+    # Upper arm — capsule extending out of the shoulder along its
+    # local +Z (which, with the shoulder's OY=1 orientation, points
+    # in world +Y → makes the arm sweep around as the base spins).
+    items.append({
+        "type": "capsule",
+        "label": "arm_upper",
+        "parent_frame": "arm_shoulder",
+        "pose": _identity_pose(x=0, y=0, z=UPPER_LENGTH / 2),
+        "radius_mm": LINK_RADIUS,
+        "length_mm": UPPER_LENGTH,
+        "color": {"r": 100, "g": 130, "b": 200},
+        "opacity": 1.0,
+        "animation": {"mode": "none"},
+    })
+    # Elbow joint — sphere at the far end of the upper arm.
+    items.append({
+        "type": "sphere",
+        "label": "arm_elbow",
+        "parent_frame": "arm_upper",
+        # The elbow rotates around its own local axis so the forearm
+        # swings — slower than the base for a more readable motion.
+        "pose": {"x": 0, "y": 0, "z": UPPER_LENGTH / 2 + LINK_RADIUS,
+                 "ox": 0, "oy": 1, "oz": 0, "theta": -60},
+        "radius_mm": JOINT_RADIUS * 0.8,
+        "color": {"r": 230, "g": 25, "b": 75},
+        "opacity": 1.0,
+        "animation": {"mode": "spin", "period_s": 5},
+    })
+    # Forearm — capsule from elbow outward.
+    items.append({
+        "type": "capsule",
+        "label": "arm_forearm",
+        "parent_frame": "arm_elbow",
+        "pose": _identity_pose(x=0, y=0, z=FOREARM_LENGTH / 2),
+        "radius_mm": LINK_RADIUS * 0.85,
+        "length_mm": FOREARM_LENGTH,
+        "color": {"r": 100, "g": 180, "b": 110},
+        "opacity": 1.0,
+        "animation": {"mode": "none"},
+    })
+    # Wrist joint — small sphere at the end of the forearm.
+    items.append({
+        "type": "sphere",
+        "label": "arm_wrist",
+        "parent_frame": "arm_forearm",
+        "pose": {"x": 0, "y": 0, "z": FOREARM_LENGTH / 2 + LINK_RADIUS * 0.6,
+                 "ox": 0, "oy": 0, "oz": 1, "theta": 0},
+        "radius_mm": JOINT_RADIUS * 0.65,
+        "color": {"r": 230, "g": 25, "b": 75},
+        "opacity": 1.0,
+        "animation": {"mode": "none"},
+    })
+    # End effector — arrow showing the tool direction. Asymmetric so
+    # users can see where the arm is pointing at any tick.
+    items.append({
+        "type": "arrow",
+        "label": "arm_end_effector",
+        "parent_frame": "arm_wrist",
+        "pose": _identity_pose(z=JOINT_RADIUS * 0.6),
+        "length_mm": EE_LENGTH,
+        "radius_mm": 7.0,
+        "color": {"r": 255, "g": 200, "b": 0},
+        "opacity": 1.0,
+        "animation": {"mode": "none"},
+    })
+    return items
+
+
 def orientation_vectors() -> List[Mapping[str, Any]]:
-    """An arrow mesh replicated at axis-aligned orientation vectors so
-    the user can see how OX/OY/OZ + theta combine.
+    """Coordinate frames at axis-aligned orientation vectors.
 
-    Arrows beat capsules here because a capsule is rotationally
-    symmetric along its length axis — you can tell it's lying along
-    +X but not which end points which way. The arrow's wide cone tip
-    + narrow shaft makes the pointing direction unmistakable.
+    Each item is a small sphere host carrying ``show_axes_helper:
+    True`` so the viewer renders its built-in RGB XYZ triad at the
+    entity's origin, rotated to match the entity's orientation.
+    Reading the resulting axes triad tells the user immediately how
+    the configured ``(OX, OY, OZ, theta)`` maps to a local frame.
 
-    The arrow mesh extends along its local +Z axis (see
-    ``scripts/generate_assets.py::write_arrow_ply``). The pose's
-    orientation vector ``(OX, OY, OZ)`` rotates the local +Z to that
-    world direction, so the arrow points in the configured direction.
+    A coordinate frame is more informative than a single arrow here:
+    the user sees all three axes at once and can compare to the
+    identity (world) frame. The arrow primitive is great for
+    direction; full XYZ helpers are right for orientation.
     """
     base_pose = lambda ox, oy, oz, theta, x: {
         "x": x, "y": 0, "z": 0,
         "ox": ox, "oy": oy, "oz": oz, "theta": theta,
     }
     sp = PRIMITIVE_ROW_SPACING_MM
-    mesh_path = "assets/arrow.ply"
+    # The host sphere is a small partly-transparent marker so the
+    # axes triad reads as the primary visual — the sphere just gives
+    # the helper something to attach to. Color cycles per item so the
+    # user can tell the frames apart from a distance.
+    HOST_RADIUS_MM = 18.0
     items = []
-    # +Z (identity) — arrow points upward.
     items.append({
-        "type": "mesh",
-        "label": "ov_+Z",
+        "type": "sphere",
+        "label": "frame_+Z",
         "pose": base_pose(0, 0, 1, 0, -2 * sp),
-        "mesh_path": mesh_path,
-        "color": {"r": 60, "g": 180, "b": 75},
-        "opacity": 1.0,
+        "radius_mm": HOST_RADIUS_MM,
+        "color": {"r": 220, "g": 220, "b": 220},
+        "opacity": 0.35,
+        "show_axes_helper": True,
         "animation": {"mode": "none"},
     })
-    # +X — arrow points along world +X.
     items.append({
-        "type": "mesh",
-        "label": "ov_+X",
+        "type": "sphere",
+        "label": "frame_+X",
         "pose": base_pose(1, 0, 0, 0, -sp),
-        "mesh_path": mesh_path,
-        "color": {"r": 230, "g": 25, "b": 75},
-        "opacity": 1.0,
+        "radius_mm": HOST_RADIUS_MM,
+        "color": {"r": 220, "g": 220, "b": 220},
+        "opacity": 0.35,
+        "show_axes_helper": True,
         "animation": {"mode": "none"},
     })
-    # +Y — arrow points along world +Y.
     items.append({
-        "type": "mesh",
-        "label": "ov_+Y",
+        "type": "sphere",
+        "label": "frame_+Y",
         "pose": base_pose(0, 1, 0, 0, 0),
-        "mesh_path": mesh_path,
-        "color": {"r": 0, "g": 130, "b": 200},
-        "opacity": 1.0,
+        "radius_mm": HOST_RADIUS_MM,
+        "color": {"r": 220, "g": 220, "b": 220},
+        "opacity": 0.35,
+        "show_axes_helper": True,
         "animation": {"mode": "none"},
     })
-    # 45° in XY plane: arrow points equally along X and Y.
+    # 45° in XY plane — local +Z lies between world +X and +Y.
     s = 1.0 / math.sqrt(2.0)
     items.append({
-        "type": "mesh",
-        "label": "ov_+XY",
+        "type": "sphere",
+        "label": "frame_+XY",
         "pose": base_pose(s, s, 0, 0, sp),
-        "mesh_path": mesh_path,
-        "color": {"r": 245, "g": 130, "b": 49},
-        "opacity": 1.0,
+        "radius_mm": HOST_RADIUS_MM,
+        "color": {"r": 220, "g": 220, "b": 220},
+        "opacity": 0.35,
+        "show_axes_helper": True,
         "animation": {"mode": "none"},
     })
-    # +Z with theta=45 — same axis as ov_+Z, but rotated 45° around
-    # that axis. Highlights that theta is the spin about the
-    # orientation vector, not a tilt of it. With the arrow mesh this
-    # is visible because the asymmetric cross-section of the cone tip
-    # rotates with theta even though the pointing direction doesn't.
+    # +Z axis with theta=45 — same orientation vector as frame_+Z, but
+    # rotated 45° about it. The axes-helper triad should visibly
+    # rotate around the Z axis: the +X and +Y arrows of the helper
+    # both tilt 45° in the XY plane. Useful for teaching that theta
+    # is a spin about the orientation vector, not a tilt of it.
     items.append({
-        "type": "mesh",
-        "label": "ov_+Z_theta45",
+        "type": "sphere",
+        "label": "frame_+Z_theta45",
         "pose": base_pose(0, 0, 1, 45, 2 * sp),
-        "mesh_path": mesh_path,
-        "color": {"r": 145, "g": 30, "b": 180},
-        "opacity": 1.0,
+        "radius_mm": HOST_RADIUS_MM,
+        "color": {"r": 220, "g": 220, "b": 220},
+        "opacity": 0.35,
+        "show_axes_helper": True,
         "animation": {"mode": "none"},
     })
     return items
@@ -386,16 +546,18 @@ def all_preset() -> List[Mapping[str, Any]]:
 
     Row layout (Y from negative to positive):
 
-      - orientation_vectors  y = -3600
-      - color_wheel          y = -1800
-      - primitives           y =     0
-      - mesh_gallery         y = +1800
-      - reference_frame_demo y = +3600
+      - orientation_vectors  y = -3*row
+      - color_wheel          y = -2*row
+      - robot_arm            y = -row
+      - primitives           y =   0
+      - mesh_gallery         y = +row
+      - reference_frame_demo y = +2*row
     """
     row = 1800.0
     items: List[Mapping[str, Any]] = []
-    items.extend(_offset_base_items_y(orientation_vectors(), -2 * row))
-    items.extend(_offset_base_items_y(color_wheel(), -row))
+    items.extend(_offset_base_items_y(orientation_vectors(), -3 * row))
+    items.extend(_offset_base_items_y(color_wheel(), -2 * row))
+    items.extend(_offset_base_items_y(robot_arm(), -row))
     items.extend(_offset_base_items_y(primitives(), 0.0))
     items.extend(_offset_base_items_y(mesh_gallery(), row))
     items.extend(_offset_base_items_y(reference_frame_demo(), 2 * row))
@@ -409,6 +571,7 @@ PRESETS = {
     "mesh_gallery": mesh_gallery,
     "orientation_vectors": orientation_vectors,
     "reference_frame_demo": reference_frame_demo,
+    "robot_arm": robot_arm,
 }
 
 

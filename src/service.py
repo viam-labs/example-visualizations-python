@@ -104,6 +104,11 @@ def _base_geom_for_item(item: Mapping[str, Any]) -> Dict[str, Any]:
             "radius_mm": float(item["radius_mm"]),
             "length_mm": float(item["length_mm"]),
         }
+    if t == "arrow":
+        return {
+            "radius_mm": float(item["radius_mm"]),
+            "length_mm": float(item["length_mm"]),
+        }
     # point / mesh / pointcloud have no scalable base.
     return {}
 
@@ -129,6 +134,12 @@ def _build_geometry(item: Mapping[str, Any], override_geom: Mapping[str, Any]) -
         )
     if t == "point":
         return geometries.build_point(label)
+    if t == "arrow":
+        return geometries.build_arrow(
+            override_geom.get("length_mm", item["length_mm"]),
+            override_geom.get("radius_mm", item["radius_mm"]),
+            label,
+        )
     if t == "mesh":
         path = item["mesh_path"]
         raw = geometries.read_asset(path, MODULE_DIR)
@@ -777,6 +788,12 @@ def _validate_item(item: Mapping[str, Any], index: int) -> None:
                 raise Exception(f"{where} capsule requires {k!r}")
             if float(item[k]) <= 0:
                 raise Exception(f"{where} capsule {k} must be > 0")
+    elif t == "arrow":
+        for k in ("radius_mm", "length_mm"):
+            if k not in item:
+                raise Exception(f"{where} arrow requires {k!r}")
+            if float(item[k]) <= 0:
+                raise Exception(f"{where} arrow {k} must be > 0")
     elif t == "point":
         pass  # No shape config.
     elif t == "mesh":

@@ -11,8 +11,10 @@ make assets
 
 | File               | Format             | Size    | Description |
 | ------------------ | ------------------ | ------- | ----------- |
-| `icosahedron.ply`  | ASCII PLY          | ~700 B  | 100 mm icosahedron (12 vertices, 20 faces). The "any PLY mesh" stand-in in the playground. Named after what it is. |
-| `arrow.ply`        | ASCII PLY          | ~2 KB   | 250 mm arrow along local +Z. Cylindrical shaft + wider conical tip; 12-sided polygons. Used by the `orientation_vectors` preset so pointing direction is unambiguous. |
+| `icosahedron.ply`  | ASCII PLY          | ~700 B  | 100 mm icosahedron (12 vertices, 20 faces). "Any PLY mesh" stand-in. |
+| `arrow.ply`        | ASCII PLY          | ~2 KB   | 250 mm arrow along local +Z. Cylindrical shaft + wider conical tip; 12-sided polygons. The `arrow` first-class primitive also generates this shape procedurally with user-specified dimensions, so this asset is mostly a fallback / known reference. |
+| `torus.ply`        | ASCII PLY          | ~36 KB  | Donut: major radius 90 mm, minor radius 30 mm, 36×18 ring of vertices (648 verts, 1296 triangles). Procedural. |
+| `teapot.ply`       | ASCII PLY          | ~56 KB  | Newell/Utah teapot (public-domain Bezier patches, 1975) evaluated to a triangle mesh. 32 patches × 6×6 samples = 1152 verts, 1800 triangles. Y-up source data rotated to Z-up to match the rest of the module's conventions. |
 | `cube.stl`         | Binary STL         | ~700 B  | 200 mm cube, 12 triangles, 80-byte header + uint32 tri count + 50 B/triangle. |
 | `helix.pcd`        | Binary PCD (`PCDBinary`) | ~225 KB | Tube of points (2400 path steps × 6 ring points per step = 14,400 points), hue-swept along the curve. Header matches RDK's `pointcloud.ToPCD` byte-for-byte. |
 
