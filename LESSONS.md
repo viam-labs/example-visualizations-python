@@ -118,6 +118,96 @@ The RDK fake at `services/worldstatestore/fake/moving_geos_world.go` uses the ob
 
 **Why we don't add every conceivable shape as sugar.** Each sugar type adds a config knob, a validation branch, a builder, and tests. The right test for "should this be a sugar type" is: do enough users want it that the sugar is worth the maintenance? `arrow` clears that bar because direction visualization is common. `cylinder`, `cone`, `torus`, `disk` likely clear it too; `mobius_strip` probably doesn't.
 
+### multi-color-mesh-via-sub-mesh-split
+
+**Finding.** A single mesh entity can only carry a uniform color (see
+``mesh-metadata-colors-only-uses-first-color``). To get a
+multi-colored mesh-shaped object, split it into N sub-meshes — one
+per color region — and ship them as separate items all parented to
+a shared anchor. The viewer sees N entities; the user sees one
+multi-colored object.
+
+**Pattern:**
+
+```jsonc
+[
+  // Invisible anchor (or any geometry at the desired origin).
+  {"type": "sphere", "label": "obj_anchor", "radius_mm": 1, "opacity": 0.0, ...},
+  // Each color region as its own mesh.
+  {"type": "mesh", "label": "obj_part_red",
+   "mesh_path": "assets/obj_part_red.ply",
+   "color": {"r": 230, "g": 25, "b": 75},
+   "parent_frame": "obj_anchor", ...},
+  {"type": "mesh", "label": "obj_part_green",
+   "mesh_path": "assets/obj_part_green.ply",
+   "color": {"r": 60, "g": 180, "b": 75},
+   "parent_frame": "obj_anchor", ...},
+  ...
+]
+```
+
+**Authoring.** At build time, split the original mesh by face
+groupings (e.g., teapot → handle, spout, body, lid; torus → angular
+sectors; arbitrary CAD → group faces by material/region). Each
+group is its own PLY. Smooth shading is preserved per region but
+sharp color boundaries fall on whatever face seams you chose.
+
+**Cost.** N entities means N transforms on the wire, N UUIDs in the
+state, N items in subscribers' queues. The frame-system overhead is
+linear and small (we already do this for the robot arm and the
+spinning frame demos), but it's still N× the bookkeeping of one
+mesh. Acceptable for tens of regions; would be heavy at hundreds.
+
+### viewer-has-a-second-wire-format-we-cant-emit
+
+**Finding.** The Viam 3D scene viewer accepts geometries from **two
+separate proto channels**, and our world-state-store service only
+feeds one of them:
+
+  - ``commonpb.Geometry`` (what we emit) — oneof of Box, Sphere,
+    Capsule, Mesh, PointCloud. The "physical geometry" channel,
+    participates in the frame system, what world-state-store
+    services produce via ``StreamTransformChanges``.
+  - ``drawv1.Shape`` (what the visualization library emits) — oneof
+    of **Arrows, Line, Points, Model, Nurbs**. The "drawing"
+    channel; per the library's own description: "purely visual and
+    do not participate in the frame system as physical geometries."
+    Available via the Go drawing API in
+    ``viamrobotics/visualization``.
+
+**Evidence.** ``viamrobotics/visualization::draw/drawing.go`` defines
+both ``Drawing`` (becomes ``drawv1.Drawing`` on the wire) and the
+``Shape`` oneof at lines 15-30, 123-160. Each shape type has its
+own dedicated proto with its own knobs — e.g. ``Line`` carries
+``LineWidth``, ``DotSize``, per-vertex ``Colors`` AND per-vertex
+``DotColors``; ``Points`` carries an explicit ``PointSize`` field.
+
+**What we can't do from this module.** Implementing a
+``rdk:service:world_state_store`` only gives us the
+``commonpb.Geometry`` channel. To draw lines, arrows, NURBS curves,
+or points-with-controllable-size natively, we'd need to either
+implement a second service (a drawing service, if one exists in the
+RDK / visualization library API surface) or rely on a viewer client
+that already knows how to consume drawings.
+
+**Workarounds via our channel:**
+
+  - Line segment → thin capsule from A to B
+  - Polyline → chain of capsules + spheres at vertices for the
+    rounded-joint look
+  - Arc / Bezier / NURBS curve → many short capsules along the curve,
+    or extrude a small circle into a tubular mesh
+  - Points with controllable size → sphere primitives instead of a
+    point cloud (each sphere has its own radius; works fine for tens
+    of points, not for thousands)
+
+**What we still don't know.** Whether the RDK exposes a service
+type for drawings (one that a module could implement alongside or
+instead of ``world_state_store``). If yes, that'd be the path to
+ship lines/curves directly without the capsule-chain hack. The
+visualization repo's e2e fixtures are world-state-store only — no
+sign of a drawing-service fixture in the same place.
+
 ### mesh-metadata-colors-only-uses-first-color
 
 **Confirmed (0.0.22 → 0.0.23 → 0.0.24).** Two stacked findings — the
@@ -362,6 +452,8 @@ Related: `validate_config` must return `Tuple[Sequence[str], Sequence[str]]` —
 
 10. **`metadata.colors` with N>1 entries collapses to one color for meshes.** The same channel carries N-per-point colors correctly for point clouds, so the inconsistency is hard to spot from outside. Either honor N colors per vertex (or per face) for meshes the same way point clouds work, OR explicitly cap mesh colors at 1 and surface a warning when N>1 is sent. The current silent-collapse-to-first-color behavior costs a debugging cycle and confuses the schema contract that the library's WithMetadataColors docstring sets up.
 
+11. **No first-class line / curve geometry in the world-state-store channel.** The viewer supports lines (with width + dot size), arrows, points (with size!), 3D models, and NURBS curves natively — but as `drawv1.Shape` variants on the drawing-API channel, not as `commonpb.Geometry` variants. A world-state-store service can't emit any of them. Either expose them as additional `commonpb.Geometry` oneof variants, OR add a sibling service type (`rdk:service:drawing` or similar) that modules can implement alongside `world_state_store` to get access to the drawing channel. Today the only way for a world-state-store module to draw a line is to fake it with a thin capsule.
+
 ## Features to request from the viz team
 
 1. **Confirm chained-frame composition.** Document whether the viewer composes through `pose_in_observer_frame.reference_frame = <another emitted Transform's reference_frame>` or only honors known machine-config frame names. Either path is fine; the silence is the issue.
@@ -378,7 +470,7 @@ Related: `validate_config` must return `Tuple[Sequence[str], Sequence[str]]` —
 
 7. **Better error reporting.** Most viewer failures are silent. Surface parse errors, format mismatches, and dropped events to the module's debug snapshot (or to a viewer-side error channel) so module authors don't need byte-diffs to diagnose.
 
-8. **Point cloud render size knob.** The viewer offers no control over the per-point rendered size, so sparse point clouds (even those positioned and colored correctly) read as blank space. Modules can compensate by inflating density + radial thickness, but a `point_size` metadata field (in pixels, or in mm with a min-pixels clamp) would let module authors author at natural densities and use the file size budget for real point counts rather than visibility hacks.
+8. **Point cloud render size knob is in the wrong channel.** The viewer has a per-point size control — `drawv1.Points.PointSize` (see `viamrobotics/visualization::draw/drawing.go::Shape.ToProto`). But that lives on the `drawv1.Shape` proto used by the drawing API, not on the `commonpb.PointCloud` proto used by world-state-store. So a world-state-store service has no way to set per-point size; it ships dense / radially-thickened point clouds as a workaround. Either expose a `point_size` field on `commonpb.PointCloud`, or let world-state-store services emit a `commonpb.Geometry` variant that carries a size hint.
 
 ## Library sketch — `viam-viz-helpers`
 
