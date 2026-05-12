@@ -118,27 +118,29 @@ The RDK fake at `services/worldstatestore/fake/moving_geos_world.go` uses the ob
 
 **Why we don't add every conceivable shape as sugar.** Each sugar type adds a config knob, a validation branch, a builder, and tests. The right test for "should this be a sugar type" is: do enough users want it that the sugar is worth the maintenance? `arrow` clears that bar because direction visualization is common. `cylinder`, `cone`, `torus`, `disk` likely clear it too; `mobius_strip` probably doesn't.
 
-### intermediate-frames-for-distinct-rotation-axes
+### invisible-intermediate-frames-for-extra-spin-axes
 
-**Finding.** To give a group of items a rotation axis different from any of its physical ancestors, insert an **invisible intermediate frame** between them whose orientation rotates the local Z to the desired world axis. The intermediate frame's spin animation then rotates everything beneath it around that axis.
+**Finding.** Adding a rotation that's independent of all the parents above it requires an **invisible intermediate frame** carrying its own spin animation. Our `spin` mode modulates `theta`, which rotates around the entity's local Z axis. Without an intermediate frame, every entity in the chain spins around the same axis (its inherited local Z = its parent's local Z, etc., all the way up to whatever orientation is set at the root).
 
-**Why.** Our `spin` animation modulates `theta`, which rotates around the entity's local Z axis. So the spin axis is *whatever the entity's local Z maps to in world coordinates after the orientation vector is applied*. If an entity (and all its ancestors) have identity orientation (OZ=1), the spin axis is world Z — and so is every ancestor's spin axis. To break out of that, insert a frame with a non-identity orientation between the spinning parent and the spinning children. With OY=1 the intermediate frame's local Z becomes world Y, so a spin animation on that frame rotates around Y while everything above still rotates around Z.
-
-**Concrete pattern** (from `reference_frame_demo`):
+**Pattern** (from `reference_frame_demo` after the latest iteration):
 
 ```python
-# Top spins around its Z (= world Z, identity orientation).
+# Anchor spins around its Z (= world Z, identity orientation).
 {"type": "sphere", "label": "anchor", "animation": {"mode": "spin"}, ...}
-# Child mesh spins around its Z (still world Z).
+# Mesh spins around its Z (still world Z, inherited).
 {"type": "mesh", "label": "mesh", "parent_frame": "anchor",
  "animation": {"mode": "spin"}, ...}
-# Intermediate frame with OY=1 — its local Z is world Y.
+# Invisible intermediate frame carrying its OWN spin — independent
+# from the mesh's spin even though it inherits the mesh's pose.
 {"type": "sphere", "label": "wheel_hub", "parent_frame": "mesh",
- "pose": {"ox": 0, "oy": 1, "oz": 0, "theta": 0},
+ "pose": {..., "ox": 0, "oy": 0, "oz": 1, "theta": 0},
  "opacity": 0.0, "animation": {"mode": "spin"}, ...}
-# Children of wheel_hub orbit around world Y.
+# Children of wheel_hub get the hub's spin on top of the inherited
+# mesh + anchor motion.
 *_color_wheel_children("wheel_hub", ...)
 ```
+
+The intermediate's **orientation** is a separate knob: setting OX/OY/OZ to something non-identity changes WHICH world axis the spin maps to (e.g., OY=1 → spin around world Y). I kept it identity (OZ=1) so the wheel rotates around its own ring perpendicular — the user's preferred read of "rotate around the circle's axis". Use a non-identity orientation only when you specifically want the spin axis to live in a different world direction; the visual is harder to read because the ring plane tilts.
 
 **Side note on invisibility.** We hide the intermediate frame with `opacity: 0.0` rather than `invisible: true` because we haven't verified whether the viewer keeps an `invisible` entity's frame in the composition tree. `opacity: 0.0` keeps the entity in the scene (frame composition propagates) but renders nothing.
 

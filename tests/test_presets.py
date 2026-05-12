@@ -270,30 +270,35 @@ def test_reference_frame_demo_static_axes():
         assert by_label[axis]["animation"]["mode"] == "none"
 
 
-def test_reference_frame_demo_wheel_hub_parented_to_mesh_with_y_axis_orientation():
-    """The wheel orbit axis MUST differ from the other two rotations
-    in the demo. We achieve that with an intermediate wheel_hub
-    parented to the MESH (not the anchor) with OY=1 orientation, so
-    its local Z (and thus its spin axis) is world Y rather than Z.
+def test_reference_frame_demo_wheel_hub_parented_to_mesh_with_identity_orientation():
+    """The wheel rotates around its OWN axis (the ring's
+    perpendicular). The wheel_hub carries identity orientation
+    (OZ=1) so the ring lies in the hub's local XY plane and the spin
+    animation rotates around the local Z — i.e., the ring's natural
+    perpendicular. Parent stays on the mesh so the wheel still
+    orbits the mesh's position.
 
-    Anchor spin → Z, mesh spin → Z, wheel via hub → Y. If anyone
-    changes this back to parent_frame: spinning_frame the wheel ends
-    up on the SAME axis as the anchor's spin and the "third axis"
-    teaching point is lost."""
+    Earlier versions of this demo used OY=1 on the hub to land the
+    wheel rotation on a "third axis". The user asked for the simpler
+    visual: rotate around the circle's own axis. If anyone restores
+    the OY=1 rotation, this test fires."""
     items = reference_frame_demo()
     by_label = {it["label"]: it for it in items}
     hub = by_label.get("spinning_frame_wheel_hub")
     assert hub is not None, "expected an intermediate wheel_hub"
     assert hub["parent_frame"] == "spinning_frame_attached_mesh", (
-        "wheel_hub must parent to the MESH (not the anchor) so the "
-        "wheel orbits around the mesh — see the demo docstring"
+        "wheel_hub must parent to the mesh so the wheel orbits the "
+        "mesh, not the anchor"
     )
-    # OY=1 + OX=0 + OZ=0 puts local Z along world Y.
+    # Identity orientation: OZ=1, others 0.
     pose = hub["pose"]
     assert pose["ox"] == 0
-    assert pose["oy"] == 1
-    assert pose["oz"] == 0
-    # And the hub spins (otherwise the orbit doesn't happen).
+    assert pose["oy"] == 0
+    assert pose["oz"] == 1, (
+        "wheel_hub must have identity orientation (OZ=1) so the "
+        "spin axis is the ring's own perpendicular"
+    )
+    # And the hub spins (otherwise the wheel doesn't rotate).
     assert hub["animation"]["mode"] == "spin"
 
 
