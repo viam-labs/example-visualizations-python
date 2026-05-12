@@ -118,6 +118,47 @@ The RDK fake at `services/worldstatestore/fake/moving_geos_world.go` uses the ob
 
 **Why we don't add every conceivable shape as sugar.** Each sugar type adds a config knob, a validation branch, a builder, and tests. The right test for "should this be a sugar type" is: do enough users want it that the sugar is worth the maintenance? `arrow` clears that bar because direction visualization is common. `cylinder`, `cone`, `torus`, `disk` likely clear it too; `mobius_strip` probably doesn't.
 
+### ply-per-vertex-colors-untested-but-plausible
+
+**Finding (provisional).** PLY natively supports per-vertex colors via
+``property uchar red/green/blue`` immediately after ``property float
+x/y/z``. The RDK's PLY reader at ``rdk/spatialmath/mesh.go:140-152``
+discards anything beyond xyz — but the viewer reads the wire bytes
+directly, not through the RDK parser, so it may honor the color
+properties even though the RDK strips them. This module's
+``colorful_sphere.ply`` is the first ship of an honest test.
+
+**What we know:**
+
+  - PLY ascii with per-vertex RGB properties is well-formed
+    (every PLY parser worth using accepts the format).
+  - ``viamrobotics/visualization::draw/transform.go::MetadataToStruct``
+    encodes ``metadata.colors`` as a base64-packed RGB byte sequence
+    and the docstring says "Pass either a single color (applied to
+    every vertex) or one color per vertex" — strongly suggesting
+    per-vertex coloring works via metadata regardless of what's in
+    the PLY.
+  - For point clouds we confirmed empirically that
+    ``metadata.colors`` overrides PCD per-point RGB. The analogous
+    behavior for meshes would mean omitting ``color`` on the item
+    lets PLY vertex colors win.
+
+**What we don't know:**
+
+  - Whether the viewer renders PLY per-vertex colors at all (vs
+    falling back to a default fill).
+  - Whether per-vertex colors via ``metadata.colors`` work for meshes
+    or only for point clouds.
+  - Whether textures (UV + image) are supported in any path. (Mesh
+    proto has no texture field; visualization library has no texture
+    option → almost certainly not supported.)
+
+**How to apply.** Until the viewer is verified, ship test assets
+both ways (PLY-embedded colors + omit metadata.colors). Falling back
+to metadata.colors with N values is the next step if PLY colors are
+silently dropped. Document the experiment outcome in this finding
+when the viewer's behavior is observed.
+
 ### invisible-intermediate-frames-for-extra-spin-axes
 
 **Finding.** Adding a rotation that's independent of all the parents above it requires an **invisible intermediate frame** carrying its own spin animation. Our `spin` mode modulates `theta`, which rotates around the entity's local Z axis. Without an intermediate frame, every entity in the chain spins around the same axis (its inherited local Z = its parent's local Z, etc., all the way up to whatever orientation is set at the root).

@@ -462,6 +462,116 @@ def write_helix_pcd(steps: int = 2400, height_mm: float = 400.0,
     return path
 
 
+def _subdivision_icosphere(subdivisions: int, radius: float):
+    """Generate an icosphere by recursively subdividing each
+    icosahedron face into 4 smaller triangles and projecting the new
+    vertices to the unit sphere. Returns (verts, faces) in unit
+    scale; caller scales to mm. Vertex/face counts:
+
+      sub=0: 12 verts / 20 faces  (icosahedron itself)
+      sub=1: 42 / 80
+      sub=2: 162 / 320
+      sub=3: 642 / 1280
+      sub=4: 2562 / 5120
+      sub=5: 10242 / 20480
+    """
+    # Start from the unit icosahedron.
+    verts_unit, faces = _icosahedron(scale_mm=1.0)  # already on unit sphere
+    # Convert to a list-of-list so we can append mid-edge vertices.
+    verts = [list(v) for v in verts_unit]
+    faces = [list(f) for f in faces]
+
+    for _ in range(subdivisions):
+        mid_cache: dict = {}
+
+        def midpoint(a: int, b: int) -> int:
+            key = (min(a, b), max(a, b))
+            if key in mid_cache:
+                return mid_cache[key]
+            va = verts[a]
+            vb = verts[b]
+            m = [(va[0] + vb[0]) * 0.5, (va[1] + vb[1]) * 0.5, (va[2] + vb[2]) * 0.5]
+            # Project to unit sphere.
+            length = math.sqrt(m[0] * m[0] + m[1] * m[1] + m[2] * m[2]) or 1.0
+            m = [m[0] / length, m[1] / length, m[2] / length]
+            idx = len(verts)
+            verts.append(m)
+            mid_cache[key] = idx
+            return idx
+
+        new_faces = []
+        for a, b, c in faces:
+            ab = midpoint(a, b)
+            bc = midpoint(b, c)
+            ca = midpoint(c, a)
+            new_faces.append([a, ab, ca])
+            new_faces.append([b, bc, ab])
+            new_faces.append([c, ca, bc])
+            new_faces.append([ab, bc, ca])
+        faces = new_faces
+
+    # Scale to the requested radius (in mm).
+    verts_mm = [(v[0] * radius, v[1] * radius, v[2] * radius) for v in verts]
+    return verts_mm, [tuple(f) for f in faces]
+
+
+def write_colorful_sphere_ply(
+    subdivisions: int = 4,
+    radius_mm: float = 90.0,
+) -> Path:
+    """High-poly icosphere with per-vertex rainbow colors derived from
+    spherical coordinates. At ``subdivisions=4`` this is 2562 vertices
+    / 5120 triangles — smoothly-shaded sphere with rainbow color.
+
+    The point of this asset is to test whether the Viam 3D scene
+    viewer honors per-vertex PLY colors. If it does, this renders as
+    a smooth rainbow sphere. If it doesn't, the metadata.colors
+    fallback (or the default fill) takes over and the sphere shows
+    as a single color.
+    """
+    from src.geometries import _ply_ascii_bytes
+
+    verts_mm, faces = _subdivision_icosphere(subdivisions, radius_mm)
+
+    # Rainbow color per vertex, derived from spherical coordinates.
+    # Hue cycles with longitude (atan2 around Z); brightness varies
+    # mildly with latitude so the poles are recognizable without
+    # going pure black/white.
+    colors: list = []
+    for (x, y, z) in verts_mm:
+        # Normalize to unit sphere for spherical coordinates.
+        r = math.sqrt(x * x + y * y + z * z) or 1.0
+        nx, ny, nz = x / r, y / r, z / r
+        # Hue from longitude in [0, 1).
+        hue = (math.atan2(ny, nx) + math.pi) / (2 * math.pi)
+        # Latitude in [-1, 1] → value in [0.6, 1.0] (mild shading).
+        latitude = max(-1.0, min(1.0, nz))
+        value = 0.7 + 0.3 * (1 - abs(latitude))
+        # HSV → RGB.
+        i_h = int(hue * 6) % 6
+        ff = hue * 6 - int(hue * 6)
+        p = value * (1 - 1.0)
+        q = value * (1 - 1.0 * ff)
+        tt = value * (1 - 1.0 * (1 - ff))
+        if i_h == 0:
+            r_, g_, b_ = value, tt, p
+        elif i_h == 1:
+            r_, g_, b_ = q, value, p
+        elif i_h == 2:
+            r_, g_, b_ = p, value, tt
+        elif i_h == 3:
+            r_, g_, b_ = p, q, value
+        elif i_h == 4:
+            r_, g_, b_ = tt, p, value
+        else:
+            r_, g_, b_ = value, p, q
+        colors.append((int(r_ * 255), int(g_ * 255), int(b_ * 255)))
+
+    path = OUT / "colorful_sphere.ply"
+    path.write_bytes(_ply_ascii_bytes(verts_mm, faces, vertex_colors=colors))
+    return path
+
+
 def write_torus_ply(
     major_radius_mm: float = 90.0,
     minor_radius_mm: float = 30.0,
@@ -594,6 +704,7 @@ if __name__ == "__main__":
         write_arrow_ply(),
         write_torus_ply(),
         write_teapot_ply(),
+        write_colorful_sphere_ply(),
         write_bunny_stl(),
         write_helix_pcd(),
     ]

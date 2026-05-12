@@ -147,6 +147,19 @@ def primitives() -> List[Mapping[str, Any]]:
             "opacity": 1.0,
             "animation": {"mode": "none"},
         },
+        # Colorful subdivision icosphere — 5120 triangles with per-
+        # vertex rainbow colors embedded in the PLY. The point of
+        # this item is to test whether the viewer honors PLY vertex
+        # colors. No `color` field here (we want the embedded RGB to
+        # render, not a uniform metadata tint).
+        {
+            "type": "mesh",
+            "label": "demo_colorful_sphere",
+            "pose": _identity_pose(x=5 * sp),
+            "mesh_path": "assets/colorful_sphere.ply",
+            "opacity": 1.0,
+            "animation": {"mode": "none"},
+        },
         # NOTE: no `color` on purpose — when metadata.colors is set on
         # a point cloud, the viewer uses it as a uniform tint and
         # IGNORES the per-point RGB embedded in the PCD body. Omitting
@@ -155,7 +168,7 @@ def primitives() -> List[Mapping[str, Any]]:
         {
             "type": "pointcloud",
             "label": "demo_pointcloud",
-            "pose": _identity_pose(x=5 * sp),
+            "pose": _identity_pose(x=6 * sp),
             "pointcloud_path": "assets/helix.pcd",
             "opacity": 1.0,
             "animation": {"mode": "none"},

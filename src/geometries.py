@@ -254,25 +254,56 @@ def arrow_ply_bytes(
 def _ply_ascii_bytes(
     verts_mm: List[Tuple[float, float, float]],
     faces: List[Tuple[int, ...]],
+    vertex_colors: Optional[List[Tuple[int, int, int]]] = None,
 ) -> bytes:
     """Build an ASCII PLY byte buffer from vertices (in mm) and faces.
     Coordinates are divided by 1000 so the file is in meters (the
-    convention RDK's PLY reader expects)."""
-    lines = [
+    convention RDK's PLY reader expects).
+
+    If ``vertex_colors`` is provided (must be the same length as
+    ``verts_mm``), per-vertex RGB color properties are emitted in the
+    PLY in addition to position. Whether the Viam 3D scene viewer
+    honors per-vertex PLY colors is an open question — the RDK's
+    PLY reader at ``rdk/spatialmath/mesh.go:140-152`` only extracts
+    x/y/z and discards color attributes, but the viewer reads the
+    wire bytes directly and may parse colors itself.
+    """
+    has_colors = vertex_colors is not None
+    if has_colors and len(vertex_colors) != len(verts_mm):
+        raise ValueError(
+            f"vertex_colors length {len(vertex_colors)} != vertex count {len(verts_mm)}"
+        )
+    header = [
         "ply",
         "format ascii 1.0",
         f"element vertex {len(verts_mm)}",
         "property float x",
         "property float y",
         "property float z",
+    ]
+    if has_colors:
+        header.extend([
+            "property uchar red",
+            "property uchar green",
+            "property uchar blue",
+        ])
+    header.extend([
         f"element face {len(faces)}",
         "property list uchar int vertex_indices",
         "end_header",
-    ]
-    for (x, y, z) in verts_mm:
-        lines.append(
-            f"{x / 1000.0:.6f} {y / 1000.0:.6f} {z / 1000.0:.6f}"
-        )
+    ])
+    lines = list(header)
+    if has_colors:
+        for (x, y, z), (r, g, b) in zip(verts_mm, vertex_colors):
+            lines.append(
+                f"{x / 1000.0:.6f} {y / 1000.0:.6f} {z / 1000.0:.6f} "
+                f"{int(r) & 0xFF} {int(g) & 0xFF} {int(b) & 0xFF}"
+            )
+    else:
+        for (x, y, z) in verts_mm:
+            lines.append(
+                f"{x / 1000.0:.6f} {y / 1000.0:.6f} {z / 1000.0:.6f}"
+            )
     for face in faces:
         lines.append(f"{len(face)} " + " ".join(str(i) for i in face))
     return ("\n".join(lines) + "\n").encode("ascii")

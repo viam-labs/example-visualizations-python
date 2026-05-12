@@ -30,8 +30,9 @@ def test_primitives_emits_one_of_every_supported_type():
     assert types.count("capsule") == 1
     assert types.count("point") == 1
     assert types.count("arrow") == 1
-    # 4 meshes: icosahedron PLY, bunny STL, torus PLY, teapot PLY.
-    assert types.count("mesh") == 4
+    # 5 meshes: icosahedron PLY, bunny STL, torus PLY, teapot PLY,
+    # colorful_sphere PLY (the per-vertex-colored mesh).
+    assert types.count("mesh") == 5
     assert types.count("pointcloud") == 1
     assert set(types) == set(SUPPORTED_TYPES)
 
@@ -76,19 +77,24 @@ def test_primitives_spaced_along_x():
 
 def test_primitives_each_solid_item_has_color():
     """The default scene relies on color to distinguish primitives, so
-    every SOLID item must carry a color override (not just rely on the
-    viewer's default fill).
+    most items carry a color override. Two exceptions:
 
-    Point clouds are the exception: they omit `color` on purpose so
-    the viewer falls back to the embedded per-point PCD RGB instead
-    of overriding it with a uniform tint. See
-    LESSONS.md::pcd-colors-precedence."""
+      - Point clouds: omit `color` so the viewer falls back to the
+        embedded per-point PCD RGB. See LESSONS.md::pcd-colors-precedence.
+      - Per-vertex-colored meshes (e.g. assets/colorful_sphere.ply):
+        omit `color` so the PLY's embedded vertex colors render
+        instead of being overridden by a uniform metadata tint.
+    """
+    omit_color_paths = {"assets/colorful_sphere.ply"}
     for it in primitives():
         if it["type"] == "pointcloud":
+            assert "color" not in it
+            continue
+        if it.get("mesh_path") in omit_color_paths:
             assert "color" not in it, (
-                "pointcloud preset items must omit `color` so the "
-                "embedded PCD RGB renders; setting color overrides it "
-                "with a uniform tint"
+                f"{it['label']!r} uses {it['mesh_path']!r} which has "
+                "embedded per-vertex colors; setting `color` would "
+                "override them with a uniform tint"
             )
             continue
         assert "color" in it
