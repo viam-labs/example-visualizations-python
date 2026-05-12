@@ -47,6 +47,7 @@ Want a different default scene? Set `preset` to one of:
 - `color_wheel` — 10 spheres around a ring, HSV-swept hue
 - `mesh_gallery` — bunny, cube, helix side by side
 - `orientation_vectors` — same capsule at OX/OY/OZ permutations, with a `theta` demo
+- `reference_frame_demo` — a spinning anchor + colored X/Y/Z triad parented to it + a child mesh that spins on its own axis. Demonstrates that the renderer composes poses through the Viam frame system: each child's `parent_frame` is the **label of another emitted Transform**, and the child inherits the parent's rotation through the chain.
 
 ## Config reference
 
@@ -171,6 +172,48 @@ both modes side by side is half the point of the module.
   vector axes themselves, reconfigure the item (whole pose) — the
   field-mask path for those components hasn't been confirmed against
   the renderer.
+
+## Composing through the Viam reference frame system
+
+Every item in this module emits a `Transform` whose `reference_frame`
+is the item's `label`, and whose `pose_in_observer_frame.reference_frame`
+is the item's `parent_frame` (defaulting to the service's
+`parent_frame`, defaulting to `"world"`). So you can chain items by
+setting another item's `parent_frame` to the **label of an emitted
+item**:
+
+```jsonc
+{
+  "items": [
+    {"type": "sphere", "label": "anchor",
+     "pose": {"x": 0, "y": 0, "z": 0},
+     "radius_mm": 20,
+     "animation": {"mode": "spin", "period_s": 5}},
+
+    {"type": "capsule", "label": "attached",
+     "parent_frame": "anchor",                      // <-- chain
+     "pose": {"x": 200, "y": 0, "z": 0,
+              "ox": 1, "oy": 0, "oz": 0, "theta": 0},
+     "radius_mm": 20, "length_mm": 150,
+     "animation": {"mode": "spin", "period_s": 2}}  // own spin
+  ]
+}
+```
+
+The `attached` capsule's pose is interpreted relative to `anchor`. If
+the renderer composes through chained frames, the capsule orbits with
+the anchor's rotation AND spins on its own axis. See the
+`reference_frame_demo` preset for the full version with a colored
+X/Y/Z triad.
+
+> **Caveat.** No reference world-state-store module in the RDK fakes
+> or in viam-labs uses chained emitted-Transform parents — they always
+> parent to a known machine-config frame (`"world"`, `camera.name`).
+> The `reference_frame_demo` preset is the first place to verify
+> that chained composition actually works in the viewer. If the axis
+> capsules and attached mesh appear in world space without orbiting,
+> the renderer is only honoring known-frame parents and we'd need to
+> compose the poses ourselves before emitting.
 
 ## Development
 

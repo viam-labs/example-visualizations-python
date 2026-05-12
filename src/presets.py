@@ -25,6 +25,7 @@ PRESET_NAMES = (
     "color_wheel",
     "mesh_gallery",
     "orientation_vectors",
+    "reference_frame_demo",
 )
 
 # Default spacing between primitives in the row-style preset (mm).
@@ -237,11 +238,106 @@ def orientation_vectors() -> List[Mapping[str, Any]]:
     return items
 
 
+def reference_frame_demo() -> List[Mapping[str, Any]]:
+    """Compose poses through the Viam reference frame system.
+
+    Emits five items that form a parent-child chain:
+
+      1. ``spinning_frame`` — a small near-transparent sphere at the
+         origin that spins around its Z axis. This is the **anchor**;
+         other items reference its label as ``parent_frame`` to attach.
+      2. ``spinning_frame_axis_x`` (red), ``_axis_y`` (green),
+         ``_axis_z`` (blue) — three capsules forming a coordinate
+         triad, each parented to ``spinning_frame``. They are static
+         relative to the anchor; they spin because the anchor does.
+      3. ``spinning_frame_attached_mesh`` — the bunny PLY parented to
+         ``spinning_frame``. It also has its own ``spin`` animation,
+         so it rotates **both** with the frame and on its own axis.
+
+    This preset is also a renderer-behavior probe: it's the only place
+    in this module (or in any other world-state-store reference I
+    found in the RDK or viam-labs) where an emitted Transform's
+    ``pose_in_observer_frame.reference_frame`` matches the
+    ``reference_frame`` of another emitted Transform. If the viewer
+    composes through that chain, the axes triad and the mesh both
+    orbit the anchor's rotation. If it does not, the children render
+    in world space and the demo looks broken.
+    """
+    axis_length_mm = 200.0
+    axis_radius_mm = 12.0
+    half = axis_length_mm / 2.0
+    return [
+        # Anchor. Spinning this frame propagates to its children.
+        {
+            "type": "sphere",
+            "label": "spinning_frame",
+            "pose": _identity_pose(),
+            "radius_mm": 12,
+            "color": {"r": 255, "g": 255, "b": 255},
+            "opacity": 0.6,
+            "animation": {"mode": "spin", "period_s": 6},
+        },
+        # +X axis (red).
+        {
+            "type": "capsule",
+            "label": "spinning_frame_axis_x",
+            "parent_frame": "spinning_frame",
+            "pose": {"x": half, "y": 0, "z": 0,
+                     "ox": 1, "oy": 0, "oz": 0, "theta": 0},
+            "radius_mm": axis_radius_mm,
+            "length_mm": axis_length_mm,
+            "color": {"r": 230, "g": 25, "b": 75},
+            "opacity": 1.0,
+            "animation": {"mode": "none"},
+        },
+        # +Y axis (green).
+        {
+            "type": "capsule",
+            "label": "spinning_frame_axis_y",
+            "parent_frame": "spinning_frame",
+            "pose": {"x": 0, "y": half, "z": 0,
+                     "ox": 0, "oy": 1, "oz": 0, "theta": 0},
+            "radius_mm": axis_radius_mm,
+            "length_mm": axis_length_mm,
+            "color": {"r": 60, "g": 180, "b": 75},
+            "opacity": 1.0,
+            "animation": {"mode": "none"},
+        },
+        # +Z axis (blue) — capsule's default orientation extends up.
+        {
+            "type": "capsule",
+            "label": "spinning_frame_axis_z",
+            "parent_frame": "spinning_frame",
+            "pose": {"x": 0, "y": 0, "z": half,
+                     "ox": 0, "oy": 0, "oz": 1, "theta": 0},
+            "radius_mm": axis_radius_mm,
+            "length_mm": axis_length_mm,
+            "color": {"r": 0, "g": 130, "b": 200},
+            "opacity": 1.0,
+            "animation": {"mode": "none"},
+        },
+        # The attached mesh — orbits with the frame AND spins on its
+        # own axis at a different rate, so the composition is visible.
+        {
+            "type": "mesh",
+            "label": "spinning_frame_attached_mesh",
+            "parent_frame": "spinning_frame",
+            "pose": {"x": 350, "y": 0, "z": 0,
+                     "ox": 0, "oy": 0, "oz": 1, "theta": 0},
+            "mesh_path": "assets/bunny.ply",
+            "color": {"r": 240, "g": 200, "b": 50},
+            "opacity": 1.0,
+            "animation": {"mode": "spin", "period_s": 2},
+        },
+    ]
+
+
 PRESETS = {
     "all_primitives": all_primitives,
     "color_wheel": color_wheel,
     "mesh_gallery": mesh_gallery,
     "orientation_vectors": orientation_vectors,
+    "reference_frame_demo": reference_frame_demo,
 }
 
 

@@ -11,6 +11,7 @@ from src.presets import (
     load,
     mesh_gallery,
     orientation_vectors,
+    reference_frame_demo,
 )
 
 
@@ -136,6 +137,69 @@ def test_orientation_vectors_covers_x_y_z_and_theta_demo():
     assert "ov_+Y" in labels
     assert "ov_+Z" in labels
     assert any("theta" in l.lower() for l in labels)
+
+
+# ---------- reference_frame_demo ----------
+
+def test_reference_frame_demo_items_form_parent_chain():
+    """The anchor item has no parent_frame override (defaults to
+    service's parent_frame). The three axis capsules + the attached
+    mesh all reference the anchor's label as parent_frame. This is the
+    Viam-frame-system part of the demo — if any of the child entries
+    don't reference the anchor, the chain breaks."""
+    items = reference_frame_demo()
+    by_label = {it["label"]: it for it in items}
+    anchor = by_label["spinning_frame"]
+    # Anchor has no parent_frame field (or its parent is whatever the
+    # service default is — not another emitted item).
+    assert "parent_frame" not in anchor or anchor.get("parent_frame") in (None, "")
+    # Children parent to the anchor.
+    for child_label in (
+        "spinning_frame_axis_x",
+        "spinning_frame_axis_y",
+        "spinning_frame_axis_z",
+        "spinning_frame_attached_mesh",
+    ):
+        assert by_label[child_label]["parent_frame"] == "spinning_frame", (
+            f"{child_label} must parent to spinning_frame for the "
+            "frame-composition demo to work"
+        )
+
+
+def test_reference_frame_demo_axis_capsules_use_distinct_colors():
+    """Axes need to be distinguishable at a glance — using the
+    near-universal X=red, Y=green, Z=blue convention. If two axes
+    end up the same color the demo loses its teaching value."""
+    items = reference_frame_demo()
+    by_label = {it["label"]: it for it in items}
+    rx = by_label["spinning_frame_axis_x"]["color"]
+    gy = by_label["spinning_frame_axis_y"]["color"]
+    bz = by_label["spinning_frame_axis_z"]["color"]
+    # Dominant channel check, not exact: X red dominant, Y green, Z blue.
+    assert rx["r"] > rx["g"] and rx["r"] > rx["b"]
+    assert gy["g"] > gy["r"] and gy["g"] > gy["b"]
+    assert bz["b"] > bz["r"] and bz["b"] > bz["g"]
+
+
+def test_reference_frame_demo_anchor_and_attached_mesh_both_spin():
+    """Both rotations must be present for the user to see frame
+    composition: the anchor spins (its children inherit), and the
+    attached mesh ALSO spins on its own axis (so the user sees both
+    rotations compose)."""
+    items = reference_frame_demo()
+    by_label = {it["label"]: it for it in items}
+    assert by_label["spinning_frame"]["animation"]["mode"] == "spin"
+    assert by_label["spinning_frame_attached_mesh"]["animation"]["mode"] == "spin"
+
+
+def test_reference_frame_demo_static_axes():
+    """The axis capsules themselves are static — they appear to spin
+    only because their parent (the anchor) spins via the frame system.
+    Making them animate independently would muddle the teaching point."""
+    items = reference_frame_demo()
+    by_label = {it["label"]: it for it in items}
+    for axis in ("spinning_frame_axis_x", "spinning_frame_axis_y", "spinning_frame_axis_z"):
+        assert by_label[axis]["animation"]["mode"] == "none"
 
 
 # ---------- registry + load ----------
