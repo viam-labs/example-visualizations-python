@@ -756,24 +756,24 @@ def all_preset() -> List[Mapping[str, Any]]:
                                   vectors row in the -Y direction)
       - orientation_vectors  y = -row
       - primitives           y =   0
-      - force_vector_demo    y = +row, x = -500
-                                 (left of the pulsing sphere — sits
-                                  on the "other side" of the sphere
-                                  from the rest of the morph row;
-                                  the precessing arrow has the same
-                                  "geometry & property changes"
-                                  theme as the other morph items)
-      - geometry_morph       y = +row, x ∈ [0, +1700]
-                                 (pulsing sphere, stretching box,
-                                  breathing capsule, flickering grid)
-      - frame_composition    y = +2*row, x ∈ [-1000, +1500]
-                                 (spinning frame + orbiting wheel +
-                                  arm)
-      - lifecycle_demo       y = +3*row
+      - lifecycle_demo       y = +row
                                  (5 staggered-phase boxes cycling
                                   through the official appearing →
                                   alive → disappearing → gone
-                                  color convention)
+                                  color convention — sits between
+                                  the static primitives and the
+                                  morph row since the lifecycle
+                                  colors fade in/out, a transition
+                                  between "always-on" and "always
+                                  changing")
+      - force_vector_demo    y = +2*row, x = -500
+                                 (left of the pulsing sphere)
+      - geometry_morph       y = +2*row, x ∈ [0, +1700]
+                                 (pulsing sphere, stretching box,
+                                  breathing capsule, flickering grid)
+      - frame_composition    y = +3*row, x ∈ [-1000, +1500]
+                                 (spinning frame + orbiting wheel +
+                                  arm)
     """
     row = 1200.0
     items: List[Mapping[str, Any]] = []
@@ -785,18 +785,19 @@ def all_preset() -> List[Mapping[str, Any]]:
     items.extend(traj)
     items.extend(_offset_base_items_y(orientation_vectors(), -row))
     items.extend(_offset_base_items_y(primitives(), 0.0))
+    # Lifecycle convention demo — sits between the static primitives
+    # row and the geometry-morph row.
+    items.extend(_offset_base_items_y(lifecycle_demo(), row))
     # Morph row with force_vector tucked in alongside the four
     # geometry/property demos. force_vector exercises all of those
     # categories at once (size + orientation + color), so it
     # belongs visually with the rest of the row.
-    items.extend(_offset_base_items_y(geometry_morph(), row))
+    items.extend(_offset_base_items_y(geometry_morph(), 2 * row))
     fv = _offset_base_items(force_vector_demo(), "x", -500.0)
-    fv = _offset_base_items(fv, "y", row)
+    fv = _offset_base_items(fv, "y", 2 * row)
     items.extend(fv)
     # Moving-items row: arm + spinning frame.
-    items.extend(_offset_base_items_y(frame_composition(), 2 * row))
-    # Lifecycle convention demo on its own row.
-    items.extend(_offset_base_items_y(lifecycle_demo(), 3 * row))
+    items.extend(_offset_base_items_y(frame_composition(), 3 * row))
     return items
 
 
