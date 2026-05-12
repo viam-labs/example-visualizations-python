@@ -33,13 +33,16 @@ def test_minimal_config_with_tick_hz_and_strategy():
 
 
 def test_preset_field_accepts_known_names():
-    for name in ("primitives", "color_wheel", "orientation_vectors",
+    for name in ("primitives", "orientation_vectors",
                 "frame_composition", "all"):
         SceneSprites.validate_config(_cfg({"preset": name}))
-    # Sanity: PRESET_NAMES is the canonical registry, no surprises.
+    # Sanity: PRESET_NAMES is the canonical registry.
     from src.presets import PRESET_NAMES
-    assert "color_wheel" in PRESET_NAMES
     assert "frame_composition" in PRESET_NAMES
+    # color_wheel as a standalone preset was retired in favor of the
+    # orbiting wheel inside frame_composition; this guards against
+    # someone restoring it without a deliberate reason.
+    assert "color_wheel" not in PRESET_NAMES
 
 
 def test_items_list_with_each_primitive_type_validates():

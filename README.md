@@ -44,7 +44,6 @@ orange STL cube → cyan helical PCD point cloud.
 Want a different default scene? Set `preset` to one of:
 
 - `primitives` (default) — every supported primitive type plus a tour of more complex meshes. 10 items in a row: box → sphere → capsule → point → arrow → icosahedron (PLY) → bunny (STL) → torus (PLY) → Utah teapot (PLY) → helix (PCD).
-- `color_wheel` — 10 static spheres around a ring, HSV-swept hue. The hue-gallery view; for the *orbiting* version see `frame_composition`.
 - `orientation_vectors` — small sphere markers at axis-aligned orientation vectors, with `show_axes_helper: true` so the viewer renders an RGB XYZ triad at each entity's origin. Shows how `(OX, OY, OZ, theta)` maps to a coordinate frame.
 - `frame_composition` — two chained-parent-frame demos side by side. **Left:** a spinning anchor + RGB axes triad + an attached mesh placed further out (now 700 mm from the anchor) + a ring of hue-swept spheres orbiting the mesh around its own axis. **Right:** an articulated robot arm — base swings on Z, shoulder/upper, elbow swings on its joint, forearm, wrist swings (roll), and a 2-finger gripper that opens and closes. The wrist's roll is visible *because* of the parallel-finger gripper: a symmetric end-effector would hide the rotation. All animations use `swing` (bounded RoM) on the arm rather than `spin` (continuous rotation), matching real arm behavior.
 - `all` — every preset above, stacked along Y at ~1.8 m intervals. One-stop tour.

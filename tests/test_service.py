@@ -260,7 +260,7 @@ async def test_reconfigure_loads_default_preset_when_no_items_or_preset():
 async def test_reconfigure_with_explicit_items_overrides_preset():
     s = _bare_service()
     s.reconfigure(_cfg({
-        "preset": "color_wheel",
+        "preset": "orientation_vectors",
         "items": [_sphere_item("only_me")],
     }), {})
     assert list(s._state.keys()) == ["only_me"]

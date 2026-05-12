@@ -9,19 +9,21 @@ Presets:
   - ``primitives``: every supported primitive plus a tour of more
     complex meshes (torus, teapot) and a point cloud. Single row
     along X — the default first-install scene.
-  - ``color_wheel``: ten static spheres arranged in a circle, HSV-
-    swept hue. The hue-gallery view.
   - ``orientation_vectors``: small sphere markers at axis-aligned
     orientation vectors carrying ``show_axes_helper: True`` so the
     viewer renders an RGB XYZ triad at each entity's origin.
   - ``frame_composition``: two chained-parent-frame demos side by
     side. **Spinning frame demo:** anchor sphere + RGB axes triad +
-    attached mesh + a ring of hue-swept spheres orbiting the anchor
-    (the orbiting wheel is the same idea as ``color_wheel`` but
-    parented to the anchor so it moves with the spin). **Arm demo:**
-    articulated kinematic chain. Probes whether the renderer
-    composes poses through chained ``parent_frame`` links.
+    attached mesh + a ring of hue-swept spheres orbiting the mesh.
+    **Arm demo:** articulated kinematic chain with a 2-finger
+    gripper. Probes whether the renderer composes poses through
+    chained ``parent_frame`` links.
   - ``all``: every preset above, stacked along Y. One-stop tour.
+
+The hue-swept color wheel that used to be a standalone preset now
+lives only as children of the spinning anchor inside
+``frame_composition``; static-ring demand was low enough that the
+duplicate didn't earn its keep.
 """
 import colorsys
 import math
@@ -31,7 +33,6 @@ from typing import Any, List, Mapping
 PRESET_NAMES = (
     "all",
     "primitives",
-    "color_wheel",
     "orientation_vectors",
     "frame_composition",
 )
@@ -696,15 +697,13 @@ def all_preset() -> List[Mapping[str, Any]]:
 
     Row layout (Y from negative to positive):
 
-      - orientation_vectors  y = -2*row
-      - color_wheel          y = -row
+      - orientation_vectors  y = -row
       - primitives           y =   0
       - frame_composition    y = +row  (spinning frame + orbiting wheel + arm)
     """
     row = 1800.0
     items: List[Mapping[str, Any]] = []
-    items.extend(_offset_base_items_y(orientation_vectors(), -2 * row))
-    items.extend(_offset_base_items_y(color_wheel(), -row))
+    items.extend(_offset_base_items_y(orientation_vectors(), -row))
     items.extend(_offset_base_items_y(primitives(), 0.0))
     items.extend(_offset_base_items_y(frame_composition(), row))
     return items
@@ -713,7 +712,6 @@ def all_preset() -> List[Mapping[str, Any]]:
 PRESETS = {
     "all": all_preset,
     "primitives": primitives,
-    "color_wheel": color_wheel,
     "orientation_vectors": orientation_vectors,
     "frame_composition": frame_composition,
 }

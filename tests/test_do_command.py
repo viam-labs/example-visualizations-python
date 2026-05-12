@@ -245,12 +245,11 @@ async def test_clear_returns_removed_count_and_empties_state():
 async def test_preset_replaces_existing_items():
     s = _bare_service()
     await s.do_command({"command": "add", "item": _box_item("manual")})
-    out = await s.do_command({"command": "preset", "name": "color_wheel"})
-    assert out["loaded"] == "color_wheel"
-    assert out["count"] == 10
-    # The manually-added item is gone — preset is a hard reset.
+    out = await s.do_command({"command": "preset", "name": "orientation_vectors"})
+    assert out["loaded"] == "orientation_vectors"
+    # orientation_vectors has 5 sphere markers; the manual box is gone.
+    assert out["count"] == 5
     assert "manual" not in s._state
-    # Ten new sphere labels are present.
     assert all(s._state[label]["item"]["type"] == "sphere" for label in s._state)
 
 
