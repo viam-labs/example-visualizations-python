@@ -79,7 +79,7 @@ ATTR_ITEMS = "items"
 DEFAULT_TICK_HZ = 30.0
 DEFAULT_UUID_STRATEGY = "stable"
 DEFAULT_PARENT_FRAME = "world"
-DEFAULT_PRESET = "primitives"
+DEFAULT_PRESET = "all"
 UUID_STRATEGIES = ("stable", "versioned")
 
 
