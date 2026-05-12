@@ -181,7 +181,7 @@ class SceneSprites(WorldStateStore, EasyResource):
     """
 
     MODEL: ClassVar[Model] = Model(
-        ModelFamily("shrews-testing", "example-visualizations"), "scene-primitives",
+        ModelFamily("viam", "example-visualizations"), "scene-primitives",
     )
 
     def __init__(self, name: str):
