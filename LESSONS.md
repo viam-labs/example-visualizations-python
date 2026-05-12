@@ -587,17 +587,17 @@ Related: `validate_config` must return `Tuple[Sequence[str], Sequence[str]]` —
 
 ## Library plan
 
-The accumulated gotchas in this doc all want to live in a reusable library. The original sketch here was a Python design pointed at the `viam-python-sdk`. Decision (2026-05-12): the library should be **Go**, not Python — the canonical viewer-side reference (`viamrobotics/visualization`) is Go, and the eventual upstream merge target is that repo. A Go library can live next to the protos, share types with the viewer, and graduate from `viam-labs/` into the official package with minimal API churn.
+The accumulated gotchas in this doc all want to live in a reusable library. Decision (2026-05-12): **ViamVizHelpers, Python.** Originally sketched in Python, briefly retargeted as Go for proximity to `viamrobotics/visualization`, then back to Python — most module authors write Python today, this module is Python, and the existing prototype (`src/{geometries,animation,presets,service}.py`) is the working reference. A Go port is still on the table for the long-term upstream merge into `viamrobotics/visualization`, but Python ships sooner and helps actual users.
 
-The full Go library design lives in `GO_LIBRARY_PLAN.md` in this repo. That document is the source of truth for:
+The full library design lives in `LIBRARY_PLAN.md` in this repo. That document is the source of truth for:
 
 - Package layout and import paths
-- Public API surface (Scene builder, geometry constructors, animation specs, embeddable service base)
-- The phased delivery plan and which gotchas each phase resolves
+- Public API surface (Scene class, geometry constructors, animation classes, inheritable ServiceBase)
+- The delivery order and which gotchas each step resolves
 - Testing strategy
-- The migration path toward merging into `viamrobotics/visualization`
+- The migration path for this module (3425 → ~820 lines) and the upstream landing options
 
-The Python equivalent of the planned library — `src/{geometries,animation,presets,service}.py` in this repo — is the prototype the Go API is derived from. Anything the Python module does and was painful, the Go library should make trivial.
+The Python code in this repo IS the prototype the library is being extracted from. Anything the module does and was painful, the library should make trivial.
 
 ## Tutorial outline (to be expanded)
 

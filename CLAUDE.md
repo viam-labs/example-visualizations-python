@@ -1,6 +1,6 @@
 # CLAUDE.md — example-visualizations
 
-Operational context for future agents working on this repo. Read alongside `README.md` (user-facing), `LESSONS.md` (accumulating findings that feed the tutorial and bug/feature requests for the viz team), and `GO_LIBRARY_PLAN.md` (design for the Go helper library this module's findings are aimed at).
+Operational context for future agents working on this repo. Read alongside `README.md` (user-facing), `LESSONS.md` (accumulating findings that feed the tutorial and bug/feature requests for the viz team), and `LIBRARY_PLAN.md` (design for the ViamVizHelpers Python helper library this module's findings are aimed at).
 
 ## What this is
 
