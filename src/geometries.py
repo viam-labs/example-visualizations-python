@@ -47,11 +47,88 @@ RENDERER_MESH_CONTENT_TYPE = "ply"
 POINT_MARKER_RADIUS_MM = 8.0
 
 
+def extract_ply_vertex_colors(
+    ply_bytes: bytes,
+) -> Optional[List[Tuple[int, int, int]]]:
+    """Parse an ASCII PLY and return per-vertex (R, G, B) tuples if
+    the file carries ``property uchar red/green/blue`` alongside
+    ``property float x/y/z``. Returns ``None`` if the PLY doesn't
+    have vertex colors or can't be parsed.
+
+    Why this exists: the Viam 3D scene viewer reads
+    ``Transform.metadata.colors`` for per-vertex coloring, not PLY's
+    own embedded vertex colors. PLY's color attributes get dropped
+    by both the RDK's reader (``rdk/spatialmath/mesh.go:140-152``,
+    which extracts only x/y/z) and the viewer. Transcoding from PLY
+    → metadata.colors makes vertex-colored PLY assets render
+    correctly without forcing users to author the colors twice.
+
+    Binary PLY is not currently supported — only ascii. PLY ascii is
+    what this module ships and is the simplest path for procedural
+    generation. If/when binary PLY input is needed, this function
+    should grow a format branch.
+    """
+    try:
+        text = ply_bytes.decode("ascii", errors="strict")
+    except UnicodeDecodeError:
+        return None
+    if not text.startswith("ply\n"):
+        return None
+    if "format ascii" not in text.split("end_header", 1)[0]:
+        return None  # binary PLY — out of scope
+
+    lines = text.split("\n")
+    vertex_count = 0
+    vertex_properties: List[str] = []
+    parsing_vertex_element = False
+    header_end_line = None
+    for i, line in enumerate(lines):
+        if line == "end_header":
+            header_end_line = i + 1
+            break
+        if line.startswith("element vertex "):
+            vertex_count = int(line.split()[-1])
+            parsing_vertex_element = True
+        elif line.startswith("element "):
+            parsing_vertex_element = False
+        elif parsing_vertex_element and line.startswith("property "):
+            vertex_properties.append(line.split()[-1])
+    if header_end_line is None or vertex_count == 0:
+        return None
+
+    # All three color channels must be present.
+    try:
+        r_idx = vertex_properties.index("red")
+        g_idx = vertex_properties.index("green")
+        b_idx = vertex_properties.index("blue")
+    except ValueError:
+        return None
+
+    colors: List[Tuple[int, int, int]] = []
+    for i in range(vertex_count):
+        line_idx = header_end_line + i
+        if line_idx >= len(lines):
+            return None
+        parts = lines[line_idx].split()
+        if len(parts) < len(vertex_properties):
+            return None
+        try:
+            colors.append((
+                int(parts[r_idx]),
+                int(parts[g_idx]),
+                int(parts[b_idx]),
+            ))
+        except (ValueError, IndexError):
+            return None
+    return colors if colors else None
+
+
 def build_metadata(
     color: Optional[Mapping[str, Any]] = None,
     opacity: Optional[float] = None,
     show_axes_helper: bool = False,
     invisible: bool = False,
+    vertex_colors: Optional[List[Tuple[int, int, int]]] = None,
 ) -> Optional[Struct]:
     """Encode metadata in the schema the 3D viewer actually reads.
 
@@ -88,7 +165,17 @@ def build_metadata(
     # falls back to embedded per-point RGB on point clouds and a
     # viewer-default fill on solids. Never returns None now.
     fields: dict = {}
-    if color is not None:
+    if vertex_colors:
+        # Per-vertex colors take precedence over uniform `color`.
+        # Pack N RGB triples; library's MetadataToStruct expects
+        # exactly this format.
+        packed = bytearray()
+        for c in vertex_colors:
+            packed.append(_clamp_u8(c[0]))
+            packed.append(_clamp_u8(c[1]))
+            packed.append(_clamp_u8(c[2]))
+        fields["colors"] = base64.b64encode(bytes(packed)).decode("ascii")
+    elif color is not None:
         rgb_bytes = bytes([
             _clamp_u8(color.get("r", 0)),
             _clamp_u8(color.get("g", 0)),
@@ -96,8 +183,10 @@ def build_metadata(
         ])
         fields["colors"] = base64.b64encode(rgb_bytes).decode("ascii")
     else:
-        # Empty colors → viewer falls back to embedded (PCD) RGB or
-        # default fill. We MUST still emit the key.
+        # Empty colors → viewer falls back to its default fill for
+        # solids. (For point clouds this used to fall back to PCD
+        # embedded RGB; for meshes it appears to fall back to a
+        # default-dark fill, NOT to PLY-embedded colors.)
         fields["colors"] = ""
     fields["color_format"] = 1.0  # COLOR_FORMAT_RGB
     alpha = 255 if opacity is None else _clamp_u8(round(float(opacity) * 255))

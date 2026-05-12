@@ -160,11 +160,21 @@ def _build_transform(
     uuid: bytes,
     parent_frame: str,
 ) -> Transform:
+    # If the user didn't set a uniform `color` AND the mesh has
+    # per-vertex colors embedded in the PLY, transcode those into
+    # metadata.colors so the viewer renders them. The viewer ignores
+    # PLY's own embedded vertex colors; metadata.colors is its only
+    # per-vertex color channel.
+    vertex_colors = None
+    user_color = item.get("color")
+    if user_color is None and geom.HasField("mesh"):
+        vertex_colors = geometries.extract_ply_vertex_colors(geom.mesh.mesh)
     metadata = geometries.build_metadata(
-        item.get("color"),
+        user_color,
         item.get("opacity"),
         show_axes_helper=bool(item.get("show_axes_helper", False)),
         invisible=bool(item.get("invisible", False)),
+        vertex_colors=vertex_colors,
     )
     return Transform(
         uuid=uuid,

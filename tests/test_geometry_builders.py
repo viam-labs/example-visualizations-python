@@ -17,6 +17,7 @@ from src.geometries import (
     build_pointcloud,
     build_pose,
     build_sphere,
+    extract_ply_vertex_colors,
     infer_mesh_content_type,
     load_mesh_bytes_as_ply,
     read_asset,
@@ -124,6 +125,26 @@ def test_build_metadata_invisible_always_emitted():
     md_on = build_metadata(color={"r": 0, "g": 0, "b": 0}, invisible=True)
     assert struct_to_dict(md_off)["invisible"] is False
     assert struct_to_dict(md_on)["invisible"] is True
+
+
+def test_build_metadata_with_vertex_colors_packs_N_triples():
+    """Per-vertex colors take precedence over single color and pack
+    as base64-encoded RGB byte sequence of length N*3."""
+    vcols = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (128, 128, 128)]
+    md = build_metadata(vertex_colors=vcols)
+    d = struct_to_dict(md)
+    raw = _b64.b64decode(d["colors"])
+    assert len(raw) == 4 * 3
+    assert raw == bytes([255, 0, 0, 0, 255, 0, 0, 0, 255, 128, 128, 128])
+
+
+def test_build_metadata_vertex_colors_override_single_color():
+    """If both are given, vertex_colors win (the per-vertex view is
+    strictly more specific than a uniform tint)."""
+    vcols = [(10, 20, 30), (40, 50, 60)]
+    md = build_metadata(color={"r": 200, "g": 200, "b": 200}, vertex_colors=vcols)
+    raw = _b64.b64decode(struct_to_dict(md)["colors"])
+    assert raw == bytes([10, 20, 30, 40, 50, 60])
 
 
 def test_build_metadata_clamps_color_to_0_255():
@@ -350,6 +371,77 @@ def test_load_mesh_bytes_as_ply_converts_stl():
     ])
     out = load_mesh_bytes_as_ply(stl, "asset.stl")
     assert out.startswith(b"ply\n")
+
+
+# ---------- extract_ply_vertex_colors ----------
+
+def test_extract_ply_vertex_colors_on_uncolored_ply():
+    """An ASCII PLY without color properties returns None — no
+    transcoding to attempt."""
+    plain_ply = (
+        b"ply\nformat ascii 1.0\n"
+        b"element vertex 2\n"
+        b"property float x\nproperty float y\nproperty float z\n"
+        b"element face 0\n"
+        b"property list uchar int vertex_indices\n"
+        b"end_header\n"
+        b"0.0 0.0 0.0\n0.1 0.1 0.1\n"
+    )
+    assert extract_ply_vertex_colors(plain_ply) is None
+
+
+def test_extract_ply_vertex_colors_on_colored_ply():
+    """An ASCII PLY with red/green/blue properties returns the
+    per-vertex (R, G, B) tuples in order."""
+    colored = (
+        b"ply\nformat ascii 1.0\n"
+        b"element vertex 3\n"
+        b"property float x\nproperty float y\nproperty float z\n"
+        b"property uchar red\nproperty uchar green\nproperty uchar blue\n"
+        b"element face 0\n"
+        b"property list uchar int vertex_indices\n"
+        b"end_header\n"
+        b"0.0 0.0 0.0 255 0 0\n"
+        b"0.1 0.0 0.0 0 255 0\n"
+        b"0.0 0.1 0.0 0 0 255\n"
+    )
+    assert extract_ply_vertex_colors(colored) == [
+        (255, 0, 0), (0, 255, 0), (0, 0, 255),
+    ]
+
+
+def test_extract_ply_vertex_colors_handles_property_reorder():
+    """The red/green/blue properties might appear in a different
+    order in the header. The function uses property names, not
+    positions, so any order works."""
+    colored = (
+        b"ply\nformat ascii 1.0\n"
+        b"element vertex 2\n"
+        b"property float x\nproperty float y\nproperty float z\n"
+        b"property uchar blue\nproperty uchar green\nproperty uchar red\n"
+        b"element face 0\n"
+        b"property list uchar int vertex_indices\n"
+        b"end_header\n"
+        b"0 0 0 100 50 25\n"  # blue=100, green=50, red=25
+        b"1 0 0 0 0 0\n"
+    )
+    assert extract_ply_vertex_colors(colored)[0] == (25, 50, 100)
+
+
+def test_extract_ply_vertex_colors_on_actual_colorful_sphere():
+    """End-to-end: the shipped colorful_sphere.ply asset has
+    per-vertex colors. The extractor should pick them up."""
+    from pathlib import Path
+    path = Path(__file__).resolve().parent.parent / "assets" / "colorful_sphere.ply"
+    if not path.exists():
+        pytest.skip("colorful_sphere.ply not generated; run `make assets`")
+    colors = extract_ply_vertex_colors(path.read_bytes())
+    assert colors is not None
+    # 4-level subdivision icosphere: 2562 vertices.
+    assert len(colors) == 2562
+    # All channels in valid range, at least some color variation.
+    distinct = {c for c in colors[:100]}
+    assert len(distinct) > 10, "expected many distinct hues across vertices"
 
 
 # ---------- build_pointcloud ----------
