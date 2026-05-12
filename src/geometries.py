@@ -9,6 +9,7 @@ do no validation — that lives in service.validate_config. They do not
 read files for the mesh/pointcloud builders either; the caller passes
 the bytes in, so tests can drive the builders without touching disk.
 """
+import base64
 import struct
 from pathlib import Path
 from typing import Any, Mapping, Optional, Tuple
@@ -48,27 +49,65 @@ POINT_MARKER_RADIUS_MM = 8.0
 def build_metadata(
     color: Optional[Mapping[str, Any]] = None,
     opacity: Optional[float] = None,
+    show_axes_helper: bool = False,
+    invisible: bool = False,
 ) -> Optional[Struct]:
-    """Encode color + opacity as the nested struct the 3D viewer reads.
+    """Encode metadata in the schema the 3D viewer actually reads.
 
-    The viewer's metadata convention (matched by
-    rdk/services/worldstatestore/fake/moving_geos_world.go): color is a
-    nested struct {r, g, b} with 0..255 numbers; opacity is a top-level
-    number in [0, 1]. Either may be omitted. Returns None when nothing
-    is set, so the caller can leave Transform.metadata unset entirely.
+    The schema comes from ``viamrobotics/visualization`` (the canonical
+    drawing library backing the 3D scene viewer), specifically
+    ``draw/transform.go::MetadataToStruct`` and the ``draw.v1.Metadata``
+    proto at ``protos/draw/v1/metadata.proto``. The RDK fake's
+    ``{color: {r,g,b}, opacity: 0.5}`` shape is OBSOLETE — the viewer
+    no longer reads it, which is why color/opacity silently no-op'd
+    through 0.0.5. Keys the viewer actually consumes:
+
+      - ``colors`` (string): base64 of packed RGB bytes. 3 bytes per
+        color; one color for single-component primitives, N for
+        multi-component (point clouds, polylines, etc.). Per
+        ``draw/buffer_packer.go::packColors``.
+      - ``color_format`` (number): ``1`` for ``COLOR_FORMAT_RGB`` —
+        the only format defined in the enum today.
+      - ``opacities`` (string): base64 of packed alpha bytes. One byte
+        per color, or one byte total if uniform.
+      - ``show_axes_helper`` (bool): renders an RGB XYZ triad at the
+        entity's origin. Free coordinate-frame visualizer.
+      - ``invisible`` (bool): hides the entity by default; user can
+        toggle on in the viewer.
+
+    Returns ``None`` only when literally nothing is set. Otherwise
+    emits at least ``opacities`` so the viewer has a defined alpha.
     """
     fields: dict = {}
     if color is not None:
-        fields["color"] = {
-            "r": float(color.get("r", 0)),
-            "g": float(color.get("g", 0)),
-            "b": float(color.get("b", 0)),
-        }
+        rgb_bytes = bytes([
+            _clamp_u8(color.get("r", 0)),
+            _clamp_u8(color.get("g", 0)),
+            _clamp_u8(color.get("b", 0)),
+        ])
+        fields["colors"] = base64.b64encode(rgb_bytes).decode("ascii")
+        # color_format is required when colors is present; 1 = RGB.
+        fields["color_format"] = 1.0
     if opacity is not None:
-        fields["opacity"] = float(opacity)
+        alpha = _clamp_u8(round(float(opacity) * 255))
+        fields["opacities"] = base64.b64encode(bytes([alpha])).decode("ascii")
+    if show_axes_helper:
+        fields["show_axes_helper"] = True
+    if invisible:
+        fields["invisible"] = True
     if not fields:
         return None
     return dict_to_struct(fields)
+
+
+def _clamp_u8(v: Any) -> int:
+    """Clamp any number into the 0..255 range as a uint8."""
+    iv = int(v)
+    if iv < 0:
+        return 0
+    if iv > 255:
+        return 255
+    return iv
 
 
 def build_pose(pose: Mapping[str, Any]) -> Pose:

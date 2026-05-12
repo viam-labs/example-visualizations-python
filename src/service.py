@@ -149,7 +149,12 @@ def _build_transform(
     uuid: bytes,
     parent_frame: str,
 ) -> Transform:
-    metadata = geometries.build_metadata(item.get("color"), item.get("opacity"))
+    metadata = geometries.build_metadata(
+        item.get("color"),
+        item.get("opacity"),
+        show_axes_helper=bool(item.get("show_axes_helper", False)),
+        invisible=bool(item.get("invisible", False)),
+    )
     return Transform(
         uuid=uuid,
         reference_frame=item["label"],

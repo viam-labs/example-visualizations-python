@@ -23,22 +23,44 @@ from src.geometries import (
 
 
 # ---------- build_metadata ----------
+#
+# Schema MUST match viamrobotics/visualization::draw/transform.go::MetadataToStruct
+# and protos/draw/v1/metadata.proto. The RDK fake's old shape was wrong
+# and silently no-op'd through 0.0.5.
 
-def test_build_metadata_with_color_and_opacity_emits_nested_struct():
-    md = build_metadata(color={"r": 255, "g": 128, "b": 0}, opacity=0.5)
-    assert md is not None
+import base64 as _b64
+
+
+def test_build_metadata_color_packs_as_base64_rgb_bytes():
+    md = build_metadata(color={"r": 255, "g": 128, "b": 0})
     d = struct_to_dict(md)
-    assert d == {"color": {"r": 255.0, "g": 128.0, "b": 0.0}, "opacity": 0.5}
+    # colors is a base64 string of 3 packed bytes [R, G, B].
+    assert d["colors"] == _b64.b64encode(bytes([255, 128, 0])).decode("ascii")
+    # color_format = 1 (COLOR_FORMAT_RGB), the only value defined.
+    assert d["color_format"] == 1.0
 
 
-def test_build_metadata_with_only_color():
-    md = build_metadata(color={"r": 10, "g": 20, "b": 30})
-    assert struct_to_dict(md) == {"color": {"r": 10.0, "g": 20.0, "b": 30.0}}
+def test_build_metadata_opacity_packs_as_base64_alpha_byte():
+    """opacity 0..1 becomes a single uint8 byte 0..255."""
+    md = build_metadata(opacity=0.5)
+    d = struct_to_dict(md)
+    # 0.5 * 255 = 127.5 → rounds to 128.
+    assert d["opacities"] == _b64.b64encode(bytes([128])).decode("ascii")
 
 
-def test_build_metadata_with_only_opacity():
-    md = build_metadata(opacity=0.25)
-    assert struct_to_dict(md) == {"opacity": 0.25}
+def test_build_metadata_opacity_endpoints():
+    assert struct_to_dict(build_metadata(opacity=0.0))["opacities"] == \
+        _b64.b64encode(bytes([0])).decode("ascii")
+    assert struct_to_dict(build_metadata(opacity=1.0))["opacities"] == \
+        _b64.b64encode(bytes([255])).decode("ascii")
+
+
+def test_build_metadata_color_and_opacity_together():
+    md = build_metadata(color={"r": 10, "g": 20, "b": 30}, opacity=0.4)
+    d = struct_to_dict(md)
+    assert d["colors"] == _b64.b64encode(bytes([10, 20, 30])).decode("ascii")
+    assert d["color_format"] == 1.0
+    assert d["opacities"] == _b64.b64encode(bytes([round(0.4 * 255)])).decode("ascii")
 
 
 def test_build_metadata_returns_none_when_nothing_set():
@@ -46,9 +68,35 @@ def test_build_metadata_returns_none_when_nothing_set():
     assert build_metadata(color=None, opacity=None) is None
 
 
-def test_build_metadata_color_defaults_missing_channels_to_zero():
+def test_build_metadata_show_axes_helper_only_emitted_when_true():
+    """Avoid emitting noisy fields the viewer would treat as explicit
+    'false' overrides — only set the flag when the user actually wants
+    the XYZ triad rendered at the entity origin."""
+    md_off = build_metadata(color={"r": 0, "g": 0, "b": 0}, show_axes_helper=False)
+    md_on = build_metadata(color={"r": 0, "g": 0, "b": 0}, show_axes_helper=True)
+    assert "show_axes_helper" not in struct_to_dict(md_off)
+    assert struct_to_dict(md_on)["show_axes_helper"] is True
+
+
+def test_build_metadata_invisible_only_emitted_when_true():
+    md_off = build_metadata(color={"r": 0, "g": 0, "b": 0}, invisible=False)
+    md_on = build_metadata(color={"r": 0, "g": 0, "b": 0}, invisible=True)
+    assert "invisible" not in struct_to_dict(md_off)
+    assert struct_to_dict(md_on)["invisible"] is True
+
+
+def test_build_metadata_clamps_color_to_0_255():
+    md = build_metadata(color={"r": -10, "g": 999, "b": 200})
+    d = struct_to_dict(md)
+    raw = _b64.b64decode(d["colors"])
+    assert raw == bytes([0, 255, 200])
+
+
+def test_build_metadata_color_missing_channels_default_to_zero():
     md = build_metadata(color={"r": 100})
-    assert struct_to_dict(md) == {"color": {"r": 100.0, "g": 0.0, "b": 0.0}}
+    d = struct_to_dict(md)
+    raw = _b64.b64decode(d["colors"])
+    assert raw == bytes([100, 0, 0])
 
 
 # ---------- build_pose ----------

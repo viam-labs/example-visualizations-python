@@ -268,6 +268,10 @@ def reference_frame_demo() -> List[Mapping[str, Any]]:
     half = axis_length_mm / 2.0
     return [
         # Anchor. Spinning this frame propagates to its children.
+        # show_axes_helper=True tells the viewer to draw its built-in
+        # RGB XYZ triad at this entity's origin — a free axes gizmo
+        # alongside the explicit colored capsules below, useful for
+        # visually confirming the renderer composes through the chain.
         {
             "type": "sphere",
             "label": "spinning_frame",
@@ -275,6 +279,7 @@ def reference_frame_demo() -> List[Mapping[str, Any]]:
             "radius_mm": 12,
             "color": {"r": 255, "g": 255, "b": 255},
             "opacity": 0.6,
+            "show_axes_helper": True,
             "animation": {"mode": "spin", "period_s": 6},
         },
         # +X axis (red).
