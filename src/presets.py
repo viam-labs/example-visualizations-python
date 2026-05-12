@@ -35,6 +35,7 @@ PRESET_NAMES = (
     "primitives",
     "orientation_vectors",
     "frame_composition",
+    "trajectory_preview",
 )
 
 # Default spacing between primitives in the row-style preset (mm).
@@ -725,11 +726,149 @@ def all_preset() -> List[Mapping[str, Any]]:
     return items
 
 
+def trajectory_preview() -> List[Mapping[str, Any]]:
+    """Visualize a multi-waypoint trajectory in the 3D scene:
+
+      - a thin blue line drawn as a chain of capsules connecting the
+        waypoints (since the world-state-store API has no first-class
+        line primitive — see LESSONS.md);
+      - a translucent sphere with ``show_axes_helper: True`` at each
+        waypoint, oriented along the trajectory tangent, so the user
+        sees the planned pose at each setpoint;
+      - a brighter sphere (also with axes helper) that animates from
+        waypoint 0 through to the last waypoint and loops back via
+        the new ``trajectory`` animation mode. At every instant the
+        runner's pose is the linear interpolation between the two
+        flanking waypoints, so it passes through each setpoint with
+        the right rotation.
+
+    The trajectory's positions are an ascending 3D arc — useful as a
+    canned demo for "this is what a motion plan preview looks like".
+    Each waypoint's orientation is computed as the tangent of the
+    centered-difference at that index, so the runner faces along
+    the path direction as it travels.
+    """
+    # Hand-picked positions tracing a smooth ascending S-curve.
+    positions = [
+        {"x":    0, "y":    0, "z":    0},
+        {"x":  300, "y":    0, "z":  200},
+        {"x":  500, "y":  250, "z":  300},
+        {"x":  700, "y":  500, "z":  200},
+        {"x": 1000, "y":  700, "z":    0},
+    ]
+    waypoints = _waypoints_with_tangent_orientations(positions)
+
+    items: List[Mapping[str, Any]] = []
+
+    # Waypoint markers — small translucent spheres with axes helpers.
+    for i, wp in enumerate(waypoints):
+        items.append({
+            "type": "sphere",
+            "label": f"traj_wp_{i:02d}",
+            "pose": dict(wp),
+            "radius_mm": 25,
+            "color": {"r": 200, "g": 200, "b": 220},
+            "opacity": 0.45,
+            "show_axes_helper": True,
+            "animation": {"mode": "none"},
+        })
+
+    # Line segments connecting adjacent waypoints — thin capsules
+    # whose local +Z is aligned to the segment direction. (The wire
+    # format has no first-class line; we synthesize from capsules.)
+    for i in range(len(waypoints) - 1):
+        a = waypoints[i]
+        b = waypoints[i + 1]
+        dx = b["x"] - a["x"]
+        dy = b["y"] - a["y"]
+        dz = b["z"] - a["z"]
+        seg_len = math.sqrt(dx * dx + dy * dy + dz * dz)
+        if seg_len < 1e-6:
+            continue
+        midpoint = {
+            "x": (a["x"] + b["x"]) / 2.0,
+            "y": (a["y"] + b["y"]) / 2.0,
+            "z": (a["z"] + b["z"]) / 2.0,
+        }
+        items.append({
+            "type": "capsule",
+            "label": f"traj_seg_{i:02d}",
+            "pose": {
+                **midpoint,
+                "ox": dx / seg_len,
+                "oy": dy / seg_len,
+                "oz": dz / seg_len,
+                "theta": 0,
+            },
+            "radius_mm": 5,
+            "length_mm": seg_len,
+            "color": {"r": 100, "g": 130, "b": 240},
+            "opacity": 0.95,
+            "animation": {"mode": "none"},
+        })
+
+    # The "runner" — moving frame that walks the trajectory and
+    # passes through each waypoint with the interpolated rotation.
+    items.append({
+        "type": "sphere",
+        "label": "traj_runner",
+        "pose": dict(waypoints[0]),
+        "radius_mm": 45,
+        "color": {"r": 230, "g": 40, "b": 80},
+        "opacity": 0.9,
+        "show_axes_helper": True,
+        "animation": {
+            "mode": "trajectory",
+            "waypoints": [dict(wp) for wp in waypoints],
+            "duration_s": 12.0,
+            "loop": True,
+        },
+    })
+
+    return items
+
+
+def _waypoints_with_tangent_orientations(
+    positions: List[Mapping[str, float]],
+) -> List[Mapping[str, Any]]:
+    """Given a list of position-only waypoints, attach an orientation
+    to each so the entity's local +Z points along the trajectory
+    tangent at that waypoint. Centered differences in the interior;
+    forward / backward differences at the endpoints."""
+    n = len(positions)
+    out: List[Mapping[str, Any]] = []
+    for i, p in enumerate(positions):
+        if i == 0:
+            tx = positions[1]["x"] - p["x"]
+            ty = positions[1]["y"] - p["y"]
+            tz = positions[1]["z"] - p["z"]
+        elif i == n - 1:
+            tx = p["x"] - positions[i - 1]["x"]
+            ty = p["y"] - positions[i - 1]["y"]
+            tz = p["z"] - positions[i - 1]["z"]
+        else:
+            tx = positions[i + 1]["x"] - positions[i - 1]["x"]
+            ty = positions[i + 1]["y"] - positions[i - 1]["y"]
+            tz = positions[i + 1]["z"] - positions[i - 1]["z"]
+        norm = math.sqrt(tx * tx + ty * ty + tz * tz) or 1.0
+        out.append({
+            "x": float(p["x"]),
+            "y": float(p["y"]),
+            "z": float(p["z"]),
+            "ox": tx / norm,
+            "oy": ty / norm,
+            "oz": tz / norm,
+            "theta": 0.0,
+        })
+    return out
+
+
 PRESETS = {
     "all": all_preset,
     "primitives": primitives,
     "orientation_vectors": orientation_vectors,
     "frame_composition": frame_composition,
+    "trajectory_preview": trajectory_preview,
 }
 
 

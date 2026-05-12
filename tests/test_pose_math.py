@@ -306,8 +306,138 @@ def test_pulse_on_unsupported_type_is_noop():
 
 # ---------- module surface sanity ----------
 
+# ---------- trajectory ----------
+
+def _trajectory_waypoints():
+    """Three-waypoint sample: position-only along Y axis, identity
+    orientation throughout. Easy to reason about analytically."""
+    return [
+        {"x": 0, "y":   0, "z": 0, "ox": 0, "oy": 0, "oz": 1, "theta": 0},
+        {"x": 0, "y": 200, "z": 0, "ox": 0, "oy": 0, "oz": 1, "theta": 0},
+        {"x": 0, "y": 400, "z": 0, "ox": 0, "oy": 0, "oz": 1, "theta": 0},
+    ]
+
+
+def test_trajectory_at_t_zero_is_at_first_waypoint():
+    pose, _, paths = compute_tick(
+        {"type": "sphere", "animation": {
+            "mode": "trajectory",
+            "waypoints": _trajectory_waypoints(),
+            "duration_s": 4.0,
+            "loop": True,
+        }},
+        BASE_POSE,
+        {"radius_mm": 50},
+        t=0.0,
+    )
+    assert pose["x"] == 0
+    assert pose["y"] == pytest.approx(0.0)
+    assert pose["z"] == 0
+    # Trajectory animation emits all 7 pose paths every tick.
+    assert set(paths) == {
+        "poseInObserverFrame.pose.x",
+        "poseInObserverFrame.pose.y",
+        "poseInObserverFrame.pose.z",
+        "poseInObserverFrame.pose.oX",
+        "poseInObserverFrame.pose.oY",
+        "poseInObserverFrame.pose.oZ",
+        "poseInObserverFrame.pose.theta",
+    }
+
+
+def test_trajectory_at_midway_through_first_segment():
+    """duration=4, 2 segments → 2s per segment. At t=1.0 we should
+    be halfway through segment 0: y between waypoints 0 and 1."""
+    pose, _, _ = compute_tick(
+        {"type": "sphere", "animation": {
+            "mode": "trajectory",
+            "waypoints": _trajectory_waypoints(),
+            "duration_s": 4.0,
+        }},
+        BASE_POSE,
+        {"radius_mm": 50},
+        t=1.0,
+    )
+    assert pose["y"] == pytest.approx(100.0)
+
+
+def test_trajectory_at_end_of_first_segment_hits_waypoint_one():
+    """At t=2.0 (= duration/2), we've finished segment 0 and just
+    reached waypoint 1."""
+    pose, _, _ = compute_tick(
+        {"type": "sphere", "animation": {
+            "mode": "trajectory",
+            "waypoints": _trajectory_waypoints(),
+            "duration_s": 4.0,
+        }},
+        BASE_POSE,
+        {"radius_mm": 50},
+        t=2.0,
+    )
+    assert pose["y"] == pytest.approx(200.0)
+
+
+def test_trajectory_loops_back_to_start():
+    """With loop=True, at t=duration we wrap back to waypoint 0."""
+    pose, _, _ = compute_tick(
+        {"type": "sphere", "animation": {
+            "mode": "trajectory",
+            "waypoints": _trajectory_waypoints(),
+            "duration_s": 4.0,
+            "loop": True,
+        }},
+        BASE_POSE,
+        {"radius_mm": 50},
+        t=4.0,  # == duration → wraps to t=0
+    )
+    assert pose["y"] == pytest.approx(0.0)
+
+
+def test_trajectory_no_loop_pins_at_final_waypoint():
+    """With loop=False, after duration the entity stays at waypoint N-1."""
+    pose, _, _ = compute_tick(
+        {"type": "sphere", "animation": {
+            "mode": "trajectory",
+            "waypoints": _trajectory_waypoints(),
+            "duration_s": 4.0,
+            "loop": False,
+        }},
+        BASE_POSE,
+        {"radius_mm": 50},
+        t=10.0,
+    )
+    assert pose["y"] == pytest.approx(400.0)
+
+
+def test_trajectory_interpolates_orientation_vector():
+    """Two waypoints with different orientation vectors. Halfway
+    through, the entity's orientation vector should be the lerp of
+    the two, normalized."""
+    wps = [
+        {"x": 0, "y": 0, "z": 0, "ox": 1, "oy": 0, "oz": 0, "theta": 0},  # local +Z along world +X
+        {"x": 0, "y": 0, "z": 0, "ox": 0, "oy": 0, "oz": 1, "theta": 0},  # local +Z along world +Z
+    ]
+    pose, _, _ = compute_tick(
+        {"type": "sphere", "animation": {
+            "mode": "trajectory", "waypoints": wps, "duration_s": 2.0,
+        }},
+        BASE_POSE,
+        {"radius_mm": 50},
+        t=1.0,
+    )
+    # Midway: lerp gives (0.5, 0, 0.5), normalized magnitude = sqrt(0.5).
+    norm = math.sqrt(pose["ox"] ** 2 + pose["oy"] ** 2 + pose["oz"] ** 2)
+    assert norm == pytest.approx(1.0, abs=1e-6)
+    # Equal magnitudes for ox and oz, both positive.
+    assert pose["ox"] == pytest.approx(pose["oz"])
+    assert pose["oy"] == pytest.approx(0.0)
+    assert pose["ox"] > 0
+
+
 def test_supported_modes_constant():
-    assert set(SUPPORTED_MODES) == {"none", "orbit", "oscillate", "spin", "swing", "pulse"}
+    assert set(SUPPORTED_MODES) == {
+        "none", "orbit", "oscillate", "spin", "swing", "pulse", "trajectory",
+    }
 
 
 def test_supported_axes_constant():

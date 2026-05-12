@@ -767,6 +767,18 @@ def _validate_item(item: Mapping[str, Any], index: int) -> None:
             f"{where} unknown animation.mode {mode!r}; expected one of "
             f"{anim_mod.SUPPORTED_MODES}"
         )
+    if mode == "trajectory":
+        wps = animation.get("waypoints")
+        if not isinstance(wps, list) or len(wps) < 2:
+            raise Exception(
+                f"{where} animation.mode 'trajectory' requires "
+                f"animation.waypoints to be a list of 2+ pose dicts"
+            )
+        for j, wp in enumerate(wps):
+            if not isinstance(wp, Mapping):
+                raise Exception(
+                    f"{where} animation.waypoints[{j}] must be a dict"
+                )
     color = item.get("color")
     if color is not None:
         for ch in ("r", "g", "b"):

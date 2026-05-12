@@ -31,6 +31,13 @@ Modes (all parameters in mm and seconds):
     capsule / point, dims_mm.x|y|z for box) between
     ``amplitude_mm`` ± ``base``. ``base`` is computed from the item's
     static dim/radius at start time.
+  - ``trajectory``: interpolate pose across a list of ``waypoints``.
+    Each waypoint is a pose dict (x, y, z, ox, oy, oz, theta). Over
+    ``duration_s`` seconds the entity walks from waypoint 0 → 1 → 2
+    → ... → N-1, interpolating position linearly and orientation by
+    lerping the orientation vector + theta then renormalizing. With
+    ``loop: true`` (default) the walk repeats indefinitely; with
+    ``loop: false`` the entity stops at the final waypoint.
 
 The animation module is purely functional; the service threads the
 elapsed time and base pose in. Tests can pin t to known values.
@@ -52,8 +59,20 @@ PATH_BOX_DIMS_X = "physicalObject.geometryType.value.dimsMm.x"
 PATH_BOX_DIMS_Y = "physicalObject.geometryType.value.dimsMm.y"
 PATH_BOX_DIMS_Z = "physicalObject.geometryType.value.dimsMm.z"
 
-SUPPORTED_MODES = ("none", "orbit", "oscillate", "spin", "swing", "pulse")
+SUPPORTED_MODES = (
+    "none", "orbit", "oscillate", "spin", "swing", "pulse", "trajectory",
+)
 SUPPORTED_AXES = ("x", "y", "z")
+
+# Field-mask paths for the orientation vector components. Not used by
+# any other mode today; the trajectory mode is the first to interpolate
+# the OX/OY/OZ components via UPDATED events. Whether the viewer honors
+# these is unverified — the RDK fake only ever updates theta. If the
+# trajectory orientation looks frozen mid-segment, switch the item's
+# uuid_strategy to "versioned" so the whole pose is re-emitted each tick.
+PATH_OX = "poseInObserverFrame.pose.oX"
+PATH_OY = "poseInObserverFrame.pose.oY"
+PATH_OZ = "poseInObserverFrame.pose.oZ"
 
 
 def is_animated(item: Mapping[str, Any]) -> bool:
@@ -180,9 +199,61 @@ def compute_tick(
             paths = []
         return new_pose, new_geom, paths
 
+    if mode == "trajectory":
+        waypoints = anim.get("waypoints") or []
+        if len(waypoints) < 2:
+            return new_pose, new_geom, paths
+        duration_s = float(anim.get("duration_s", 8.0))
+        if duration_s <= 0:
+            duration_s = 8.0
+        loop = bool(anim.get("loop", True))
+        # Progress along the full trajectory, in [0, 1].
+        if loop:
+            progress = (t % duration_s) / duration_s
+        else:
+            progress = max(0.0, min(1.0, t / duration_s))
+        # Map progress onto segment + alpha within segment.
+        n_segments = len(waypoints) - 1
+        segment_progress = progress * n_segments
+        segment_idx = int(segment_progress)
+        if segment_idx >= n_segments:
+            segment_idx = n_segments - 1
+            alpha = 1.0
+        else:
+            alpha = segment_progress - segment_idx
+        a = waypoints[segment_idx]
+        b = waypoints[segment_idx + 1]
+        # Position: straight linear interpolation.
+        new_pose["x"] = _lerp(a.get("x", 0.0), b.get("x", 0.0), alpha)
+        new_pose["y"] = _lerp(a.get("y", 0.0), b.get("y", 0.0), alpha)
+        new_pose["z"] = _lerp(a.get("z", 0.0), b.get("z", 0.0), alpha)
+        # Orientation vector: lerp components, then renormalize.
+        ox = _lerp(a.get("ox", 0.0), b.get("ox", 0.0), alpha)
+        oy = _lerp(a.get("oy", 0.0), b.get("oy", 0.0), alpha)
+        oz = _lerp(a.get("oz", 1.0), b.get("oz", 1.0), alpha)
+        norm = math.sqrt(ox * ox + oy * oy + oz * oz)
+        if norm > 1e-9:
+            new_pose["ox"] = ox / norm
+            new_pose["oy"] = oy / norm
+            new_pose["oz"] = oz / norm
+        else:
+            new_pose["ox"], new_pose["oy"], new_pose["oz"] = 0.0, 0.0, 1.0
+        new_pose["theta"] = _lerp(a.get("theta", 0.0), b.get("theta", 0.0), alpha)
+        paths = [
+            PATH_X, PATH_Y, PATH_Z,
+            PATH_OX, PATH_OY, PATH_OZ,
+            PATH_THETA,
+        ]
+        return new_pose, new_geom, paths
+
     # Unknown mode: treat as static. validate_config should have
     # rejected it before we got here.
     return new_pose, new_geom, paths
+
+
+def _lerp(a: float, b: float, alpha: float) -> float:
+    """Linear interpolation. alpha=0 → a, alpha=1 → b."""
+    return a + alpha * (b - a)
 
 
 def _copy_geom(base_geom: Mapping[str, Any]) -> dict:

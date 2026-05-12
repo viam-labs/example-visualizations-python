@@ -46,6 +46,7 @@ Want a different default scene? Set `preset` to one of:
 - `primitives` (default) — every supported primitive type plus a tour of more complex meshes. 10 items in a row: box → sphere → capsule → point → arrow → icosahedron (PLY) → bunny (STL) → torus (PLY) → Utah teapot (PLY) → helix (PCD).
 - `orientation_vectors` — small sphere markers at axis-aligned orientation vectors, with `show_axes_helper: true` so the viewer renders an RGB XYZ triad at each entity's origin. Shows how `(OX, OY, OZ, theta)` maps to a coordinate frame.
 - `frame_composition` — two chained-parent-frame demos side by side. **Left:** a spinning anchor + RGB axes triad + an attached mesh placed further out (now 700 mm from the anchor) + a ring of hue-swept spheres orbiting the mesh around its own axis. **Right:** an articulated robot arm — base swings on Z, shoulder/upper, elbow swings on its joint, forearm, wrist swings (roll), and a 2-finger gripper that opens and closes. The wrist's roll is visible *because* of the parallel-finger gripper: a symmetric end-effector would hide the rotation. All animations use `swing` (bounded RoM) on the arm rather than `spin` (continuous rotation), matching real arm behavior.
+- `trajectory_preview` — motion-plan preview style demo. 5 waypoints along a smooth ascending 3D arc, drawn as a thin blue capsule-chain line. Each waypoint has a small translucent sphere with `show_axes_helper: true` so its orientation triad is visible. A brighter "runner" sphere with its own axes helper animates from waypoint 0 → 4 → loops back, interpolating position and orientation linearly between adjacent waypoints (orientation vector lerps + renormalizes, theta lerps). Useful as a template for visualizing planned arm/base trajectories.
 - `all` — every preset above, stacked along Y at ~1.8 m intervals. One-stop tour.
 
 ## Config reference
@@ -96,6 +97,7 @@ Every item carries `type`, `label`, `pose`, optional `color` /
 | `spin`       | `period_s` (4)                                | Continuous rotation around the orientation vector — `theta` increments monotonically through 360°. |
 | `swing`      | `amplitude_deg` (45), `period_s` (4)          | Bounded rotation — `theta` oscillates in `[base − amplitude, base + amplitude]` over `period_s`. Use this for joints with a range of motion (arm joints, wrist roll) instead of `spin`. |
 | `pulse`      | `amplitude_mm` (25), `period_s` (3)           | Modulate primary dimension. Sphere/capsule: radius. Box: all three dims. Capsule also pulses length. No-op for point/mesh/pointcloud. |
+| `trajectory` | `waypoints` (list of pose dicts), `duration_s` (8), `loop` (true) | Walk through a list of waypoints, interpolating position (linear) and orientation (lerp + renormalize on the orientation vector; lerp on theta) between adjacent waypoints. Use to preview planned motions. Emits field-mask paths for `x`/`y`/`z`/`oX`/`oY`/`oZ`/`theta` every tick. |
 
 ## DoCommand reference
 

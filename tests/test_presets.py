@@ -1,4 +1,6 @@
 """Tests for src/presets.py — the named scene bundles."""
+import math
+
 import pytest
 
 from src.animation import SUPPORTED_AXES, SUPPORTED_MODES
@@ -13,6 +15,7 @@ from src.presets import (
     orientation_vectors,
     reference_frame_demo,
     robot_arm,
+    trajectory_preview,
 )
 
 
@@ -407,6 +410,90 @@ def test_frame_composition_offsets_bases_along_x_only():
         "child mesh appears to have been translated with the anchor; "
         "_offset_base_items should only shift parent-less items"
     )
+
+
+# ---------- trajectory_preview ----------
+
+def test_trajectory_preview_has_runner_waypoints_and_line_segments():
+    """Three component categories: waypoint markers, line segments,
+    and exactly one moving runner."""
+    items = trajectory_preview()
+    labels = [it["label"] for it in items]
+    wp_count = sum(1 for L in labels if L.startswith("traj_wp_"))
+    seg_count = sum(1 for L in labels if L.startswith("traj_seg_"))
+    runner_count = sum(1 for L in labels if L == "traj_runner")
+    assert wp_count >= 2, "need at least 2 waypoints for a trajectory"
+    # Line segments connect adjacent waypoints, so seg count = wp - 1.
+    assert seg_count == wp_count - 1, (
+        f"segments ({seg_count}) should equal waypoints-1 ({wp_count - 1})"
+    )
+    assert runner_count == 1, "exactly one runner item drives the demo"
+
+
+def test_trajectory_preview_waypoints_have_axes_helper():
+    """Each waypoint marker must have show_axes_helper=True so the
+    viewer renders the orientation triad — that's the point of the
+    waypoint visualization."""
+    items = trajectory_preview()
+    waypoints = [it for it in items if it["label"].startswith("traj_wp_")]
+    for wp in waypoints:
+        assert wp.get("show_axes_helper") is True
+
+
+def test_trajectory_preview_runner_uses_trajectory_animation():
+    """The runner must be animated with mode=trajectory, and its
+    waypoints list must match the waypoint markers' poses (same
+    interpolated path)."""
+    items = trajectory_preview()
+    by_label = {it["label"]: it for it in items}
+    runner = by_label["traj_runner"]
+    anim = runner["animation"]
+    assert anim["mode"] == "trajectory"
+    assert isinstance(anim["waypoints"], list)
+    wp_items = sorted(
+        (it for it in items if it["label"].startswith("traj_wp_")),
+        key=lambda it: it["label"],
+    )
+    assert len(anim["waypoints"]) == len(wp_items)
+    # Each waypoint in the animation's list lines up with the
+    # corresponding marker's pose.
+    for wp_anim, wp_marker in zip(anim["waypoints"], wp_items):
+        for k in ("x", "y", "z"):
+            assert wp_anim[k] == pytest.approx(wp_marker["pose"][k])
+
+
+def test_trajectory_preview_runner_also_has_axes_helper():
+    """The moving frame also needs the axes helper so its
+    interpolated orientation is visible mid-flight."""
+    items = trajectory_preview()
+    by_label = {it["label"]: it for it in items}
+    assert by_label["traj_runner"].get("show_axes_helper") is True
+
+
+def test_trajectory_preview_line_segments_align_with_segment_directions():
+    """Each segment capsule's orientation vector should point from
+    its starting waypoint toward the next — that's what makes a
+    capsule rendered with arbitrary radius read as a straight line
+    on the trajectory."""
+    items = trajectory_preview()
+    waypoints = sorted(
+        (it for it in items if it["label"].startswith("traj_wp_")),
+        key=lambda it: it["label"],
+    )
+    segments = sorted(
+        (it for it in items if it["label"].startswith("traj_seg_")),
+        key=lambda it: it["label"],
+    )
+    for i, seg in enumerate(segments):
+        a = waypoints[i]["pose"]
+        b = waypoints[i + 1]["pose"]
+        dx, dy, dz = b["x"] - a["x"], b["y"] - a["y"], b["z"] - a["z"]
+        norm = math.sqrt(dx * dx + dy * dy + dz * dz)
+        ox_expected, oy_expected, oz_expected = dx / norm, dy / norm, dz / norm
+        seg_pose = seg["pose"]
+        assert seg_pose["ox"] == pytest.approx(ox_expected, abs=1e-6)
+        assert seg_pose["oy"] == pytest.approx(oy_expected, abs=1e-6)
+        assert seg_pose["oz"] == pytest.approx(oz_expected, abs=1e-6)
 
 
 # ---------- registry + load ----------
