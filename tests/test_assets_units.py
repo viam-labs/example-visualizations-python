@@ -109,8 +109,10 @@ def test_bunny_stl_vertices_are_in_meters_not_millimeters():
     data = ASSETS.joinpath("bunny.stl").read_bytes()
     assert len(data) >= 84
     num_tris = struct.unpack("<I", data[80:84])[0]
-    # Source has 308 triangles after decimation.
-    assert 200 < num_tris < 500, f"unexpected triangle count {num_tris}"
+    # Decimated to ~3674 triangles in the current source
+    # (scripts/bunny_data.py). Bound generously so cosmetic decimation
+    # changes don't break this test, but catch wild regressions.
+    assert 2000 < num_tris < 10000, f"unexpected triangle count {num_tris}"
 
     max_mag = 0.0
     offset = 84

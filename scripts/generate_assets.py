@@ -210,78 +210,87 @@ def write_arrow_ply(
 
 # ---------- binary STL cube ----------
 
-def write_bunny_stl(source_path: Optional[Path] = None) -> Path:
-    """Convert the ASCII Stanford bunny in ``scripts/bunny_source.stl``
-    to a centered binary STL with vertex coords in meters.
+def write_bunny_stl(target_height_mm: float = 90.0) -> Path:
+    """Stanford bunny → centered, upright, binary STL in meters.
 
-    The source ASCII STL is 308 triangles, vertex coordinates in mm,
-    minimum corner not at the origin. We:
+    Source: ``scripts/bunny_data.py`` — 1839 vertices / 3674 triangles
+    in public-domain unit-scale coordinates from
+    https://github.com/mikolalysenko/bunny (which itself redistributes
+    the Stanford Computer Graphics Lab dataset, decimated by an order
+    of magnitude from the canonical 69,451-triangle original).
 
-      1. Parse all vertices and per-triangle normals from the ASCII.
-      2. Center on the X/Y centroid and align the bottom (min Z) to z=0
-         so the bunny sits on the floor with its centroid above the
-         service's parent_frame origin.
-      3. Convert mm → meters by dividing by 1000.
-      4. Write binary STL: 80-byte header + uint32 tri count + per-tri
-         12-byte normal + 36-byte vertices + 2-byte attribute.
+    Transformations applied:
 
-    Output ~17 KB binary, dramatically smaller than the 60 KB ASCII
-    source and matches the format the RDK STL reader expects (binary
-    only — see rdk/spatialmath/mesh.go::newMeshFromSTLBytes).
+      1. Source is Y-up: bunny stands on the X-Z plane with Y as
+         height. We rotate (x, y, z) → (x, -z, y) so Z is up, matching
+         the rest of this module's conventions.
+      2. Scale unit-scale coordinates to mm so the bunny ends up
+         ``target_height_mm`` tall along Z (~90 mm by default,
+         matching the icosahedron + box + arrow scales).
+      3. Center on the X/Y centroid; align bottom Z to 0 so the bunny
+         sits on its feet at the configured pose.
+      4. Compute a per-triangle face normal (the JS source ships
+         indices without normals).
+      5. Write binary STL — the RDK reader is binary-only (see
+         ``rdk/spatialmath/mesh.go::newMeshFromSTLBytes``).
 
-    Source: github.com/ecell/ecell4_docs (which redistributes a
-    decimated Stanford bunny). Stanford bunny dataset itself is from
-    Stanford Computer Graphics Laboratory, free for research/teaching."""
-    if source_path is None:
-        source_path = Path(__file__).resolve().parent / "bunny_source.stl"
-    text = source_path.read_text()
-    # ASCII STL grammar: each triangle is `facet normal nx ny nz`
-    # followed by three `vertex x y z` lines. Parse via regex; small
-    # files so performance is irrelevant.
-    facet_re = re.compile(
-        r"facet\s+normal\s+(\S+)\s+(\S+)\s+(\S+)\s+"
-        r"outer\s+loop\s+"
-        r"vertex\s+(\S+)\s+(\S+)\s+(\S+)\s+"
-        r"vertex\s+(\S+)\s+(\S+)\s+(\S+)\s+"
-        r"vertex\s+(\S+)\s+(\S+)\s+(\S+)\s+"
-        r"endloop\s+endfacet",
-        re.IGNORECASE,
-    )
-    tris = []
-    for m in facet_re.finditer(text):
-        nums = [float(g) for g in m.groups()]
-        tris.append((
-            (nums[0], nums[1], nums[2]),                  # normal
-            (nums[3], nums[4], nums[5]),                  # v1
-            (nums[6], nums[7], nums[8]),                  # v2
-            (nums[9], nums[10], nums[11]),                # v3
-        ))
-    if not tris:
-        raise ValueError(f"no triangles parsed from {source_path}")
-    # Centroid of the X/Y bounding box (keep Z bottom at min so the
-    # bunny stands on its feet). Source coords are in mm.
-    all_v = [v for t in tris for v in t[1:]]
-    min_x = min(v[0] for v in all_v)
-    max_x = max(v[0] for v in all_v)
-    min_y = min(v[1] for v in all_v)
-    max_y = max(v[1] for v in all_v)
-    min_z = min(v[2] for v in all_v)
-    cx_mm = 0.5 * (min_x + max_x)
-    cy_mm = 0.5 * (min_y + max_y)
-    cz_mm = min_z
-    # Write binary STL. Coords go to meters; normals stay unit (no scale).
-    buf = bytearray(80)  # zero header
-    buf += struct.pack("<I", len(tris))
-    for (n, v1, v2, v3) in tris:
-        nx, ny, nz = n
-        # Normals are direction vectors, so we don't translate them —
-        # only the vertex positions get centered & scaled.
+    ~3,674 triangles × 50 bytes + 84-byte header ≈ 184 KB binary —
+    plenty of resolution for the bunny silhouette to read smoothly,
+    well within reasonable module-tarball size."""
+    from scripts.bunny_data import BUNNY_POSITIONS, BUNNY_FACES
+
+    # --- 1. Rotate source Y-up to Z-up while still in unit scale.
+    rotated = [(x, -z, y) for (x, y, z) in BUNNY_POSITIONS]
+
+    # --- 2. Compute height (Z extent) in unit scale and pick a
+    # scale factor that lands the bunny at ~target_height_mm tall.
+    z_vals = [v[2] for v in rotated]
+    unit_height = max(z_vals) - min(z_vals)
+    scale_mm_per_unit = target_height_mm / unit_height if unit_height else 1.0
+
+    # --- 3. Compute centroid + min-Z post-scale.
+    scaled = [
+        (x * scale_mm_per_unit, y * scale_mm_per_unit, z * scale_mm_per_unit)
+        for (x, y, z) in rotated
+    ]
+    xs = [v[0] for v in scaled]
+    ys = [v[1] for v in scaled]
+    zs = [v[2] for v in scaled]
+    cx_mm = 0.5 * (min(xs) + max(xs))
+    cy_mm = 0.5 * (min(ys) + max(ys))
+    cz_mm = min(zs)
+
+    # Pre-translate vertices, in mm.
+    centered = [
+        (x - cx_mm, y - cy_mm, z - cz_mm) for (x, y, z) in scaled
+    ]
+
+    # --- 4. + 5. Compute face normals and write binary STL.
+    buf = bytearray(80)
+    buf += struct.pack("<I", len(BUNNY_FACES))
+    for (i0, i1, i2) in BUNNY_FACES:
+        v0 = centered[i0]
+        v1 = centered[i1]
+        v2 = centered[i2]
+        # Edge vectors.
+        ax = v1[0] - v0[0]
+        ay = v1[1] - v0[1]
+        az = v1[2] - v0[2]
+        bx = v2[0] - v0[0]
+        by = v2[1] - v0[1]
+        bz = v2[2] - v0[2]
+        # Cross product = unnormalized face normal.
+        nx = ay * bz - az * by
+        ny = az * bx - ax * bz
+        nz = ax * by - ay * bx
+        length = math.sqrt(nx * nx + ny * ny + nz * nz)
+        if length > 1e-12:
+            nx /= length
+            ny /= length
+            nz /= length
         buf += struct.pack("<fff", nx, ny, nz)
-        for (x, y, z) in (v1, v2, v3):
-            cx = (x - cx_mm) / MM_PER_M
-            cy = (y - cy_mm) / MM_PER_M
-            cz = (z - cz_mm) / MM_PER_M
-            buf += struct.pack("<fff", cx, cy, cz)
+        for (x, y, z) in (v0, v1, v2):
+            buf += struct.pack("<fff", x / MM_PER_M, y / MM_PER_M, z / MM_PER_M)
         buf += struct.pack("<H", 0)
     path = OUT / "bunny.stl"
     path.write_bytes(bytes(buf))
