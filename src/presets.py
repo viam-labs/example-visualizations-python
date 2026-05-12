@@ -385,33 +385,37 @@ def orientation_vectors() -> List[Mapping[str, Any]]:
 
 
 def reference_frame_demo() -> List[Mapping[str, Any]]:
-    """Compose poses through the Viam reference frame system.
+    """Compose poses through the Viam reference frame system across
+    three distinct rotation axes.
 
-    Emits a parent-child chain whose root is a spinning anchor and
-    whose children orbit it via ``parent_frame``:
+    Parent-child chain:
 
-      1. ``spinning_frame`` — small near-transparent sphere at the
-         origin that spins around its Z axis. The anchor; other items
-         set this as their ``parent_frame``.
-      2. ``spinning_frame_axis_x|y|z`` — three capsules forming a
-         colored RGB triad. Static relative to the anchor; they
-         appear to spin because the anchor does.
-      3. ``spinning_frame_attached_mesh`` — icosahedron PLY parented
-         to the anchor. Has its own ``spin`` animation, so it rotates
-         **both** with the frame and on its own axis.
-      4. ``spinning_frame_wheel_NN`` (10 spheres) — hue-swept color
-         wheel orbiting the anchor in its XY plane. Used to be a
-         separate ``color_wheel`` preset; folding it in here makes
-         the orbiting motion the visible centerpiece of the demo.
+      spinning_frame                       (anchor, spin around Z)
+      ├─ spinning_frame_axis_x|y|z         (RGB triad — orbits Z with anchor)
+      └─ spinning_frame_attached_mesh      (icosahedron — orbits Z with
+                                            anchor AND spins on its own Z)
+          └─ spinning_frame_wheel_hub      (invisible, OY=1 orientation,
+                                            spin around its local Z = Y axis)
+              └─ spinning_frame_wheel_NN   (10 hue-swept spheres orbit
+                                            in the hub's local XY plane)
+
+    Three rotations on two distinct world axes:
+
+      1. Anchor spin around Z → drives the axes triad's orbit.
+      2. Mesh's own spin around Z (its identity-orientation local Z).
+      3. Wheel hub's spin around Y (its OY=1-rotated local Z) →
+         drives the color wheel ring's orbit perpendicular to the
+         other two rotations.
 
     Renderer behavior probe: this is the only place in this module
     (or in any reference world-state-store module I found in the RDK
     or viam-labs) where an emitted Transform's
     ``pose_in_observer_frame.reference_frame`` matches the
-    ``reference_frame`` of another emitted Transform. If the viewer
-    composes through that chain, the axes triad, attached mesh, AND
-    color wheel all orbit the anchor's rotation. If it does not, the
-    children render in world space and the demo looks broken.
+    ``reference_frame`` of another emitted Transform — AND the chain
+    is now two levels deep (wheel → wheel_hub → mesh → anchor). If
+    the viewer composes through both levels, the whole assembly
+    moves coherently. If it doesn't, the wheel ring or hub renders
+    in world space and the demo looks broken at a specific level.
     """
     axis_length_mm = 200.0
     axis_radius_mm = 12.0
@@ -484,14 +488,47 @@ def reference_frame_demo() -> List[Mapping[str, Any]]:
             "opacity": 1.0,
             "animation": {"mode": "spin", "period_s": 2},
         },
-        # Color wheel — ring of hue-swept spheres parented to the
-        # spinning anchor, so they orbit it when it spins. This used
-        # to be a separate `color_wheel` preset; folding it in here
-        # makes the spin/composition story richer (orbiting motion is
-        # immediately visible) and removes the duplicate hue gallery.
-        # Radius chosen to clear the axes triad (200 mm) and to sit
-        # just inside the attached mesh (350 mm out + ~50 mm radius).
-        *_color_wheel_children("spinning_frame", count=10, ring_radius_mm=480.0),
+        # Wheel hub — invisible intermediate parent that gives the
+        # color wheel a THIRD rotation axis distinct from the other
+        # two in this demo:
+        #
+        #   - anchor (spinning_frame): spin around world Z → drives
+        #     the axes triad's orbit in the XY plane
+        #   - mesh (spinning_frame_attached_mesh): spin around its
+        #     own Z (= world Z with identity orientation) → drives
+        #     the icosahedron's own rotation
+        #   - wheel_hub: parented to mesh with OY=1 orientation, so
+        #     the hub's local Z = mesh's local Y = world Y. The
+        #     hub's spin animation rotates around that local Z, so
+        #     the wheel children orbit around world Y — perpendicular
+        #     to the other two rotations.
+        #
+        # Tiny radius + opacity 0 keeps the hub itself invisible while
+        # the children orbit it. (We can't use `invisible: true`
+        # because we haven't verified the viewer skips parents but
+        # still composes their frames through to children.)
+        {
+            "type": "sphere",
+            "label": "spinning_frame_wheel_hub",
+            "parent_frame": "spinning_frame_attached_mesh",
+            "pose": {"x": 0, "y": 0, "z": 0,
+                     "ox": 0, "oy": 1, "oz": 0, "theta": 0},
+            "radius_mm": 4,
+            "color": {"r": 255, "g": 255, "b": 255},
+            "opacity": 0.0,
+            "animation": {"mode": "spin", "period_s": 4},
+        },
+        # Color wheel — children of wheel_hub. Orbit happens in the
+        # hub's local XY plane (which the OY=1 orientation rotates
+        # into the world XZ plane), so the visible motion is around
+        # world Y — a different axis than the anchor's Z spin and
+        # the mesh's Z spin.
+        *_color_wheel_children(
+            "spinning_frame_wheel_hub",
+            count=10,
+            ring_radius_mm=220.0,
+            sphere_radius_mm=24.0,
+        ),
     ]
 
 

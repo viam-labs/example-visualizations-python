@@ -270,19 +270,51 @@ def test_reference_frame_demo_static_axes():
         assert by_label[axis]["animation"]["mode"] == "none"
 
 
-def test_reference_frame_demo_includes_orbiting_color_wheel():
-    """The color wheel ring lives as children of the spinning anchor
-    so it orbits when the anchor spins. Locks in the count, the
-    parent-frame chain, and the hue sweep so the visible motion of
-    the demo doesn't regress silently."""
+def test_reference_frame_demo_wheel_hub_parented_to_mesh_with_y_axis_orientation():
+    """The wheel orbit axis MUST differ from the other two rotations
+    in the demo. We achieve that with an intermediate wheel_hub
+    parented to the MESH (not the anchor) with OY=1 orientation, so
+    its local Z (and thus its spin axis) is world Y rather than Z.
+
+    Anchor spin → Z, mesh spin → Z, wheel via hub → Y. If anyone
+    changes this back to parent_frame: spinning_frame the wheel ends
+    up on the SAME axis as the anchor's spin and the "third axis"
+    teaching point is lost."""
     items = reference_frame_demo()
-    wheel = [it for it in items if it["label"].startswith("spinning_frame_wheel_")]
+    by_label = {it["label"]: it for it in items}
+    hub = by_label.get("spinning_frame_wheel_hub")
+    assert hub is not None, "expected an intermediate wheel_hub"
+    assert hub["parent_frame"] == "spinning_frame_attached_mesh", (
+        "wheel_hub must parent to the MESH (not the anchor) so the "
+        "wheel orbits around the mesh — see the demo docstring"
+    )
+    # OY=1 + OX=0 + OZ=0 puts local Z along world Y.
+    pose = hub["pose"]
+    assert pose["ox"] == 0
+    assert pose["oy"] == 1
+    assert pose["oz"] == 0
+    # And the hub spins (otherwise the orbit doesn't happen).
+    assert hub["animation"]["mode"] == "spin"
+
+
+def test_reference_frame_demo_wheel_children_parent_to_hub():
+    """The hue-swept ring spheres parent to the wheel_hub so they
+    inherit its OY=1 orientation + spin animation. Without this they
+    fall back to orbiting whichever frame they're attached to and
+    the axis-distinct teaching point regresses."""
+    items = reference_frame_demo()
+    wheel = [
+        it for it in items
+        if it["label"].startswith("spinning_frame_wheel_")
+        and it["label"] != "spinning_frame_wheel_hub"
+    ]
     assert len(wheel) == 10, f"expected 10 wheel spheres, got {len(wheel)}"
     for it in wheel:
         assert it["type"] == "sphere"
-        assert it["parent_frame"] == "spinning_frame", (
-            "wheel spheres must parent to spinning_frame so they "
-            "orbit it via the frame-composition chain"
+        assert it["parent_frame"] == "spinning_frame_wheel_hub", (
+            "wheel spheres must parent to wheel_hub so they inherit "
+            "its rotated orientation; otherwise they orbit around Z "
+            "instead of Y"
         )
     # Hue sweep: distinct colors.
     colors = {(it["color"]["r"], it["color"]["g"], it["color"]["b"]) for it in wheel}

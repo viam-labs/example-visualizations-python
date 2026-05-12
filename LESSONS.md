@@ -118,6 +118,30 @@ The RDK fake at `services/worldstatestore/fake/moving_geos_world.go` uses the ob
 
 **Why we don't add every conceivable shape as sugar.** Each sugar type adds a config knob, a validation branch, a builder, and tests. The right test for "should this be a sugar type" is: do enough users want it that the sugar is worth the maintenance? `arrow` clears that bar because direction visualization is common. `cylinder`, `cone`, `torus`, `disk` likely clear it too; `mobius_strip` probably doesn't.
 
+### intermediate-frames-for-distinct-rotation-axes
+
+**Finding.** To give a group of items a rotation axis different from any of its physical ancestors, insert an **invisible intermediate frame** between them whose orientation rotates the local Z to the desired world axis. The intermediate frame's spin animation then rotates everything beneath it around that axis.
+
+**Why.** Our `spin` animation modulates `theta`, which rotates around the entity's local Z axis. So the spin axis is *whatever the entity's local Z maps to in world coordinates after the orientation vector is applied*. If an entity (and all its ancestors) have identity orientation (OZ=1), the spin axis is world Z — and so is every ancestor's spin axis. To break out of that, insert a frame with a non-identity orientation between the spinning parent and the spinning children. With OY=1 the intermediate frame's local Z becomes world Y, so a spin animation on that frame rotates around Y while everything above still rotates around Z.
+
+**Concrete pattern** (from `reference_frame_demo`):
+
+```python
+# Top spins around its Z (= world Z, identity orientation).
+{"type": "sphere", "label": "anchor", "animation": {"mode": "spin"}, ...}
+# Child mesh spins around its Z (still world Z).
+{"type": "mesh", "label": "mesh", "parent_frame": "anchor",
+ "animation": {"mode": "spin"}, ...}
+# Intermediate frame with OY=1 — its local Z is world Y.
+{"type": "sphere", "label": "wheel_hub", "parent_frame": "mesh",
+ "pose": {"ox": 0, "oy": 1, "oz": 0, "theta": 0},
+ "opacity": 0.0, "animation": {"mode": "spin"}, ...}
+# Children of wheel_hub orbit around world Y.
+*_color_wheel_children("wheel_hub", ...)
+```
+
+**Side note on invisibility.** We hide the intermediate frame with `opacity: 0.0` rather than `invisible: true` because we haven't verified whether the viewer keeps an `invisible` entity's frame in the composition tree. `opacity: 0.0` keeps the entity in the scene (frame composition propagates) but renders nothing.
+
 ### coordinate-frame-via-show-axes-helper
 
 **Finding.** The `show_axes_helper: true` metadata flag (from `protos/draw/v1/metadata.proto`) renders an RGB XYZ triad at the entity's origin **without** needing to emit three colored arrows manually. The helper rotates with the entity's orientation, so a small sphere host at any `(OX, OY, OZ, theta)` becomes a fully-readable coordinate frame.
