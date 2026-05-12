@@ -113,7 +113,17 @@ These are the load-bearing facts an agent working in this repo needs to know up 
 ## Don't
 
 - **Don't trust the RDK fake at `services/worldstatestore/fake/` as the source of truth for what the viewer reads.** It's stale on metadata. The canonical reference for the viewer's wire format is `viamrobotics/visualization` — specifically `draw/transform.go`, `draw/drawing.go`, `draw/buffer_packer.go`, and `protos/draw/v1/metadata.proto`.
-- **Don't add new geometry types speculatively.** The Geometry oneof in `common.proto` is closed. Box, Sphere, Capsule, Mesh, PointCloud — that's the full set the viewer can render. Composite primitives (axes triads, frame markers) are built by emitting multiple Transforms parented to a shared anchor; see the `reference_frame_demo` preset.
+- **The Geometry oneof has exactly five primitives:** Box, Sphere, Capsule, Mesh, PointCloud. That's the closed set the wire format supports. Anything else — torus, teapot, cylinder, cone, gear, custom CAD — is a triangle mesh emitted via `Geometry.mesh` with PLY content type. Composite shapes (axes triads, robot arms, frame markers) are built by emitting multiple Transforms parented to a shared anchor; see `reference_frame_demo` and `robot_arm` presets.
+
+- **Three tiers of "primitive" in this module:**
+
+  | Tier | What | Source |
+  | --- | --- | --- |
+  | Native proto (5) | Box, Sphere, Capsule, Mesh, PointCloud | `common/v1/common.proto` |
+  | This module's sugar (2) | `point` (sphere with fixed visible radius), `arrow` (procedural mesh) | `src/geometries.py::build_point`, `build_arrow` |
+  | Anything else | Torus, teapot, etc. — generated procedurally or shipped as PLY/STL | `scripts/generate_assets.py` or user-supplied |
+
+  Adding more sugar types (cylinder/cone/torus/disk) is a matter of writing a `build_<name>` that returns a procedurally-generated PLY, then registering the type in `SUPPORTED_TYPES`, the validator, and `_build_geometry`. The `arrow` primitive is the canonical reference.
 - **Don't introduce GLTF/GLB/OBJ support without verifying the viewer accepts the converted output.** README points users at `trimesh` for offline conversion. `stl_to_ply` works because we verified PLY renders; other formats are unconfirmed.
 - **Tick rate is capped at 30 Hz** via validate_config, with 30 the default. The RDK fake runs at 10 Hz, apriltag-tracker at 5 Hz; 30 is reserved for this module's playground use specifically — measure viewer load if you bump this elsewhere.
 - **Don't change asset coordinate units without updating `tests/test_assets_units.py`.** That test catches the most expensive regression class — invisible geometries because of unit mismatch.

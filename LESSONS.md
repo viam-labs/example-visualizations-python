@@ -101,6 +101,23 @@ The RDK fake at `services/worldstatestore/fake/moving_geos_world.go` uses the ob
 
 **Status.** TBD. User will report what they see on `desktop-dell-2` after switching to the `reference_frame_demo` preset.
 
+### three-tiers-of-primitive
+
+**Finding.** "Primitive" is overloaded — the proto's primitive set is small but the effective rendered shape set is unbounded. Useful to keep three tiers separate so users (and future agents) don't conflate them:
+
+  | Tier | What | Where defined |
+  | --- | --- | --- |
+  | Native proto primitives (5) | Box, Sphere, Capsule, Mesh, PointCloud | `viam.common.v1.Geometry` oneof |
+  | Sugar types (2 in this module) | `point` (fixed-radius sphere marker), `arrow` (procedural mesh) | `src/geometries.py` |
+  | Anything mesh-shaped | Torus, teapot, robot-arm link, custom CAD export | Procedural PLY at build time (`scripts/generate_assets.py`) or runtime (`arrow_ply_bytes`-style), OR user-supplied PLY/STL asset |
+
+**Why it matters.** When a user asks "is torus a primitive?" they're usually asking one of three different things:
+  - "Is it in the proto?" — No.
+  - "Can the viewer render it?" — Yes (as a mesh).
+  - "Does this module expose it as a config type?" — Currently no, but adding it as procedural sugar is ~30 lines (see how `arrow` is wired in).
+
+**Why we don't add every conceivable shape as sugar.** Each sugar type adds a config knob, a validation branch, a builder, and tests. The right test for "should this be a sugar type" is: do enough users want it that the sugar is worth the maintenance? `arrow` clears that bar because direction visualization is common. `cylinder`, `cone`, `torus`, `disk` likely clear it too; `mobius_strip` probably doesn't.
+
 ### coordinate-frame-via-show-axes-helper
 
 **Finding.** The `show_axes_helper: true` metadata flag (from `protos/draw/v1/metadata.proto`) renders an RGB XYZ triad at the entity's origin **without** needing to emit three colored arrows manually. The helper rotates with the entity's orientation, so a small sphere host at any `(OX, OY, OZ, theta)` becomes a fully-readable coordinate frame.
