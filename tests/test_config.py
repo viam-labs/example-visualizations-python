@@ -33,7 +33,8 @@ def test_minimal_config_with_tick_hz_and_strategy():
 
 
 def test_preset_field_accepts_known_names():
-    for name in ("primitives", "color_wheel", "mesh_gallery", "orientation_vectors"):
+    for name in ("primitives", "color_wheel", "orientation_vectors",
+                "reference_frame_demo", "robot_arm", "all"):
         SceneSprites.validate_config(_cfg({"preset": name}))
 
 

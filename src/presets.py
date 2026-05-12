@@ -6,16 +6,17 @@ serializable for the ``snapshot`` DoCommand round-trip.
 
 Presets:
 
-  - ``primitives``: one of each supported primitive, spaced along X,
-    distinct colors, static. This is the default first-install scene.
+  - ``primitives``: every supported primitive plus a tour of more
+    complex meshes (torus, teapot) and a point cloud. Single row
+    along X — the default first-install scene and the canonical
+    "show me what this module renders" reference.
   - ``color_wheel``: ten spheres arranged around a circle, HSV-swept hue.
-  - ``mesh_gallery``: bunny PLY + cube STL + helix point cloud, side by
-    side. Useful for inspecting the three "file-asset" primitives at once.
-  - ``orientation_vectors``: same arrow mesh replicated at OX/OY/OZ
-    permutations with a theta-sweep demo. Arrows (not capsules)
-    because the asymmetric shaft+tip geometry makes the pointing
-    direction unambiguous; a capsule is rotationally symmetric along
-    its length axis and the user can't tell which end is which.
+  - ``orientation_vectors``: small sphere markers at axis-aligned
+    orientation vectors carrying ``show_axes_helper: True`` so the
+    viewer renders an RGB XYZ triad at each entity's origin.
+  - ``reference_frame_demo``: chained parent-frame composition probe.
+  - ``robot_arm``: stylized articulated arm built from primitives.
+  - ``all``: every preset above, stacked along Y. One-stop tour.
 """
 import colorsys
 import math
@@ -26,7 +27,6 @@ PRESET_NAMES = (
     "all",
     "primitives",
     "color_wheel",
-    "mesh_gallery",
     "orientation_vectors",
     "reference_frame_demo",
     "robot_arm",
@@ -41,15 +41,23 @@ def _identity_pose(x: float = 0.0, y: float = 0.0, z: float = 0.0) -> Mapping[st
 
 
 def primitives() -> List[Mapping[str, Any]]:
-    """One of every supported primitive in a row along X. Colors are
-    distinct rainbow stops so each primitive is identifiable at a
-    glance. All static."""
+    """One of every primitive type plus a tour of more complex meshes
+    and a point cloud, in a single row along X. Each item has a
+    distinct color so they read clearly at a glance.
+
+    Row layout (left → right):
+
+      demo_box, demo_sphere, demo_capsule, demo_point, demo_arrow,
+      demo_icosahedron (PLY), demo_bunny (STL), demo_torus (PLY),
+      demo_teapot (PLY), demo_pointcloud (PCD)
+
+    Total span ~3.6 m along X, centered at the origin."""
     sp = PRIMITIVE_ROW_SPACING_MM
     return [
         {
             "type": "box",
             "label": "demo_box",
-            "pose": _identity_pose(x=-3 * sp),
+            "pose": _identity_pose(x=-4 * sp),
             "dims_mm": {"x": 150, "y": 150, "z": 150},
             "color": {"r": 230, "g": 25, "b": 75},
             "opacity": 1.0,
@@ -58,7 +66,7 @@ def primitives() -> List[Mapping[str, Any]]:
         {
             "type": "sphere",
             "label": "demo_sphere",
-            "pose": _identity_pose(x=-2 * sp),
+            "pose": _identity_pose(x=-3 * sp),
             "radius_mm": 90,
             "color": {"r": 60, "g": 180, "b": 75},
             "opacity": 1.0,
@@ -67,7 +75,7 @@ def primitives() -> List[Mapping[str, Any]]:
         {
             "type": "capsule",
             "label": "demo_capsule",
-            "pose": _identity_pose(x=-1 * sp),
+            "pose": _identity_pose(x=-2 * sp),
             "radius_mm": 50,
             "length_mm": 200,
             "color": {"r": 0, "g": 130, "b": 200},
@@ -77,7 +85,7 @@ def primitives() -> List[Mapping[str, Any]]:
         {
             "type": "point",
             "label": "demo_point",
-            "pose": _identity_pose(x=0),
+            "pose": _identity_pose(x=-1 * sp),
             "color": {"r": 255, "g": 225, "b": 25},
             "opacity": 1.0,
             "animation": {"mode": "none"},
@@ -87,40 +95,62 @@ def primitives() -> List[Mapping[str, Any]]:
         {
             "type": "arrow",
             "label": "demo_arrow",
-            "pose": _identity_pose(x=1 * sp),
+            "pose": _identity_pose(x=0),
             "length_mm": 220,
             "radius_mm": 12,
             "color": {"r": 145, "g": 30, "b": 180},
             "opacity": 1.0,
             "animation": {"mode": "none"},
         },
+        # PLY mesh — the icosahedron stand-in.
         {
             "type": "mesh",
-            "label": "demo_mesh_ply",
-            "pose": _identity_pose(x=2 * sp),
+            "label": "demo_icosahedron",
+            "pose": _identity_pose(x=1 * sp),
             "mesh_path": "assets/icosahedron.ply",
             "color": {"r": 240, "g": 50, "b": 230},
             "opacity": 1.0,
             "animation": {"mode": "none"},
         },
+        # STL mesh — actual Stanford bunny.
         {
             "type": "mesh",
-            "label": "demo_mesh_stl",
-            "pose": _identity_pose(x=3 * sp),
+            "label": "demo_bunny",
+            "pose": _identity_pose(x=2 * sp),
             "mesh_path": "assets/bunny.stl",
             "color": {"r": 245, "g": 130, "b": 49},
             "opacity": 1.0,
             "animation": {"mode": "none"},
         },
-        # NOTE: no `color` here on purpose — when metadata.colors is
-        # set on a point cloud item, the viewer uses it as a uniform
-        # tint and IGNORES the per-point RGB embedded in the PCD body.
-        # Omitting color lets the helix's per-point colors render.
+        # Procedural torus PLY — "more complex than a primitive shape".
+        {
+            "type": "mesh",
+            "label": "demo_torus",
+            "pose": _identity_pose(x=3 * sp),
+            "mesh_path": "assets/torus.ply",
+            "color": {"r": 70, "g": 240, "b": 240},
+            "opacity": 1.0,
+            "animation": {"mode": "none"},
+        },
+        # Newell/Utah teapot PLY — the canonical 3D test mesh.
+        {
+            "type": "mesh",
+            "label": "demo_teapot",
+            "pose": _identity_pose(x=4 * sp),
+            "mesh_path": "assets/teapot.ply",
+            "color": {"r": 60, "g": 180, "b": 75},
+            "opacity": 1.0,
+            "animation": {"mode": "none"},
+        },
+        # NOTE: no `color` on purpose — when metadata.colors is set on
+        # a point cloud, the viewer uses it as a uniform tint and
+        # IGNORES the per-point RGB embedded in the PCD body. Omitting
+        # color lets the helix's per-point colors render.
         # See LESSONS.md::pcd-colors-precedence.
         {
             "type": "pointcloud",
             "label": "demo_pointcloud",
-            "pose": _identity_pose(x=4 * sp),
+            "pose": _identity_pose(x=5 * sp),
             "pointcloud_path": "assets/helix.pcd",
             "opacity": 1.0,
             "animation": {"mode": "none"},
@@ -150,70 +180,6 @@ def color_wheel(count: int = 10, ring_radius_mm: float = 300.0) -> List[Mapping[
             "animation": {"mode": "none"},
         })
     return items
-
-
-def mesh_gallery() -> List[Mapping[str, Any]]:
-    """Showcase of "more complex than a cube" meshes the world-state-
-    store API can handle: torus, Utah teapot, plus the standard
-    icosahedron, cube STL, and binary PCD point cloud for comparison.
-    Each item gets a distinct color so the row reads as a gallery.
-
-    Positions: 5 items spaced along X. Torus and teapot are the new
-    "more complex" exemplars — the user's hint was "teapot and a
-    robot arm"; teapot lives here, robot arm is its own preset so it
-    can use multiple parented primitives."""
-    sp = 600.0  # mesh items are larger; widen the row.
-    return [
-        {
-            "type": "mesh",
-            "label": "gallery_icosahedron",
-            "pose": _identity_pose(x=-2 * sp),
-            "mesh_path": "assets/icosahedron.ply",
-            "color": {"r": 240, "g": 50, "b": 230},
-            "opacity": 1.0,
-            "animation": {"mode": "none"},
-        },
-        {
-            "type": "mesh",
-            "label": "gallery_bunny_stl",
-            "pose": _identity_pose(x=-sp),
-            "mesh_path": "assets/bunny.stl",
-            "color": {"r": 245, "g": 130, "b": 49},
-            "opacity": 1.0,
-            "animation": {"mode": "none"},
-        },
-        # Torus — 36×18 ring of vertices, recognizable donut shape.
-        {
-            "type": "mesh",
-            "label": "gallery_torus",
-            "pose": _identity_pose(x=0),
-            "mesh_path": "assets/torus.ply",
-            "color": {"r": 70, "g": 240, "b": 240},
-            "opacity": 1.0,
-            "animation": {"mode": "none"},
-        },
-        # Utah teapot — classic 3D graphics test mesh, Bezier-patch
-        # evaluated. ~1152 verts, ~1800 triangles.
-        {
-            "type": "mesh",
-            "label": "gallery_teapot",
-            "pose": _identity_pose(x=sp),
-            "mesh_path": "assets/teapot.ply",
-            "color": {"r": 60, "g": 180, "b": 75},
-            "opacity": 1.0,
-            "animation": {"mode": "none"},
-        },
-        # No `color` so the embedded per-point PCD RGB shows through;
-        # metadata.colors would override it with a uniform tint.
-        {
-            "type": "pointcloud",
-            "label": "gallery_pcd",
-            "pose": _identity_pose(x=2 * sp),
-            "pointcloud_path": "assets/helix.pcd",
-            "opacity": 1.0,
-            "animation": {"mode": "none"},
-        },
-    ]
 
 
 def robot_arm() -> List[Mapping[str, Any]]:
@@ -546,20 +512,18 @@ def all_preset() -> List[Mapping[str, Any]]:
 
     Row layout (Y from negative to positive):
 
-      - orientation_vectors  y = -3*row
-      - color_wheel          y = -2*row
-      - robot_arm            y = -row
+      - orientation_vectors  y = -2*row
+      - color_wheel          y = -row
       - primitives           y =   0
-      - mesh_gallery         y = +row
+      - robot_arm            y = +row
       - reference_frame_demo y = +2*row
     """
     row = 1800.0
     items: List[Mapping[str, Any]] = []
-    items.extend(_offset_base_items_y(orientation_vectors(), -3 * row))
-    items.extend(_offset_base_items_y(color_wheel(), -2 * row))
-    items.extend(_offset_base_items_y(robot_arm(), -row))
+    items.extend(_offset_base_items_y(orientation_vectors(), -2 * row))
+    items.extend(_offset_base_items_y(color_wheel(), -row))
     items.extend(_offset_base_items_y(primitives(), 0.0))
-    items.extend(_offset_base_items_y(mesh_gallery(), row))
+    items.extend(_offset_base_items_y(robot_arm(), row))
     items.extend(_offset_base_items_y(reference_frame_demo(), 2 * row))
     return items
 
@@ -568,7 +532,6 @@ PRESETS = {
     "all": all_preset,
     "primitives": primitives,
     "color_wheel": color_wheel,
-    "mesh_gallery": mesh_gallery,
     "orientation_vectors": orientation_vectors,
     "reference_frame_demo": reference_frame_demo,
     "robot_arm": robot_arm,

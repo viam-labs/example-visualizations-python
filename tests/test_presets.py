@@ -9,7 +9,6 @@ from src.presets import (
     primitives,
     color_wheel,
     load,
-    mesh_gallery,
     orientation_vectors,
     reference_frame_demo,
     robot_arm,
@@ -19,9 +18,10 @@ from src.presets import (
 # ---------- primitives ----------
 
 def test_primitives_emits_one_of_every_supported_type():
-    """The default scene is the user's first impression — every
-    primitive type must be represented at least once (box + mesh +
-    mesh+stl shown separately so the user sees both formats)."""
+    """The default scene is every primitive type at least once + a
+    tour of more complex meshes (torus, teapot) so users see both
+    "minimal example" and "real-mesh example" in one preset. mesh
+    appears 4× now: icosahedron PLY, bunny STL, torus PLY, teapot PLY."""
     items = primitives()
     types = [it["type"] for it in items]
     assert types.count("box") == 1
@@ -29,11 +29,25 @@ def test_primitives_emits_one_of_every_supported_type():
     assert types.count("capsule") == 1
     assert types.count("point") == 1
     assert types.count("arrow") == 1
-    # mesh appears twice — one PLY, one STL — to demonstrate both
-    # supported file formats.
-    assert types.count("mesh") == 2
+    # 4 meshes: icosahedron PLY, bunny STL, torus PLY, teapot PLY.
+    assert types.count("mesh") == 4
     assert types.count("pointcloud") == 1
     assert set(types) == set(SUPPORTED_TYPES)
+
+
+def test_primitives_includes_torus_and_teapot():
+    """The "more complex meshes" — both must be in primitives now
+    that mesh_gallery has been merged in."""
+    paths = [it.get("mesh_path") for it in primitives() if it.get("mesh_path")]
+    assert any(p.endswith("torus.ply") for p in paths)
+    assert any(p.endswith("teapot.ply") for p in paths)
+
+
+def test_primitives_includes_actual_bunny_stl():
+    """The STL slot is the Stanford bunny, not a cube. Test pins
+    this so the asset path doesn't silently regress to a placeholder."""
+    paths = [it.get("mesh_path") for it in primitives() if it.get("mesh_path")]
+    assert any(p.endswith("bunny.stl") for p in paths)
 
 
 def test_primitives_has_unique_labels():
@@ -126,24 +140,6 @@ def test_color_wheel_positions_form_a_ring():
 
 
 # ---------- mesh_gallery ----------
-
-def test_mesh_gallery_features_complex_meshes_plus_pointcloud():
-    """Gallery shows the assets that aren't trivially-shaped: torus,
-    teapot, plus icosahedron + STL cube + binary PCD for contrast."""
-    items = mesh_gallery()
-    types = [it["type"] for it in items]
-    assert types.count("mesh") == 4  # icosahedron, cube, torus, teapot
-    assert types.count("pointcloud") == 1
-
-
-def test_mesh_gallery_includes_torus_and_teapot():
-    """The user-requested complex meshes — both must be present."""
-    paths = [it.get("mesh_path") for it in mesh_gallery() if it.get("mesh_path")]
-    assert any(p.endswith("torus.ply") for p in paths), \
-        "torus.ply missing from mesh_gallery"
-    assert any(p.endswith("teapot.ply") for p in paths), \
-        "teapot.ply missing from mesh_gallery"
-
 
 # ---------- robot_arm ----------
 

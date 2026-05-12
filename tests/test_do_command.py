@@ -260,10 +260,10 @@ async def test_preset_unknown_name_raises():
         await s.do_command({"command": "preset", "name": "not_a_real_preset"})
 
 
-async def test_preset_primitives_loads_eight_items():
+async def test_preset_primitives_loads_ten_items():
     s = _bare_service()
     out = await s.do_command({"command": "preset", "name": "primitives"})
-    assert out["count"] == 8
+    assert out["count"] == 10
 
 
 # ---------- snapshot ----------

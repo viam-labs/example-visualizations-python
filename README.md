@@ -43,9 +43,8 @@ orange STL cube → cyan helical PCD point cloud.
 
 Want a different default scene? Set `preset` to one of:
 
-- `primitives` (default) — one of every supported primitive type (box, sphere, capsule, point, arrow, PLY mesh, STL mesh, point cloud).
+- `primitives` (default) — every supported primitive type plus a tour of more complex meshes. 10 items in a row: box → sphere → capsule → point → arrow → icosahedron (PLY) → bunny (STL) → torus (PLY) → Utah teapot (PLY) → helix (PCD).
 - `color_wheel` — 10 spheres around a ring, HSV-swept hue.
-- `mesh_gallery` — icosahedron + STL cube + torus + Utah teapot + binary PCD. The "more complex meshes" tour.
 - `orientation_vectors` — small sphere markers at axis-aligned orientation vectors, with `show_axes_helper: true` so the viewer renders an RGB XYZ triad at each entity's origin. Shows how `(OX, OY, OZ, theta)` maps to a coordinate frame.
 - `reference_frame_demo` — a spinning anchor + colored X/Y/Z triad parented to it + a child mesh that spins on its own axis. Probes the renderer's parent-chain composition.
 - `robot_arm` — articulated arm built from primitives (base + shoulder + upper arm + elbow + forearm + wrist + arrow end-effector), each link parented to the previous. Spinning base/elbow drives the chain if frame composition works.
