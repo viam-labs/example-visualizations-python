@@ -102,16 +102,16 @@ def test_arrow_ply_points_along_local_plus_z():
         )
 
 
-def test_cube_stl_vertices_are_in_meters_not_millimeters():
-    """A 200 mm cube: each vertex coordinate should be ±0.1 m, not
-    ±100 mm."""
-    data = ASSETS.joinpath("cube.stl").read_bytes()
+def test_bunny_stl_vertices_are_in_meters_not_millimeters():
+    """The Stanford bunny is ~85 mm wide / 67 mm tall in mm. Centered
+    on origin, vertices fit within ±50 mm = ±0.05 m. If this regresses
+    to ±50 (mm in the file), the renderer draws the bunny 1000× too big."""
+    data = ASSETS.joinpath("bunny.stl").read_bytes()
     assert len(data) >= 84
     num_tris = struct.unpack("<I", data[80:84])[0]
-    assert num_tris == 12, f"expected 12 triangles, got {num_tris}"
+    # Source has 308 triangles after decimation.
+    assert 200 < num_tris < 500, f"unexpected triangle count {num_tris}"
 
-    # Walk each triangle: 12-byte normal, 3 × 12-byte vertex,
-    # 2-byte attribute = 50 bytes total.
     max_mag = 0.0
     offset = 84
     for _ in range(num_tris):
@@ -122,10 +122,37 @@ def test_cube_stl_vertices_are_in_meters_not_millimeters():
             max_mag = max(max_mag, abs(x), abs(y), abs(z))
         offset += 2  # skip attribute byte count
     assert max_mag < 1.0, (
-        f"STL vertex magnitudes look mm-scaled (max={max_mag}); "
+        f"bunny.stl vertex magnitudes look mm-scaled (max={max_mag}); "
         "file should be in METERS — RDK reader multiplies by 1000."
     )
-    assert max_mag > 0.01
+    # Bunny extents ~0.05-0.09 m post-centering.
+    assert max_mag > 0.02
+
+
+def test_bunny_stl_is_centered_on_xy_axes():
+    """We center the bunny on its X/Y centroid (Z bottom aligned to 0)
+    so it sits at the configured pose without offset. Tests the
+    write_bunny_stl centering logic; if this regresses, every preset
+    that places the bunny ends up with it offset somewhere unexpected."""
+    data = ASSETS.joinpath("bunny.stl").read_bytes()
+    num_tris = struct.unpack("<I", data[80:84])[0]
+    xs, ys, zs = [], [], []
+    offset = 84
+    for _ in range(num_tris):
+        offset += 12  # skip normal
+        for _v in range(3):
+            x, y, z = struct.unpack("<fff", data[offset:offset + 12])
+            offset += 12
+            xs.append(x); ys.append(y); zs.append(z)
+        offset += 2
+    cx = 0.5 * (min(xs) + max(xs))
+    cy = 0.5 * (min(ys) + max(ys))
+    min_z = min(zs)
+    # Centroid in X/Y should be within 1 mm of origin.
+    assert abs(cx) < 0.001, f"bunny X centroid {cx} m, expected ~0"
+    assert abs(cy) < 0.001, f"bunny Y centroid {cy} m, expected ~0"
+    # Bottom Z should be at 0 (stands on the floor).
+    assert abs(min_z) < 0.001, f"bunny min Z {min_z} m, expected ~0"
 
 
 def test_helix_pcd_points_are_in_meters_not_millimeters():

@@ -208,10 +208,10 @@ async def test_update_mesh_path_swaps_file_at_runtime(tmp_path):
     await s.do_command({"command": "add", "item": mesh_item})
     out = await s.do_command({
         "command": "update", "label": "u7",
-        "patch": {"mesh_path": "assets/cube.stl"},
+        "patch": {"mesh_path": "assets/bunny.stl"},
     })
     assert "physicalObject.mesh" in out["updated_fields"]
-    assert s._state["u7"]["item"]["mesh_path"] == "assets/cube.stl"
+    assert s._state["u7"]["item"]["mesh_path"] == "assets/bunny.stl"
 
 
 async def test_update_unknown_label_raises():

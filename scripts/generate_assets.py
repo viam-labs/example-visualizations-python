@@ -39,9 +39,11 @@ makes the renderer draw it 1000× too big.
 # divided by this; everything inside the helpers stays in mm.
 MM_PER_M = 1000.0
 import math
+import re
 import struct
 import sys
 from pathlib import Path
+from typing import Optional
 
 # Allow `from src.geometries import ...` when running this script
 # from anywhere (including via `make assets`).
@@ -207,6 +209,84 @@ def write_arrow_ply(
 
 
 # ---------- binary STL cube ----------
+
+def write_bunny_stl(source_path: Optional[Path] = None) -> Path:
+    """Convert the ASCII Stanford bunny in ``scripts/bunny_source.stl``
+    to a centered binary STL with vertex coords in meters.
+
+    The source ASCII STL is 308 triangles, vertex coordinates in mm,
+    minimum corner not at the origin. We:
+
+      1. Parse all vertices and per-triangle normals from the ASCII.
+      2. Center on the X/Y centroid and align the bottom (min Z) to z=0
+         so the bunny sits on the floor with its centroid above the
+         service's parent_frame origin.
+      3. Convert mm → meters by dividing by 1000.
+      4. Write binary STL: 80-byte header + uint32 tri count + per-tri
+         12-byte normal + 36-byte vertices + 2-byte attribute.
+
+    Output ~17 KB binary, dramatically smaller than the 60 KB ASCII
+    source and matches the format the RDK STL reader expects (binary
+    only — see rdk/spatialmath/mesh.go::newMeshFromSTLBytes).
+
+    Source: github.com/ecell/ecell4_docs (which redistributes a
+    decimated Stanford bunny). Stanford bunny dataset itself is from
+    Stanford Computer Graphics Laboratory, free for research/teaching."""
+    if source_path is None:
+        source_path = Path(__file__).resolve().parent / "bunny_source.stl"
+    text = source_path.read_text()
+    # ASCII STL grammar: each triangle is `facet normal nx ny nz`
+    # followed by three `vertex x y z` lines. Parse via regex; small
+    # files so performance is irrelevant.
+    facet_re = re.compile(
+        r"facet\s+normal\s+(\S+)\s+(\S+)\s+(\S+)\s+"
+        r"outer\s+loop\s+"
+        r"vertex\s+(\S+)\s+(\S+)\s+(\S+)\s+"
+        r"vertex\s+(\S+)\s+(\S+)\s+(\S+)\s+"
+        r"vertex\s+(\S+)\s+(\S+)\s+(\S+)\s+"
+        r"endloop\s+endfacet",
+        re.IGNORECASE,
+    )
+    tris = []
+    for m in facet_re.finditer(text):
+        nums = [float(g) for g in m.groups()]
+        tris.append((
+            (nums[0], nums[1], nums[2]),                  # normal
+            (nums[3], nums[4], nums[5]),                  # v1
+            (nums[6], nums[7], nums[8]),                  # v2
+            (nums[9], nums[10], nums[11]),                # v3
+        ))
+    if not tris:
+        raise ValueError(f"no triangles parsed from {source_path}")
+    # Centroid of the X/Y bounding box (keep Z bottom at min so the
+    # bunny stands on its feet). Source coords are in mm.
+    all_v = [v for t in tris for v in t[1:]]
+    min_x = min(v[0] for v in all_v)
+    max_x = max(v[0] for v in all_v)
+    min_y = min(v[1] for v in all_v)
+    max_y = max(v[1] for v in all_v)
+    min_z = min(v[2] for v in all_v)
+    cx_mm = 0.5 * (min_x + max_x)
+    cy_mm = 0.5 * (min_y + max_y)
+    cz_mm = min_z
+    # Write binary STL. Coords go to meters; normals stay unit (no scale).
+    buf = bytearray(80)  # zero header
+    buf += struct.pack("<I", len(tris))
+    for (n, v1, v2, v3) in tris:
+        nx, ny, nz = n
+        # Normals are direction vectors, so we don't translate them —
+        # only the vertex positions get centered & scaled.
+        buf += struct.pack("<fff", nx, ny, nz)
+        for (x, y, z) in (v1, v2, v3):
+            cx = (x - cx_mm) / MM_PER_M
+            cy = (y - cy_mm) / MM_PER_M
+            cz = (z - cz_mm) / MM_PER_M
+            buf += struct.pack("<fff", cx, cy, cz)
+        buf += struct.pack("<H", 0)
+    path = OUT / "bunny.stl"
+    path.write_bytes(bytes(buf))
+    return path
+
 
 def write_cube_stl(side_mm: float = 200.0) -> Path:
     """Binary STL cube — 12 triangles, 80-byte header + uint32 tri
@@ -505,7 +585,7 @@ if __name__ == "__main__":
         write_arrow_ply(),
         write_torus_ply(),
         write_teapot_ply(),
-        write_cube_stl(),
+        write_bunny_stl(),
         write_helix_pcd(),
     ]
     for p in paths:
