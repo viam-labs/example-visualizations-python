@@ -441,7 +441,7 @@ def test_force_vector_modulates_length_radius_orientation_and_emits_color():
     orientation vector, and color override. The mode is designed
     for the arrow primitive."""
     base_geom = {"length_mm": 200, "radius_mm": 10}
-    pose, geom, paths, color = compute_tick(
+    pose, geom, paths, meta = compute_tick(
         {"type": "arrow", "animation": {
             "mode": "force_vector",
             "period_s": 4.0,
@@ -462,8 +462,10 @@ def test_force_vector_modulates_length_radius_orientation_and_emits_color():
     assert pose["ox"] == pytest.approx(0.0, abs=1e-6)
     assert pose["oy"] == pytest.approx(math.sin(math.radians(45)), abs=1e-6)
     assert pose["oz"] == pytest.approx(math.cos(math.radians(45)))
-    # Color is non-None (HSV → RGB at hue = 0.25).
-    assert color is not None
+    # Metadata override contains a color tuple.
+    assert meta is not None
+    assert "color" in meta
+    color = meta["color"]
     assert len(color) == 3
     assert all(0 <= c <= 255 for c in color)
     # Field-mask paths cover all four changing attributes.
@@ -483,10 +485,12 @@ def test_force_vector_color_cycles_through_hue():
     }}
     base_geom = {"length_mm": 200, "radius_mm": 10}
     # t=0 → hue 0 → red dominant.
-    _, _, _, color0 = compute_tick(item, BASE_POSE, base_geom, t=0.0)
+    _, _, _, meta0 = compute_tick(item, BASE_POSE, base_geom, t=0.0)
+    color0 = meta0["color"]
     assert color0[0] > color0[1] and color0[0] > color0[2]
     # t = period_s / 3 → hue 1/3 → green dominant.
-    _, _, _, color_third = compute_tick(item, BASE_POSE, base_geom, t=2.0)
+    _, _, _, meta_third = compute_tick(item, BASE_POSE, base_geom, t=2.0)
+    color_third = meta_third["color"]
     assert color_third[1] > color_third[0] and color_third[1] > color_third[2]
 
 
@@ -505,10 +509,111 @@ def test_force_vector_orientation_traces_a_cone():
         assert pose["oz"] == pytest.approx(expected_oz, abs=1e-6)
 
 
+# ---------- pulse with axis param (box single-dim stretching) ----------
+
+def test_pulse_box_axis_z_modulates_only_z_dim():
+    """With axis='z', only dimsMm.z changes — the box stretches
+    along Z while X and Y stay fixed. Use this for "length grows
+    over time" without making the box bloat in all directions."""
+    _, geom, paths, _ = compute_tick(
+        {"type": "box", "animation": {
+            "mode": "pulse", "axis": "z",
+            "amplitude_mm": 100, "period_s": 4,
+        }},
+        BASE_POSE,
+        {"dims_mm": {"x": 100, "y": 100, "z": 100}},
+        t=1.0,  # T/4 → max excursion
+    )
+    assert geom["dims_mm"]["x"] == 100
+    assert geom["dims_mm"]["y"] == 100
+    assert geom["dims_mm"]["z"] == pytest.approx(200)
+    # Only the z field-mask path is emitted.
+    assert paths == ["physicalObject.geometryType.value.dimsMm.z"]
+
+
+def test_pulse_box_default_axis_all_keeps_isotropic_behavior():
+    """Backward compat: with no axis param (or axis='all'), pulse
+    on a box modulates all three dims simultaneously — the prior
+    behavior."""
+    _, geom, _, _ = compute_tick(
+        {"type": "box", "animation": {
+            "mode": "pulse", "amplitude_mm": 50, "period_s": 4,
+        }},
+        BASE_POSE,
+        {"dims_mm": {"x": 100, "y": 100, "z": 100}},
+        t=1.0,
+    )
+    assert geom["dims_mm"]["x"] == pytest.approx(150)
+    assert geom["dims_mm"]["y"] == pytest.approx(150)
+    assert geom["dims_mm"]["z"] == pytest.approx(150)
+
+
+# ---------- breathe ----------
+
+def test_breathe_oscillates_opacity_around_base():
+    """Opacity = base + amplitude · sin(2π t / period). At t=T/4
+    we hit the max excursion; clamped to [0, 1]."""
+    item = {"type": "capsule", "opacity": 0.7, "animation": {
+        "mode": "breathe", "amplitude": 0.3, "period_s": 4,
+    }}
+    base_geom = {"radius_mm": 50, "length_mm": 200}
+    _, _, paths, meta = compute_tick(item, BASE_POSE, base_geom, t=1.0)
+    assert meta is not None
+    assert meta["opacity"] == pytest.approx(1.0)  # 0.7 + 0.3 clamped
+    assert paths == ["metadata.opacity"]
+
+
+def test_breathe_clamps_opacity_below_zero():
+    """At t=3T/4, sin = -1, so opacity = base - amplitude. Clamp
+    keeps it ≥ 0."""
+    item = {"type": "capsule", "opacity": 0.2, "animation": {
+        "mode": "breathe", "amplitude": 0.4, "period_s": 4,
+    }}
+    base_geom = {"radius_mm": 50, "length_mm": 200}
+    _, _, _, meta = compute_tick(item, BASE_POSE, base_geom, t=3.0)
+    # 0.2 - 0.4 = -0.2 → clamp to 0.
+    assert meta["opacity"] == pytest.approx(0.0)
+
+
+# ---------- flicker ----------
+
+def test_flicker_on_off_by_duty_cycle():
+    """Square wave: visible for duty_cycle fraction of period,
+    invisible for the rest. With duty_cycle=0.5, half on half off."""
+    item = {"type": "sphere", "animation": {
+        "mode": "flicker", "period_s": 4.0, "duty_cycle": 0.5,
+    }}
+    base_geom = {"radius_mm": 30}
+    # t=0: phase=0 < 0.5 → ON (opacity 1.0)
+    _, _, _, meta_on = compute_tick(item, BASE_POSE, base_geom, t=0.0)
+    assert meta_on["opacity"] == 1.0
+    # t=3: phase = 3/4 = 0.75, not < 0.5 → OFF (opacity 0.0)
+    _, _, _, meta_off = compute_tick(item, BASE_POSE, base_geom, t=3.0)
+    assert meta_off["opacity"] == 0.0
+
+
+def test_flicker_phase_offset_shifts_the_cycle():
+    """phase_offset_s lets a row of items with the same period
+    flicker out-of-phase, producing a wave effect. With offset
+    = period/2 the cycle is flipped."""
+    base_geom = {"radius_mm": 30}
+    item_a = {"type": "sphere", "animation": {
+        "mode": "flicker", "period_s": 4.0,
+    }}
+    item_b = {"type": "sphere", "animation": {
+        "mode": "flicker", "period_s": 4.0, "phase_offset_s": 2.0,
+    }}
+    # At t=0: A is ON (phase 0), B is OFF (phase 0.5).
+    _, _, _, meta_a = compute_tick(item_a, BASE_POSE, base_geom, t=0.0)
+    _, _, _, meta_b = compute_tick(item_b, BASE_POSE, base_geom, t=0.0)
+    assert meta_a["opacity"] == 1.0
+    assert meta_b["opacity"] == 0.0
+
+
 def test_supported_modes_constant():
     assert set(SUPPORTED_MODES) == {
         "none", "orbit", "oscillate", "spin", "swing", "pulse", "trajectory",
-        "force_vector",
+        "force_vector", "breathe", "flicker",
     }
 
 

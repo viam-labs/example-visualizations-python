@@ -12,6 +12,7 @@ from src.presets import (
     color_wheel,
     force_vector_demo,
     frame_composition,
+    geometry_morph,
     load,
     orientation_vectors,
     reference_frame_demo,
@@ -495,6 +496,38 @@ def test_trajectory_preview_line_segments_align_with_segment_directions():
         assert seg_pose["ox"] == pytest.approx(ox_expected, abs=1e-6)
         assert seg_pose["oy"] == pytest.approx(oy_expected, abs=1e-6)
         assert seg_pose["oz"] == pytest.approx(oz_expected, abs=1e-6)
+
+
+# ---------- geometry_morph ----------
+
+def test_geometry_morph_includes_all_four_animation_modes():
+    """The row showcases four distinct attribute-animation patterns;
+    each must be present. Modes: pulse on sphere (size), pulse on
+    box (single-axis stretch), breathe (opacity), flicker (on/off
+    toggle)."""
+    items = geometry_morph()
+    by_label = {it["label"]: it for it in items}
+    assert by_label["morph_pulse_sphere"]["animation"]["mode"] == "pulse"
+    assert by_label["morph_stretch_box"]["animation"]["mode"] == "pulse"
+    assert by_label["morph_stretch_box"]["animation"]["axis"] == "z"
+    assert by_label["morph_breathe_capsule"]["animation"]["mode"] == "breathe"
+    # Any one of the grid items uses flicker.
+    grid_items = [v for k, v in by_label.items() if k.startswith("morph_grid_")]
+    assert len(grid_items) == 25, f"expected 5×5 grid, got {len(grid_items)}"
+    for g in grid_items:
+        assert g["animation"]["mode"] == "flicker"
+
+
+def test_geometry_morph_grid_phase_offsets_vary_per_cell():
+    """A diagonal wave needs distinct phase_offset_s per cell.
+    If everyone shared a phase, the grid would flicker as one
+    block — visually less interesting and not a wave."""
+    items = geometry_morph()
+    grid_items = [it for it in items if it["label"].startswith("morph_grid_")]
+    offsets = {it["animation"]["phase_offset_s"] for it in grid_items}
+    # Diagonal pattern: (row+col) ∈ [0, 8] gives 9 distinct offset
+    # buckets across the 25 cells.
+    assert len(offsets) == 9
 
 
 # ---------- force_vector_demo ----------

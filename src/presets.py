@@ -37,6 +37,7 @@ PRESET_NAMES = (
     "frame_composition",
     "trajectory_preview",
     "force_vector_demo",
+    "geometry_morph",
 )
 
 # Default spacing between primitives in the row-style preset (mm).
@@ -743,9 +744,15 @@ def all_preset() -> List[Mapping[str, Any]]:
                                   arrow whose length, radius,
                                   orientation, and color all change
                                   over time)
+      - geometry_morph       y = -2*row
+                                 (pulsing sphere, stretching box,
+                                  breathing capsule, flickering grid
+                                  — geometry + metadata animation
+                                  beyond pose)
     """
     row = 1800.0
     items: List[Mapping[str, Any]] = []
+    items.extend(_offset_base_items_y(geometry_morph(), -2 * row))
     items.extend(_offset_base_items_y(orientation_vectors(), -row))
     items.extend(_offset_base_items_y(primitives(), 0.0))
     items.extend(_offset_base_items_y(frame_composition(), row))
@@ -876,6 +883,106 @@ def trajectory_preview() -> List[Mapping[str, Any]]:
     return items
 
 
+def geometry_morph() -> List[Mapping[str, Any]]:
+    """A row of items demonstrating geometry + metadata animation
+    that goes beyond pose:
+
+      - sphere pulsing in radius (the simplest size animation)
+      - box stretching along a single axis (length grows / shrinks)
+      - capsule breathing in opacity (metadata animation)
+      - 5×5 grid of small spheres each flickering on/off with a
+        phase-staggered duty cycle, so the grid reads as a wave of
+        appearing-and-disappearing dots
+
+    The grid is the showpiece — it exercises both the new flicker
+    mode (per-item opacity 0 vs 1 toggling) and a phase-offset
+    pattern that gives the row a coordinated rolling appearance.
+    """
+    items: List[Mapping[str, Any]] = []
+    slot_x = 0.0
+
+    # Pulsing sphere.
+    items.append({
+        "type": "sphere",
+        "label": "morph_pulse_sphere",
+        "pose": _identity_pose(x=slot_x),
+        "radius_mm": 70,
+        "color": {"r": 230, "g": 60, "b": 100},
+        "opacity": 1.0,
+        "animation": {
+            "mode": "pulse",
+            "amplitude_mm": 35,
+            "period_s": 3,
+        },
+    })
+    slot_x += 350
+
+    # Box stretching along Z only (length).
+    items.append({
+        "type": "box",
+        "label": "morph_stretch_box",
+        "pose": _identity_pose(x=slot_x),
+        "dims_mm": {"x": 100, "y": 100, "z": 150},
+        "color": {"r": 100, "g": 180, "b": 230},
+        "opacity": 1.0,
+        "animation": {
+            "mode": "pulse",
+            "axis": "z",
+            "amplitude_mm": 100,
+            "period_s": 4,
+        },
+    })
+    slot_x += 350
+
+    # Capsule breathing in opacity.
+    items.append({
+        "type": "capsule",
+        "label": "morph_breathe_capsule",
+        "pose": _identity_pose(x=slot_x),
+        "radius_mm": 45,
+        "length_mm": 240,
+        "color": {"r": 220, "g": 200, "b": 60},
+        "opacity": 0.7,
+        "animation": {
+            "mode": "breathe",
+            "amplitude": 0.55,
+            "period_s": 4,
+        },
+    })
+    slot_x += 380
+
+    # 5×5 grid of flickering spheres. Phase-offset by grid position
+    # so the wave rolls diagonally across the grid.
+    grid_n = 5
+    grid_spacing = 80.0
+    period_s = 4.0
+    grid_origin_x = slot_x + 60  # left edge of the grid
+    for row_idx in range(grid_n):
+        for col_idx in range(grid_n):
+            # Diagonal wave: phase advances with (row + col).
+            phase_offset = (row_idx + col_idx) / (2 * grid_n - 1) * period_s
+            items.append({
+                "type": "sphere",
+                "label": f"morph_grid_{row_idx}{col_idx}",
+                "pose": _identity_pose(
+                    x=grid_origin_x + col_idx * grid_spacing,
+                    y=row_idx * grid_spacing,
+                    z=0,
+                ),
+                "radius_mm": 22,
+                "color": {"r": 80, "g": 200, "b": 140},
+                "opacity": 1.0,
+                "animation": {
+                    "mode": "flicker",
+                    "period_s": period_s,
+                    "duty_cycle": 0.55,
+                    "phase_offset_s": phase_offset,
+                },
+            })
+
+    return items
+
+
 def force_vector_demo() -> List[Mapping[str, Any]]:
     """A virtual force vector at the origin — one ``arrow`` primitive
     with the ``force_vector`` animation mode driving all four visible
@@ -960,6 +1067,7 @@ PRESETS = {
     "frame_composition": frame_composition,
     "trajectory_preview": trajectory_preview,
     "force_vector_demo": force_vector_demo,
+    "geometry_morph": geometry_morph,
 }
 
 

@@ -53,7 +53,7 @@ The animation module is purely functional; the service threads the
 elapsed time and base pose in. Tests can pin t to known values.
 """
 import math
-from typing import Any, Iterable, List, Mapping, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 
 
 # Field-mask paths used in the UPDATED event. These must match the
@@ -71,7 +71,7 @@ PATH_BOX_DIMS_Z = "physicalObject.geometryType.value.dimsMm.z"
 
 SUPPORTED_MODES = (
     "none", "orbit", "oscillate", "spin", "swing", "pulse", "trajectory",
-    "force_vector",
+    "force_vector", "breathe", "flicker",
 )
 SUPPORTED_AXES = ("x", "y", "z")
 
@@ -93,6 +93,9 @@ PATH_OZ = "poseInObserverFrame.pose.oZ"
 # service to ``uuid_strategy: "versioned"`` and the whole transform
 # (including fresh metadata) is re-emitted each tick.
 PATH_METADATA_COLOR = "metadata.color"
+# Opacity uses the same metadata path conventions. Whether
+# `metadata.opacity` is honored via UPDATED is also unverified.
+PATH_METADATA_OPACITY = "metadata.opacity"
 
 
 def is_animated(item: Mapping[str, Any]) -> bool:
@@ -107,7 +110,7 @@ def compute_tick(
     base_pose: Mapping[str, float],
     base_geom: Mapping[str, Any],
     t: float,
-) -> Tuple[Mapping[str, float], Mapping[str, Any], List[str], Optional[Tuple[int, int, int]]]:
+) -> Tuple[Mapping[str, float], Mapping[str, Any], List[str], Optional[Dict[str, Any]]]:
     """Compute per-tick overrides for an animated item.
 
     Args:
@@ -121,19 +124,20 @@ def compute_tick(
       t: seconds since the animation started.
 
     Returns:
-      (new_pose, new_geom, updated_fields, color_override)
+      (new_pose, new_geom, updated_fields, metadata_overrides)
         new_pose: full pose dict — fields not touched by the animation
                   pass through from base_pose.
         new_geom: geometry overrides keyed the same way as base_geom.
                   Fields not touched pass through.
         updated_fields: ordered list of field-mask paths to set on the
                   UPDATED change event.
-        color_override: ``(r, g, b)`` to override the item's metadata
-                  color this tick, or ``None`` to leave the static
-                  ``item["color"]`` in place. Only ``force_vector``
-                  currently sets this; the service is responsible for
-                  rebuilding metadata + emitting the appropriate
-                  field-mask path when it's set.
+        metadata_overrides: ``None`` to leave item metadata
+                  (color/opacity/etc) alone, or a dict whose keys
+                  override the item's static metadata for this tick.
+                  Supported keys: ``"color"`` → ``(r, g, b)`` tuple;
+                  ``"opacity"`` → float in ``[0, 1]``. The service
+                  rebuilds metadata + emits the matching field-mask
+                  paths when these keys are present.
     """
     anim = item.get("animation") or {}
     mode = anim.get("mode", "none")
@@ -211,14 +215,27 @@ def compute_tick(
             )
             paths = [PATH_CAPSULE_RADIUS, PATH_CAPSULE_LENGTH]
         elif item_type == "box":
+            # Optional `axis` param targets just one dimension (the
+            # "length grows over time" case for box). Default "all"
+            # modulates all three together.
+            box_axis = anim.get("axis", "all")
             base_dims = base_geom.get("dims_mm", {"x": 100, "y": 100, "z": 100})
             new_dims = {
-                "x": max(0.1, float(base_dims.get("x", 100)) + delta),
-                "y": max(0.1, float(base_dims.get("y", 100)) + delta),
-                "z": max(0.1, float(base_dims.get("z", 100)) + delta),
+                "x": float(base_dims.get("x", 100)),
+                "y": float(base_dims.get("y", 100)),
+                "z": float(base_dims.get("z", 100)),
             }
+            if box_axis in ("x", "y", "z"):
+                new_dims[box_axis] = max(0.1, new_dims[box_axis] + delta)
+                paths = [
+                    {"x": PATH_BOX_DIMS_X, "y": PATH_BOX_DIMS_Y, "z": PATH_BOX_DIMS_Z}[box_axis],
+                ]
+            else:
+                new_dims["x"] = max(0.1, new_dims["x"] + delta)
+                new_dims["y"] = max(0.1, new_dims["y"] + delta)
+                new_dims["z"] = max(0.1, new_dims["z"] + delta)
+                paths = [PATH_BOX_DIMS_X, PATH_BOX_DIMS_Y, PATH_BOX_DIMS_Z]
             new_geom["dims_mm"] = new_dims
-            paths = [PATH_BOX_DIMS_X, PATH_BOX_DIMS_Y, PATH_BOX_DIMS_Z]
         else:
             # pulse on point/mesh/pointcloud is a no-op — those have
             # no scalable primary dim under the field-mask convention.
@@ -314,7 +331,41 @@ def compute_tick(
             PATH_THETA,
             PATH_METADATA_COLOR,
         ]
-        return new_pose, new_geom, paths, color_override
+        return new_pose, new_geom, paths, {"color": color_override}
+
+    if mode == "breathe":
+        # Opacity oscillates smoothly between (base - amplitude) and
+        # (base + amplitude), clamped to [0, 1]. base is the item's
+        # static opacity (default 1.0 if unset). Used for "fading in
+        # and out" demos where geometry stays put but visibility
+        # pulses.
+        period_s = float(anim.get("period_s", 4.0))
+        if period_s <= 0:
+            period_s = 4.0
+        amplitude = float(anim.get("amplitude", 0.4))
+        base_opacity = float(
+            (item.get("opacity") if item.get("opacity") is not None else 1.0)
+        )
+        opacity = base_opacity + amplitude * math.sin(2 * math.pi * t / period_s)
+        opacity = max(0.0, min(1.0, opacity))
+        paths = [PATH_METADATA_OPACITY]
+        return new_pose, new_geom, paths, {"opacity": opacity}
+
+    if mode == "flicker":
+        # Square-wave on/off via opacity 0 vs 1. period_s is one full
+        # on→off→on cycle; duty_cycle is the fraction of the cycle
+        # that the entity is visible (default 0.5 = even on/off).
+        # phase_offset_s shifts the cycle so a row of items with the
+        # same period but different offsets reads as a wave.
+        period_s = float(anim.get("period_s", 3.0))
+        if period_s <= 0:
+            period_s = 3.0
+        duty_cycle = max(0.0, min(1.0, float(anim.get("duty_cycle", 0.5))))
+        phase_offset_s = float(anim.get("phase_offset_s", 0.0))
+        phase = ((t + phase_offset_s) % period_s) / period_s
+        opacity = 1.0 if phase < duty_cycle else 0.0
+        paths = [PATH_METADATA_OPACITY]
+        return new_pose, new_geom, paths, {"opacity": opacity}
 
     # Unknown mode: treat as static. validate_config should have
     # rejected it before we got here.

@@ -399,7 +399,7 @@ class SceneSprites(WorldStateStore, EasyResource):
                 item = s["item"]
                 if not anim_mod.is_animated(item):
                     continue
-                pose, geom, paths, color_override = anim_mod.compute_tick(
+                pose, geom, paths, meta_override = anim_mod.compute_tick(
                     item, s["base_pose"], s["base_geom"], t,
                 )
                 if not paths:
@@ -407,18 +407,19 @@ class SceneSprites(WorldStateStore, EasyResource):
                     # (e.g. pulse on a point) — skip.
                     continue
                 geom_proto = _build_geometry(item, geom)
-                # When the animation supplies a color override for
-                # this tick (force_vector cycles its hue over time),
-                # pass a synthetic item dict with the override color
-                # to _build_transform so the metadata reflects it.
+                # When the animation supplies metadata overrides for
+                # this tick (force_vector cycles hue; breathe/flicker
+                # modulate opacity), pass a synthetic item dict with
+                # the override fields applied so the metadata reflects
+                # them.
                 item_for_tf = item
-                if color_override is not None:
+                if meta_override:
                     item_for_tf = dict(item)
-                    item_for_tf["color"] = {
-                        "r": color_override[0],
-                        "g": color_override[1],
-                        "b": color_override[2],
-                    }
+                    if "color" in meta_override:
+                        c = meta_override["color"]
+                        item_for_tf["color"] = {"r": c[0], "g": c[1], "b": c[2]}
+                    if "opacity" in meta_override:
+                        item_for_tf["opacity"] = float(meta_override["opacity"])
                 if self.uuid_strategy == "stable":
                     new_tf = _build_transform(
                         item_for_tf, pose, geom_proto,
