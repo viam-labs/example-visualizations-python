@@ -146,7 +146,7 @@ async def test_update_pose_x_emits_pose_x_fieldmask_path():
     out = await s.do_command({
         "command": "update", "label": "u3", "patch": {"pose": {"x": 500}},
     })
-    assert out["updated_fields"] == ["poseInObserverFrame.pose.x"]
+    assert out["updated_fields"] == ["pose_in_observer_frame.pose.x"]
     assert s._state["u3"]["base_pose"]["x"] == 500
 
 
@@ -158,7 +158,7 @@ async def test_update_pose_multi_axis_emits_one_path_per_axis():
         "patch": {"pose": {"x": 100, "y": 200}},
     })
     assert set(out["updated_fields"]) == {
-        "poseInObserverFrame.pose.x", "poseInObserverFrame.pose.y",
+        "pose_in_observer_frame.pose.x", "pose_in_observer_frame.pose.y",
     }
 
 
@@ -170,9 +170,9 @@ async def test_update_box_dims_emits_all_three_dim_paths():
         "patch": {"dims_mm": {"x": 200, "y": 300, "z": 50}},
     })
     assert set(out["updated_fields"]) >= {
-        "physicalObject.geometryType.value.dimsMm.x",
-        "physicalObject.geometryType.value.dimsMm.y",
-        "physicalObject.geometryType.value.dimsMm.z",
+        "physical_object.geometry_type.value.dims_mm.x",
+        "physical_object.geometry_type.value.dims_mm.y",
+        "physical_object.geometry_type.value.dims_mm.z",
     }
     assert s._state["u5"]["item"]["dims_mm"] == {"x": 200, "y": 300, "z": 50}
 
@@ -188,7 +188,7 @@ async def test_update_sphere_radius():
     out = await s.do_command({
         "command": "update", "label": "u6", "patch": {"radius_mm": 120},
     })
-    assert "physicalObject.geometryType.value.radiusMm" in out["updated_fields"]
+    assert "physical_object.geometry_type.value.radius_mm" in out["updated_fields"]
     assert s._state["u6"]["item"]["radius_mm"] == 120
 
 
@@ -313,6 +313,92 @@ async def test_set_uuid_strategy_unknown_value_raises():
     s = _bare_service()
     with pytest.raises(Exception, match="one of"):
         await s.do_command({"command": "set_uuid_strategy", "strategy": "shuffle"})
+
+
+# ---------- get_entity_chunk ----------
+
+async def test_get_entity_chunk_returns_first_chunk_for_chunked_item():
+    """A chunked pointcloud item exposes its body via get_entity_chunk.
+    Chunk 0 should match the bytes inlined in the initial Transform."""
+    import base64
+
+    s = _bare_service()
+    chunked_item = {
+        "type": "pointcloud",
+        "label": "helix",
+        "pose": {"x": 0, "y": 0, "z": 0, "ox": 0, "oy": 0, "oz": 1, "theta": 0},
+        "pointcloud_path": "assets/helix.pcd",
+        "opacity": 1.0,
+        "chunked": True,
+        "chunk_size": 500,
+        "animation": {"mode": "none"},
+    }
+    await s.do_command({"command": "add", "item": chunked_item})
+    out = await s.do_command({
+        "command": "get_entity_chunk",
+        "label": "helix",
+        "chunk_index": 0,
+    })
+    assert out["label"] == "helix"
+    assert out["chunk_index"] == 0
+    assert out["n_chunks"] > 1  # helix.pcd has thousands of points
+    pcd = base64.b64decode(out["pcd_b64"])
+    # First chunk's body should have exactly chunk_size * stride bytes
+    # of payload past the header. We assert the header is valid PCD
+    # and POINTS matches the requested chunk size (since the slice is
+    # full for chunk 0).
+    assert pcd.startswith(b"VERSION ")
+    assert b"POINTS 500\n" in pcd
+    assert b"DATA binary\n" in pcd
+
+
+async def test_get_entity_chunk_non_chunked_item_raises():
+    s = _bare_service()
+    plain_item = {
+        "type": "pointcloud",
+        "label": "plain_helix",
+        "pose": {"x": 0, "y": 0, "z": 0, "ox": 0, "oy": 0, "oz": 1, "theta": 0},
+        "pointcloud_path": "assets/helix.pcd",
+        "opacity": 1.0,
+        "animation": {"mode": "none"},
+    }
+    await s.do_command({"command": "add", "item": plain_item})
+    with pytest.raises(Exception, match="not chunked"):
+        await s.do_command({
+            "command": "get_entity_chunk",
+            "label": "plain_helix",
+            "chunk_index": 0,
+        })
+
+
+async def test_get_entity_chunk_unknown_label_raises():
+    s = _bare_service()
+    with pytest.raises(Exception, match="valid 'label' or 'uuid'"):
+        await s.do_command({
+            "command": "get_entity_chunk",
+            "chunk_index": 0,
+        })
+
+
+async def test_get_entity_chunk_index_out_of_range_raises():
+    s = _bare_service()
+    chunked_item = {
+        "type": "pointcloud",
+        "label": "helix",
+        "pose": {"x": 0, "y": 0, "z": 0, "ox": 0, "oy": 0, "oz": 1, "theta": 0},
+        "pointcloud_path": "assets/helix.pcd",
+        "opacity": 1.0,
+        "chunked": True,
+        "chunk_size": 500,
+        "animation": {"mode": "none"},
+    }
+    await s.do_command({"command": "add", "item": chunked_item})
+    with pytest.raises(Exception, match="out of range"):
+        await s.do_command({
+            "command": "get_entity_chunk",
+            "label": "helix",
+            "chunk_index": 9999,
+        })
 
 
 # ---------- default / debug ----------

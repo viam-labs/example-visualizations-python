@@ -415,6 +415,55 @@ colors. Logged this as bug #9 — the override should at least be
 documented, ideally visible in the metadata struct so authors know
 what's winning.
 
+### chunked-delivery-schema
+
+**Symptom.** The visualization library's `protos/draw/v1/metadata.proto`
+lists a `chunks` field alongside the other metadata keys, and the
+e2e fixture references DoCommand verbs `add_chunked` and
+`get_entity_chunk`. But the inner shape of the chunks struct and
+the exact request/response contract for the verb are NOT documented
+in any source on this filesystem.
+
+**What's known empirically:**
+- The verb name `get_entity_chunk` is what the visualization
+  fixture uses for chunk fetch.
+- The chunks metadata is intended for entities that don't fit in a
+  single `Transform.physical_object` payload (large point clouds
+  are the canonical case).
+- The viewer-side dispatch for these verbs is in the visualization
+  repo, which doesn't live on this machine — confirming the field
+  shape requires the viz team or a checkout of the repo.
+
+**What's guessed:** `chunk_size` / `total` / `total_points` / `stride`
+field names in the chunks sub-struct. Field names from the e2e
+fixture are not available; the names here are best-effort from
+"what a chunked-delivery schema would plausibly carry".
+
+**Module implementation (0.0.32):** A `pointcloud` item config can
+opt into chunked delivery via `chunked: true` and `chunk_size: N`.
+The service parses the full PCD, ships only the first chunk inline
+on the initial Transform (with the chunks metadata declaring the
+rest), and exposes the remaining chunks via the `get_entity_chunk`
+DoCommand verb. Each chunk is a valid standalone PCD blob so the
+viewer can render it independently.
+
+**Failure modes:**
+- If the viewer doesn't read `metadata.chunks` at all, the initial
+  Transform still carries a valid first-chunk PCD and renders as a
+  smaller-but-correct slice of the entity. The demo doesn't break;
+  it just shows a fragment.
+- If the viewer reads `metadata.chunks` but the field names are
+  wrong, behavior is the same as the previous case (silent ignore
+  → first chunk only).
+- If the viewer reads chunks correctly but the DoCommand contract
+  is wrong, the viewer would error trying to fetch additional
+  chunks.
+
+**Filed:** bug #12 (was #4 in features-to-request). The thread:
+publish the official `chunks` sub-struct schema + `get_entity_chunk`
+DoCommand request/response shapes so modules can ship chunked
+entities without reverse-engineering the wire format.
+
 ### service-quirks
 
 **Symptom.** A service module loads and starts, but `do_command` says no items are configured and the tick never fires.

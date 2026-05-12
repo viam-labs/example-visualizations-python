@@ -113,6 +113,9 @@ def _base_geom_for_item(item: Mapping[str, Any]) -> Dict[str, Any]:
     return {}
 
 
+DEFAULT_CHUNK_SIZE_POINTS = 1000
+
+
 def _build_geometry(item: Mapping[str, Any], override_geom: Mapping[str, Any]) -> Geometry:
     """Build a Geometry proto for an item, honoring per-tick geometry
     overrides (only meaningful for `pulse` mode). Mesh / pointcloud
@@ -147,6 +150,11 @@ def _build_geometry(item: Mapping[str, Any], override_geom: Mapping[str, Any]) -
         # build_mesh requires content_type="ply"; STL got converted above.
         return geometries.build_mesh(ply_bytes, "ply", label)
     if t == "pointcloud":
+        # Chunked items use a pre-built first-chunk blob passed in via
+        # override_geom["pcd_bytes"]; non-chunked items just load the
+        # full PCD from disk.
+        if "pcd_bytes" in override_geom:
+            return geometries.build_pointcloud(override_geom["pcd_bytes"], label)
         return geometries.build_pointcloud(
             geometries.read_asset(item["pointcloud_path"], MODULE_DIR), label
         )
@@ -159,6 +167,7 @@ def _build_transform(
     geom: Geometry,
     uuid: bytes,
     parent_frame: str,
+    chunks: Optional[Mapping[str, Any]] = None,
 ) -> Transform:
     # If the user didn't set a uniform `color` AND the mesh has
     # per-vertex colors embedded in the PLY, transcode those into
@@ -175,6 +184,7 @@ def _build_transform(
         show_axes_helper=bool(item.get("show_axes_helper", False)),
         invisible=bool(item.get("invisible", False)),
         vertex_colors=vertex_colors,
+        chunks=chunks,
     )
     return Transform(
         uuid=uuid,
@@ -358,14 +368,59 @@ class SceneSprites(WorldStateStore, EasyResource):
             base_pose.setdefault(k, default)
         base_geom = _base_geom_for_item(item)
         uuid = _initial_uuid(label, self.uuid_strategy)
+        # Chunked-delivery setup: for `pointcloud` items with
+        # `chunked: true`, parse the full PCD on the way in, stash the
+        # body for later get_entity_chunk requests, and build the
+        # initial Transform with only the first chunk inline. The
+        # metadata.chunks struct tells the viewer there are more
+        # chunks to fetch.
+        chunks_info = None
+        chunked_state = None
+        if item.get("type") == "pointcloud" and item.get("chunked"):
+            full_pcd = geometries.read_asset(item["pointcloud_path"], MODULE_DIR)
+            header_bytes, body_bytes, stride, total_points = (
+                geometries.parse_pcd_binary(full_pcd)
+            )
+            chunk_size_points = int(item.get("chunk_size", DEFAULT_CHUNK_SIZE_POINTS))
+            if chunk_size_points <= 0:
+                chunk_size_points = DEFAULT_CHUNK_SIZE_POINTS
+            n_chunks = (total_points + chunk_size_points - 1) // chunk_size_points
+            first_chunk_pcd = geometries.build_pcd_chunk(
+                header_bytes, body_bytes, stride,
+                chunk_index=0, chunk_size_points=chunk_size_points,
+            )
+            base_geom = dict(base_geom)
+            base_geom["pcd_bytes"] = first_chunk_pcd
+            chunks_info = {
+                # Schema notes: see LESSONS.md::chunked-delivery-schema.
+                # Field names are best-effort; viewer behavior on these
+                # is unverified.
+                "chunk_size": float(chunk_size_points),
+                "total": float(n_chunks),
+                "total_points": float(total_points),
+                "stride": float(stride),
+            }
+            chunked_state = {
+                "header_bytes": header_bytes,
+                "body_bytes": body_bytes,
+                "stride": stride,
+                "total_points": total_points,
+                "chunk_size_points": chunk_size_points,
+                "n_chunks": n_chunks,
+            }
         geom_proto = _build_geometry(item, base_geom)
-        tf = _build_transform(item, base_pose, geom_proto, uuid, self.parent_frame)
+        tf = _build_transform(
+            item, base_pose, geom_proto, uuid, self.parent_frame,
+            chunks=chunks_info,
+        )
         self._state[label] = {
             "item": dict(item),
             "base_pose": base_pose,
             "base_geom": base_geom,
             "uuid": uuid,
             "transform": tf,
+            "chunks_info": chunks_info,
+            "chunked_state": chunked_state,
             # visible_to_viewer tracks whether the entity is currently
             # in the viewer's scene from the renderer's perspective.
             # True by default — the flicker animation flips this to
@@ -411,11 +466,15 @@ class SceneSprites(WorldStateStore, EasyResource):
                     item, s["base_pose"], s["base_geom"], t,
                 )
                 # Special path: animations that mutate scene-graph
-                # membership (currently only `flicker`). The override
-                # carries `_in_scene` — True if the entity should be
-                # in the viewer's scene this tick, False if it should
-                # be removed. We emit REMOVED/ADDED on the transition
-                # edges and skip the normal UPDATED-with-paths path.
+                # membership (currently `flicker` and `lifecycle`).
+                # The override carries `_in_scene` — True if the
+                # entity should be in the viewer's scene this tick,
+                # False if it should be removed. We emit REMOVED /
+                # ADDED on transition edges. While the entity stays
+                # in the scene, we fall through to the normal UPDATED
+                # path so other overrides (color/opacity for
+                # lifecycle, paths for any other animation chained on
+                # top) still flow through.
                 if meta_override and "_in_scene" in meta_override:
                     want_in_scene = bool(meta_override["_in_scene"])
                     was_in_scene = s.get("visible_to_viewer", True)
@@ -441,9 +500,21 @@ class SceneSprites(WorldStateStore, EasyResource):
                             new_uuid = _versioned_uuid(label)
                             s["uuid"] = new_uuid
                         emit_uuid = s["uuid"]
+                        # Build the rising-edge transform with the
+                        # current meta_override applied (so e.g. the
+                        # lifecycle entity comes back blue, not the
+                        # static color).
+                        item_for_add = item
+                        if "color" in meta_override or "opacity" in meta_override:
+                            item_for_add = dict(item)
+                            if "color" in meta_override:
+                                c = meta_override["color"]
+                                item_for_add["color"] = {"r": c[0], "g": c[1], "b": c[2]}
+                            if "opacity" in meta_override:
+                                item_for_add["opacity"] = float(meta_override["opacity"])
                         geom_proto = _build_geometry(item, geom)
                         new_tf = _build_transform(
-                            item, pose, geom_proto,
+                            item_for_add, pose, geom_proto,
                             emit_uuid, self.parent_frame,
                         )
                         s["transform"] = new_tf
@@ -452,15 +523,20 @@ class SceneSprites(WorldStateStore, EasyResource):
                             change_type=TransformChangeType.TRANSFORM_CHANGE_TYPE_ADDED,
                             transform=new_tf,
                         ))
-                    elif not want_in_scene and was_in_scene:
+                        continue
+                    if not want_in_scene and was_in_scene:
                         # Falling edge: REMOVED.
                         s["visible_to_viewer"] = False
                         self._broadcast(StreamTransformChangesResponse(
                             change_type=TransformChangeType.TRANSFORM_CHANGE_TYPE_REMOVED,
                             transform=s["transform"],
                         ))
-                    # else: no state change → no event this tick.
-                    continue
+                        continue
+                    if not want_in_scene and not was_in_scene:
+                        # Both off — nothing to emit.
+                        continue
+                    # Both on — fall through to the UPDATED path so
+                    # color/opacity/pose overrides still flow.
                 if not paths:
                     # Animation mode had no effect for this type
                     # (e.g. pulse on a point) — skip.
@@ -712,6 +788,55 @@ class SceneSprites(WorldStateStore, EasyResource):
                     ],
                 }}
 
+        if cmd == "get_entity_chunk":
+            # Returns one chunk of a chunked-delivery entity. Inputs:
+            # either `uuid` (bytes-as-string) or `label`, plus
+            # `chunk_index` (int). Returns:
+            #   {label, chunk_index, n_chunks, pcd_b64}
+            # where pcd_b64 is the base64-encoded standalone PCD
+            # blob for that chunk (valid as a self-contained file).
+            # Verb name matches what the visualization library's e2e
+            # fixture uses for chunk fetch — see LESSONS.md::chunked-
+            # delivery-schema. Whether the viewer actually issues
+            # this DoCommand is unverified.
+            label_in = command.get("label")
+            uuid_in = command.get("uuid")
+            chunk_index = int(command.get("chunk_index", 0))
+            async with self._lock:
+                target = None
+                if label_in:
+                    target = self._state.get(str(label_in))
+                elif uuid_in:
+                    uuid_bytes = str(uuid_in).encode()
+                    for s in self._state.values():
+                        if s["uuid"] == uuid_bytes:
+                            target = s
+                            break
+                if target is None:
+                    raise Exception(
+                        "get_entity_chunk requires a valid 'label' or 'uuid'"
+                    )
+                cstate = target.get("chunked_state")
+                if cstate is None:
+                    raise Exception(
+                        f"entity {target['item']['label']!r} is not chunked"
+                    )
+                chunk_pcd = geometries.build_pcd_chunk(
+                    cstate["header_bytes"],
+                    cstate["body_bytes"],
+                    cstate["stride"],
+                    chunk_index=chunk_index,
+                    chunk_size_points=cstate["chunk_size_points"],
+                )
+                import base64
+                return {
+                    "label": target["item"]["label"],
+                    "chunk_index": chunk_index,
+                    "n_chunks": cstate["n_chunks"],
+                    "total_points": cstate["total_points"],
+                    "pcd_b64": base64.b64encode(chunk_pcd).decode("ascii"),
+                }
+
         if cmd == "set_uuid_strategy":
             strategy = command.get("strategy")
             if strategy not in UUID_STRATEGIES:
@@ -927,6 +1052,14 @@ def _validate_item(item: Mapping[str, Any], index: int) -> None:
         resolved = _resolve_asset_path(str(path))
         if not resolved.exists():
             raise Exception(f"{where} pointcloud asset not found: {resolved}")
+        if "chunked" in item and not isinstance(item["chunked"], bool):
+            raise Exception(f"{where} pointcloud 'chunked' must be a bool")
+        if "chunk_size" in item:
+            cs = item["chunk_size"]
+            if not (isinstance(cs, int) or (isinstance(cs, float) and cs.is_integer())) or int(cs) <= 0:
+                raise Exception(
+                    f"{where} pointcloud 'chunk_size' must be a positive integer"
+                )
 
 
 def _resolve_asset_path(p: str) -> Path:

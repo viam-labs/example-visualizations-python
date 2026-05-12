@@ -38,6 +38,7 @@ PRESET_NAMES = (
     "trajectory_preview",
     "force_vector_demo",
     "geometry_morph",
+    "lifecycle_demo",
 )
 
 # Default spacing between primitives in the row-style preset (mm).
@@ -166,6 +167,16 @@ def primitives() -> List[Mapping[str, Any]]:
             "opacity": 1.0,
             "animation": {"mode": "none"},
         },
+        # Helix point cloud — chunked-delivery demo. `chunked: true`
+        # tells the service to ship only the first ~1000 points
+        # inline; the rest is fetched chunk-by-chunk via the
+        # `get_entity_chunk` DoCommand. The chunks metadata declares
+        # the total point count and stride so the viewer (when it
+        # supports chunks) knows what to ask for. Even without
+        # chunked-aware rendering, the initial Transform carries a
+        # valid first-chunk PCD that renders as a smaller slice of
+        # the spiral. See LESSONS.md::chunked-delivery-schema.
+        #
         # NOTE: no `color` on purpose — when metadata.colors is set on
         # a point cloud, the viewer uses it as a uniform tint and
         # IGNORES the per-point RGB embedded in the PCD body. Omitting
@@ -177,6 +188,8 @@ def primitives() -> List[Mapping[str, Any]]:
             "pose": _identity_pose(x=6 * sp),
             "pointcloud_path": "assets/helix.pcd",
             "opacity": 1.0,
+            "chunked": True,
+            "chunk_size": 2000,
             "animation": {"mode": "none"},
         },
     ]
@@ -724,10 +737,11 @@ def frame_composition() -> List[Mapping[str, Any]]:
 
 
 def all_preset() -> List[Mapping[str, Any]]:
-    """Every other preset, stacked along Y at ~1.8 m intervals so they
+    """Every other preset, stacked along Y at ~1.2 m intervals so they
     don't visually collide. Load this once and you've seen every
-    primitive, color, orientation convention, and the chained-frame
-    composition demo in one viewport.
+    primitive, color, orientation convention, the chained-frame
+    composition demo, and the lifecycle color convention in one
+    viewport.
 
     Row layout (Y from negative to positive). Spacing is 1200 mm
     between rows.
@@ -749,8 +763,12 @@ def all_preset() -> List[Mapping[str, Any]]:
                                   breathing capsule, flickering grid)
       - frame_composition    y = +2*row, x ∈ [-1000, +1500]
                                  (spinning frame + orbiting wheel +
-                                  arm — trajectory has been moved
-                                  off this row to its own)
+                                  arm)
+      - lifecycle_demo       y = +3*row
+                                 (5 staggered-phase boxes cycling
+                                  through the official appearing →
+                                  alive → disappearing → gone
+                                  color convention)
     """
     row = 1200.0
     items: List[Mapping[str, Any]] = []
@@ -770,9 +788,10 @@ def all_preset() -> List[Mapping[str, Any]]:
     fv = _offset_base_items(force_vector_demo(), "x", -500.0)
     fv = _offset_base_items(fv, "y", row)
     items.extend(fv)
-    # Moving-items row: arm + spinning frame only (trajectory
-    # moved out to its own row).
+    # Moving-items row: arm + spinning frame.
     items.extend(_offset_base_items_y(frame_composition(), 2 * row))
+    # Lifecycle convention demo on its own row.
+    items.extend(_offset_base_items_y(lifecycle_demo(), 3 * row))
     return items
 
 
@@ -1046,6 +1065,53 @@ def force_vector_demo() -> List[Mapping[str, Any]]:
     }]
 
 
+def lifecycle_demo() -> List[Mapping[str, Any]]:
+    """A row of entities cycling through the official worldstatestore
+    lifecycle color convention: blue / 50% opacity (appearing) →
+    orange / 100% (alive) → red / 50% (disappearing) → absent (gone).
+    Phase offsets are staggered so each box is in a different phase
+    at any moment, making the full cycle visible at a glance.
+
+    The "gone" phase actually REMOVES the entity from the scene (via
+    the same `_in_scene` mechanic flicker uses), then re-adds it with
+    a fresh UUID on the next cycle so the renderer's removed-UUID
+    cache doesn't drop the re-appearance.
+    """
+    count = 5
+    sp = 250.0
+    appear_s = 1.0
+    alive_s = 2.0
+    disappear_s = 1.0
+    gone_s = 2.0
+    period_s = appear_s + alive_s + disappear_s + gone_s
+    items: List[Mapping[str, Any]] = []
+    for i in range(count):
+        # Phase offset spaced so the row reads as a "wave" of
+        # appear → alive → disappear → gone moving left to right.
+        offset_s = (i / count) * period_s
+        items.append({
+            "type": "box",
+            "label": f"lifecycle_{i:02d}",
+            "pose": _identity_pose(x=(i - (count - 1) / 2) * sp),
+            "dims_mm": {"x": 120, "y": 120, "z": 120},
+            # `color` and `opacity` are overridden by the animation
+            # every tick. The static values here are placeholders so
+            # the validate_config / metadata builder has something to
+            # work with at install time.
+            "color": {"r": 128, "g": 128, "b": 128},
+            "opacity": 1.0,
+            "animation": {
+                "mode": "lifecycle",
+                "appear_s": appear_s,
+                "alive_s": alive_s,
+                "disappear_s": disappear_s,
+                "gone_s": gone_s,
+                "phase_offset_s": offset_s,
+            },
+        })
+    return items
+
+
 def _waypoints_with_tangent_orientations(
     positions: List[Mapping[str, float]],
 ) -> List[Mapping[str, Any]]:
@@ -1094,6 +1160,7 @@ PRESETS = {
     "trajectory_preview": trajectory_preview,
     "force_vector_demo": force_vector_demo,
     "geometry_morph": geometry_morph,
+    "lifecycle_demo": lifecycle_demo,
 }
 
 

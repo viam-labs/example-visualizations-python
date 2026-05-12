@@ -56,22 +56,28 @@ import math
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 
 
-# Field-mask paths used in the UPDATED event. These must match the
-# renderer's exact conventions or the viewer will silently no-op.
-PATH_THETA = "poseInObserverFrame.pose.theta"
-PATH_X = "poseInObserverFrame.pose.x"
-PATH_Y = "poseInObserverFrame.pose.y"
-PATH_Z = "poseInObserverFrame.pose.z"
-PATH_SPHERE_RADIUS = "physicalObject.geometryType.value.radiusMm"
-PATH_CAPSULE_RADIUS = "physicalObject.geometryType.value.radiusMm"
-PATH_CAPSULE_LENGTH = "physicalObject.geometryType.value.lengthMm"
-PATH_BOX_DIMS_X = "physicalObject.geometryType.value.dimsMm.x"
-PATH_BOX_DIMS_Y = "physicalObject.geometryType.value.dimsMm.y"
-PATH_BOX_DIMS_Z = "physicalObject.geometryType.value.dimsMm.z"
+# Field-mask paths used in the UPDATED event. Per the official
+# worldstatestore guide ("Path strings are proto field names
+# (snake_case), per the worldstatestore spec"), these use proto
+# snake_case names. The RDK fake at
+# rdk/services/worldstatestore/fake/moving_geos_world.go uses
+# camelCase paths — that's a documented inconsistency we've filed
+# with the viz team (LESSONS.md, bug #12). We match the spec, not
+# the fake.
+PATH_THETA = "pose_in_observer_frame.pose.theta"
+PATH_X = "pose_in_observer_frame.pose.x"
+PATH_Y = "pose_in_observer_frame.pose.y"
+PATH_Z = "pose_in_observer_frame.pose.z"
+PATH_SPHERE_RADIUS = "physical_object.geometry_type.value.radius_mm"
+PATH_CAPSULE_RADIUS = "physical_object.geometry_type.value.radius_mm"
+PATH_CAPSULE_LENGTH = "physical_object.geometry_type.value.length_mm"
+PATH_BOX_DIMS_X = "physical_object.geometry_type.value.dims_mm.x"
+PATH_BOX_DIMS_Y = "physical_object.geometry_type.value.dims_mm.y"
+PATH_BOX_DIMS_Z = "physical_object.geometry_type.value.dims_mm.z"
 
 SUPPORTED_MODES = (
     "none", "orbit", "oscillate", "spin", "swing", "pulse", "trajectory",
-    "force_vector", "breathe", "flicker",
+    "force_vector", "breathe", "flicker", "lifecycle",
 )
 SUPPORTED_AXES = ("x", "y", "z")
 
@@ -81,21 +87,33 @@ SUPPORTED_AXES = ("x", "y", "z")
 # these is unverified — the RDK fake only ever updates theta. If the
 # trajectory orientation looks frozen mid-segment, switch the item's
 # uuid_strategy to "versioned" so the whole pose is re-emitted each tick.
-PATH_OX = "poseInObserverFrame.pose.oX"
-PATH_OY = "poseInObserverFrame.pose.oY"
-PATH_OZ = "poseInObserverFrame.pose.oZ"
+PATH_OX = "pose_in_observer_frame.pose.o_x"
+PATH_OY = "pose_in_observer_frame.pose.o_y"
+PATH_OZ = "pose_in_observer_frame.pose.o_z"
 
-# Field-mask path for the metadata color sub-field. Matches the
-# convention used by do_command::update when patching `color`. Whether
-# the viewer applies metadata.color deltas via UPDATED events is
-# unverified — only force_vector currently relies on it. The fallback
-# is the same as for trajectory's orientation updates: switch the
-# service to ``uuid_strategy: "versioned"`` and the whole transform
-# (including fresh metadata) is re-emitted each tick.
-PATH_METADATA_COLOR = "metadata.color"
-# Opacity uses the same metadata path conventions. Whether
-# `metadata.opacity` is honored via UPDATED is also unverified.
-PATH_METADATA_OPACITY = "metadata.opacity"
+# Metadata field-mask paths. The official guide's example uses
+# top-level "metadata" rather than nested sub-fields — that's the
+# coarsest possible mask, telling the viewer "the metadata changed,
+# re-read it." Since we send the whole transform each tick (the
+# field-mask is metadata about WHAT changed, not the delta itself),
+# the coarse path is sufficient AND matches the spec.
+PATH_METADATA_COLOR = "metadata"
+PATH_METADATA_OPACITY = "metadata"
+
+
+# Lifecycle convention colors from the official worldstatestore guide:
+# blue at 50% opacity → "appearing", orange at 100% → "alive", red at
+# 50% → "disappearing", then absent ("gone"). The viewer uses no
+# special rendering for these — they're just a color-coding convention
+# that helps human viewers read the lifecycle phase of an entity at a
+# glance. Codifying them here keeps the convention reusable across
+# presets and downstream modules.
+LIFECYCLE_COLOR_APPEARING = (66, 165, 245)
+LIFECYCLE_COLOR_ALIVE = (255, 152, 0)
+LIFECYCLE_COLOR_DISAPPEARING = (244, 67, 54)
+LIFECYCLE_OPACITY_APPEARING = 0.5
+LIFECYCLE_OPACITY_ALIVE = 1.0
+LIFECYCLE_OPACITY_DISAPPEARING = 0.5
 
 
 def is_animated(item: Mapping[str, Any]) -> bool:
@@ -350,6 +368,52 @@ def compute_tick(
         opacity = max(0.0, min(1.0, opacity))
         paths = [PATH_METADATA_OPACITY]
         return new_pose, new_geom, paths, {"opacity": opacity}
+
+    if mode == "lifecycle":
+        # Four-phase entity lifecycle following the official
+        # worldstatestore color convention. Each phase has its own
+        # duration; the entity cycles through them indefinitely (with
+        # `loop` true, default) or stops in the "gone" phase. The
+        # "gone" phase emits a REMOVED change (via the same
+        # `_in_scene` mechanic flicker uses) so the entity actually
+        # leaves the scene rather than just turning transparent.
+        appear_s = float(anim.get("appear_s", 1.0))
+        alive_s = float(anim.get("alive_s", 2.0))
+        disappear_s = float(anim.get("disappear_s", 1.0))
+        gone_s = float(anim.get("gone_s", 2.0))
+        phase_offset_s = float(anim.get("phase_offset_s", 0.0))
+        loop = bool(anim.get("loop", True))
+        period_s = appear_s + alive_s + disappear_s + gone_s
+        if period_s <= 0:
+            return new_pose, new_geom, [], None
+        if loop:
+            phase_t = (t + phase_offset_s) % period_s
+        else:
+            phase_t = min(t + phase_offset_s, period_s)
+        if phase_t < appear_s:
+            color = LIFECYCLE_COLOR_APPEARING
+            opacity = LIFECYCLE_OPACITY_APPEARING
+            in_scene = True
+        elif phase_t < appear_s + alive_s:
+            color = LIFECYCLE_COLOR_ALIVE
+            opacity = LIFECYCLE_OPACITY_ALIVE
+            in_scene = True
+        elif phase_t < appear_s + alive_s + disappear_s:
+            color = LIFECYCLE_COLOR_DISAPPEARING
+            opacity = LIFECYCLE_OPACITY_DISAPPEARING
+            in_scene = True
+        else:
+            # Gone phase: signal REMOVED via _in_scene=False. Color and
+            # opacity values don't matter (no transform is emitted).
+            color = LIFECYCLE_COLOR_DISAPPEARING
+            opacity = 0.0
+            in_scene = False
+        paths = [PATH_METADATA_COLOR, PATH_METADATA_OPACITY]
+        return new_pose, new_geom, paths, {
+            "_in_scene": in_scene,
+            "color": color,
+            "opacity": opacity,
+        }
 
     if mode == "flicker":
         # True scene-graph mutation — the entity is actually REMOVED

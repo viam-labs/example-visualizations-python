@@ -13,6 +13,7 @@ from src.geometries import (
     build_capsule,
     build_mesh,
     build_metadata,
+    build_pcd_chunk,
     build_point,
     build_pointcloud,
     build_pose,
@@ -20,6 +21,7 @@ from src.geometries import (
     extract_ply_vertex_colors,
     infer_mesh_content_type,
     load_mesh_bytes_as_ply,
+    parse_pcd_binary,
     read_asset,
     stl_to_ply,
 )
@@ -512,3 +514,97 @@ def test_supported_mesh_content_types_is_lowercase():
     variants downstream."""
     for ct in SUPPORTED_MESH_CONTENT_TYPES:
         assert ct == ct.lower()
+
+
+# ---------- chunked PCD helpers ----------
+
+def _fake_pcd(n_points: int) -> bytes:
+    """Build a minimal but valid binary PCD blob with `n_points`
+    points, matching the FFFI / 16-byte-stride format the helix asset
+    uses. Used by chunked-delivery tests so they don't depend on the
+    real asset's exact point count."""
+    import struct
+    header = (
+        "VERSION .7\n"
+        "FIELDS x y z rgb\n"
+        "SIZE 4 4 4 4\n"
+        "TYPE F F F I\n"
+        "COUNT 1 1 1 1\n"
+        f"WIDTH {n_points}\n"
+        "HEIGHT 1\n"
+        "VIEWPOINT 0 0 0 1 0 0 0\n"
+        f"POINTS {n_points}\n"
+        "DATA binary\n"
+    ).encode("ascii")
+    body = b"".join(
+        struct.pack("<fffI", float(i), 0.0, 0.0, i)
+        for i in range(n_points)
+    )
+    return header + body
+
+
+def test_parse_pcd_binary_returns_header_body_stride_and_total():
+    pcd = _fake_pcd(100)
+    header, body, stride, total = parse_pcd_binary(pcd)
+    assert header.startswith(b"VERSION ")
+    assert header.endswith(b"DATA binary\n")
+    assert stride == 16  # FFFI = 4+4+4+4
+    assert total == 100
+    assert len(body) == 100 * 16
+
+
+def test_parse_pcd_binary_rejects_missing_data_marker():
+    with pytest.raises(ValueError, match="DATA binary"):
+        parse_pcd_binary(b"VERSION .7\n")
+
+
+def test_build_pcd_chunk_returns_first_chunk_with_rewritten_header():
+    pcd = _fake_pcd(50)
+    header, body, stride, total = parse_pcd_binary(pcd)
+    chunk = build_pcd_chunk(header, body, stride, chunk_index=0, chunk_size_points=20)
+    # Chunk's WIDTH/POINTS must match the slice length, not the original total.
+    assert b"WIDTH 20\n" in chunk
+    assert b"POINTS 20\n" in chunk
+    assert b"WIDTH 50\n" not in chunk
+    # Body length is exactly chunk_size * stride.
+    chunk_header, chunk_body, chunk_stride, chunk_total = parse_pcd_binary(chunk)
+    assert chunk_stride == 16
+    assert chunk_total == 20
+
+
+def test_build_pcd_chunk_last_chunk_is_partial():
+    """When total_points isn't a multiple of chunk_size, the last
+    chunk has fewer points but is still a valid standalone PCD."""
+    pcd = _fake_pcd(25)
+    header, body, stride, total = parse_pcd_binary(pcd)
+    # Chunks of 10 → chunks 0,1 have 10 points; chunk 2 has 5.
+    chunk = build_pcd_chunk(header, body, stride, chunk_index=2, chunk_size_points=10)
+    assert b"POINTS 5\n" in chunk
+
+
+def test_build_pcd_chunk_out_of_range_raises():
+    pcd = _fake_pcd(10)
+    header, body, stride, total = parse_pcd_binary(pcd)
+    with pytest.raises(ValueError, match="out of range"):
+        build_pcd_chunk(header, body, stride, chunk_index=5, chunk_size_points=10)
+
+
+# ---------- build_metadata with chunks ----------
+
+def test_build_metadata_with_chunks_adds_chunks_substruct():
+    md = build_metadata(
+        color={"r": 0, "g": 0, "b": 0},
+        opacity=1.0,
+        chunks={"chunk_size": 100, "total": 5, "stride": 16},
+    )
+    out = struct_to_dict(md)
+    assert "chunks" in out
+    assert out["chunks"]["chunk_size"] == 100
+    assert out["chunks"]["total"] == 5
+    assert out["chunks"]["stride"] == 16
+
+
+def test_build_metadata_without_chunks_omits_chunks_key():
+    md = build_metadata(color={"r": 0, "g": 0, "b": 0}, opacity=1.0)
+    out = struct_to_dict(md)
+    assert "chunks" not in out

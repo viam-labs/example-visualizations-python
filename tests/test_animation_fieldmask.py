@@ -20,10 +20,10 @@ from src.animation import (
 
 
 # Paths the RDK fake uses — these are the contract.
-RDK_FAKE_THETA = "poseInObserverFrame.pose.theta"
-RDK_FAKE_Y = "poseInObserverFrame.pose.y"
-RDK_FAKE_CAPSULE_RADIUS = "physicalObject.geometryType.value.radiusMm"
-RDK_FAKE_CAPSULE_LENGTH = "physicalObject.geometryType.value.lengthMm"
+RDK_FAKE_THETA = "pose_in_observer_frame.pose.theta"
+RDK_FAKE_Y = "pose_in_observer_frame.pose.y"
+RDK_FAKE_CAPSULE_RADIUS = "physical_object.geometry_type.value.radius_mm"
+RDK_FAKE_CAPSULE_LENGTH = "physical_object.geometry_type.value.length_mm"
 
 
 def test_theta_path_matches_rdk_fake():
@@ -36,8 +36,8 @@ def test_y_path_matches_rdk_fake():
 
 def test_x_z_paths_are_consistent_with_y():
     """Same prefix as the y path, last segment differs only by axis."""
-    assert PATH_X == "poseInObserverFrame.pose.x"
-    assert PATH_Z == "poseInObserverFrame.pose.z"
+    assert PATH_X == "pose_in_observer_frame.pose.x"
+    assert PATH_Z == "pose_in_observer_frame.pose.z"
 
 
 def test_capsule_paths_match_rdk_fake():
@@ -49,10 +49,10 @@ def test_sphere_radius_path_uses_oneof_value_prefix():
     """Same shape as capsule.radiusMm — the renderer descends through
     the Geometry oneof using `geometryType.value.<field>` regardless of
     which concrete primitive it is."""
-    assert PATH_SPHERE_RADIUS == "physicalObject.geometryType.value.radiusMm"
+    assert PATH_SPHERE_RADIUS == "physical_object.geometry_type.value.radius_mm"
 
 
 def test_box_dims_paths_descend_into_dims_mm_substruct():
-    assert PATH_BOX_DIMS_X == "physicalObject.geometryType.value.dimsMm.x"
-    assert PATH_BOX_DIMS_Y == "physicalObject.geometryType.value.dimsMm.y"
-    assert PATH_BOX_DIMS_Z == "physicalObject.geometryType.value.dimsMm.z"
+    assert PATH_BOX_DIMS_X == "physical_object.geometry_type.value.dims_mm.x"
+    assert PATH_BOX_DIMS_Y == "physical_object.geometry_type.value.dims_mm.y"
+    assert PATH_BOX_DIMS_Z == "physical_object.geometry_type.value.dims_mm.z"

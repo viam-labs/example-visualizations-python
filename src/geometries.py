@@ -129,6 +129,7 @@ def build_metadata(
     show_axes_helper: bool = False,
     invisible: bool = False,
     vertex_colors: Optional[List[Tuple[int, int, int]]] = None,
+    chunks: Optional[Mapping[str, Any]] = None,
 ) -> Optional[Struct]:
     """Encode metadata in the schema the 3D viewer actually reads.
 
@@ -193,6 +194,18 @@ def build_metadata(
     fields["opacities"] = base64.b64encode(bytes([alpha])).decode("ascii")
     fields["show_axes_helper"] = bool(show_axes_helper)
     fields["invisible"] = bool(invisible)
+    if chunks:
+        # `chunks` is a sub-struct declaring chunked delivery of a
+        # large entity (currently only used by point clouds). Schema
+        # is from the visualization library's e2e fixture and is
+        # EXPERIMENTAL — see LESSONS.md::chunked-delivery-schema for
+        # the open question (the visualization repo lists `chunks`
+        # in protos/draw/v1/metadata.proto but we have no
+        # field-level reference for the inner shape, so this is a
+        # best-effort match). If the viewer ignores these, the
+        # initial Transform still carries a valid first-chunk PCD
+        # that renders standalone.
+        fields["chunks"] = dict(chunks)
     return dict_to_struct(fields)
 
 
@@ -517,6 +530,103 @@ def build_pointcloud(pcd_bytes: bytes, label: str) -> Geometry:
         label=label,
         pointcloud=PointCloud(point_cloud=pcd_bytes),
     )
+
+
+def parse_pcd_binary(pcd_bytes: bytes) -> Tuple[bytes, bytes, int, int]:
+    """Split a PCDBinary blob into ``(header_bytes, body_bytes, stride,
+    total_points)``. Used by chunked-delivery: callers split body_bytes
+    on stride boundaries to emit individual chunks.
+
+    Expects the binary PCD format ``pointcloud.ToPCD`` in the RDK
+    produces (see scripts/generate_assets.py for the writer side):
+
+      VERSION .7\\n
+      FIELDS x y z rgb\\n
+      SIZE 4 4 4 4\\n
+      TYPE F F F I\\n
+      COUNT 1 1 1 1\\n
+      WIDTH <N>\\n
+      HEIGHT 1\\n
+      VIEWPOINT 0 0 0 1 0 0 0\\n
+      POINTS <N>\\n
+      DATA binary\\n
+      <body: N records of (float x, float y, float z, int32 rgb)>
+
+    Raises ``ValueError`` if the header doesn't match. Stride is
+    computed from SIZE/COUNT — i.e., the actual bytes per point — so
+    it'll be 16 for the FFFI layout.
+    """
+    marker = b"DATA binary\n"
+    idx = pcd_bytes.find(marker)
+    if idx < 0:
+        raise ValueError("PCD: missing 'DATA binary' marker")
+    header_end = idx + len(marker)
+    header_bytes = pcd_bytes[:header_end]
+    body_bytes = pcd_bytes[header_end:]
+    # Compute stride from SIZE and COUNT lines.
+    header_text = header_bytes.decode("ascii", errors="replace")
+    size_line = next(
+        (line for line in header_text.splitlines() if line.startswith("SIZE ")),
+        None,
+    )
+    count_line = next(
+        (line for line in header_text.splitlines() if line.startswith("COUNT ")),
+        None,
+    )
+    if size_line is None or count_line is None:
+        raise ValueError("PCD: missing SIZE or COUNT")
+    sizes = [int(s) for s in size_line[len("SIZE "):].split()]
+    counts = [int(c) for c in count_line[len("COUNT "):].split()]
+    if len(sizes) != len(counts):
+        raise ValueError(f"PCD: SIZE/COUNT length mismatch ({sizes} vs {counts})")
+    stride = sum(s * c for s, c in zip(sizes, counts))
+    if stride <= 0:
+        raise ValueError(f"PCD: invalid stride {stride}")
+    total_points = len(body_bytes) // stride
+    return header_bytes, body_bytes, stride, total_points
+
+
+def build_pcd_chunk(
+    header_bytes: bytes,
+    body_bytes: bytes,
+    stride: int,
+    chunk_index: int,
+    chunk_size_points: int,
+) -> bytes:
+    """Build a self-contained PCDBinary blob containing only the chunk
+    at ``chunk_index``. Rewrites the WIDTH and POINTS fields in the
+    header to match the chunk's actual point count so the result is a
+    valid standalone PCD the viewer can render in isolation.
+
+    This is what the initial Transform's pointcloud bytes carry under
+    chunked delivery: the first chunk is a working PCD all by itself,
+    and the viewer requests subsequent chunks via the ``get_entity_chunk``
+    DoCommand and stitches them in. Even if the viewer doesn't yet
+    understand the chunks metadata, the initial first chunk still
+    renders as a smaller-but-correct point cloud.
+    """
+    total_points = len(body_bytes) // stride
+    start = chunk_index * chunk_size_points
+    if start >= total_points:
+        raise ValueError(
+            f"chunk_index {chunk_index} out of range; "
+            f"total_points={total_points} chunk_size={chunk_size_points}"
+        )
+    end = min(start + chunk_size_points, total_points)
+    n = end - start
+    body_slice = body_bytes[start * stride : end * stride]
+    # Rewrite WIDTH and POINTS to match the slice length.
+    header_text = header_bytes.decode("ascii", errors="replace")
+    new_lines = []
+    for line in header_text.split("\n"):
+        if line.startswith("WIDTH "):
+            new_lines.append(f"WIDTH {n}")
+        elif line.startswith("POINTS "):
+            new_lines.append(f"POINTS {n}")
+        else:
+            new_lines.append(line)
+    new_header = "\n".join(new_lines).encode("ascii")
+    return new_header + body_slice
 
 
 def read_asset(asset_path: str, module_dir: Path) -> bytes:

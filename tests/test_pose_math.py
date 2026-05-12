@@ -60,7 +60,7 @@ def test_orbit_at_t_zero_lands_on_positive_x_axis():
     )
     assert pose["x"] == pytest.approx(200.0)
     assert pose["y"] == pytest.approx(0.0)
-    assert paths == ["poseInObserverFrame.pose.x", "poseInObserverFrame.pose.y"]
+    assert paths == ["pose_in_observer_frame.pose.x", "pose_in_observer_frame.pose.y"]
 
 
 def test_orbit_at_quarter_period_lands_on_positive_y_axis():
@@ -100,7 +100,7 @@ def test_oscillate_default_axis_is_y():
     assert pose["y"] == pytest.approx(100.0)
     assert pose["x"] == 0.0
     assert pose["z"] == 0.0
-    assert paths == ["poseInObserverFrame.pose.y"]
+    assert paths == ["pose_in_observer_frame.pose.y"]
 
 
 def test_oscillate_axis_x_moves_only_x():
@@ -114,7 +114,7 @@ def test_oscillate_axis_x_moves_only_x():
     )
     assert pose["x"] == pytest.approx(250.0)
     assert pose["y"] == 0.0
-    assert paths == ["poseInObserverFrame.pose.x"]
+    assert paths == ["pose_in_observer_frame.pose.x"]
 
 
 def test_oscillate_axis_z_moves_only_z():
@@ -127,7 +127,7 @@ def test_oscillate_axis_z_moves_only_z():
         t=1.0,
     )
     assert pose["z"] == pytest.approx(50.0)
-    assert paths == ["poseInObserverFrame.pose.z"]
+    assert paths == ["pose_in_observer_frame.pose.z"]
 
 
 def test_oscillate_zero_at_t_zero_and_half_period():
@@ -154,7 +154,7 @@ def test_spin_at_quarter_period_is_90_degrees():
         t=1.0,
     )
     assert pose["theta"] == pytest.approx(90.0)
-    assert paths == ["poseInObserverFrame.pose.theta"]
+    assert paths == ["pose_in_observer_frame.pose.theta"]
 
 
 def test_spin_wraps_modulo_360():
@@ -180,7 +180,7 @@ def test_swing_at_t_zero_is_at_base_theta():
         t=0.0,
     )
     assert pose["theta"] == pytest.approx(30.0)
-    assert paths == ["poseInObserverFrame.pose.theta"]
+    assert paths == ["pose_in_observer_frame.pose.theta"]
 
 
 def test_swing_at_quarter_period_reaches_max_amplitude():
@@ -242,7 +242,7 @@ def test_pulse_on_sphere_modulates_radius():
         t=1.0,  # T/4 -> sin = 1, max bulge
     )
     assert geom["radius_mm"] == pytest.approx(70.0)
-    assert paths == ["physicalObject.geometryType.value.radiusMm"]
+    assert paths == ["physical_object.geometry_type.value.radius_mm"]
 
 
 def test_pulse_clamps_radius_above_zero():
@@ -268,8 +268,8 @@ def test_pulse_on_capsule_modulates_both_radius_and_length():
     assert geom["radius_mm"] == pytest.approx(80.0)
     assert geom["length_mm"] == pytest.approx(230.0)
     assert paths == [
-        "physicalObject.geometryType.value.radiusMm",
-        "physicalObject.geometryType.value.lengthMm",
+        "physical_object.geometry_type.value.radius_mm",
+        "physical_object.geometry_type.value.length_mm",
     ]
 
 
@@ -284,9 +284,9 @@ def test_pulse_on_box_modulates_all_three_dims():
     assert geom["dims_mm"]["y"] == pytest.approx(250.0)
     assert geom["dims_mm"]["z"] == pytest.approx(350.0)
     assert paths == [
-        "physicalObject.geometryType.value.dimsMm.x",
-        "physicalObject.geometryType.value.dimsMm.y",
-        "physicalObject.geometryType.value.dimsMm.z",
+        "physical_object.geometry_type.value.dims_mm.x",
+        "physical_object.geometry_type.value.dims_mm.y",
+        "physical_object.geometry_type.value.dims_mm.z",
     ]
 
 
@@ -335,13 +335,13 @@ def test_trajectory_at_t_zero_is_at_first_waypoint():
     assert pose["z"] == 0
     # Trajectory animation emits all 7 pose paths every tick.
     assert set(paths) == {
-        "poseInObserverFrame.pose.x",
-        "poseInObserverFrame.pose.y",
-        "poseInObserverFrame.pose.z",
-        "poseInObserverFrame.pose.oX",
-        "poseInObserverFrame.pose.oY",
-        "poseInObserverFrame.pose.oZ",
-        "poseInObserverFrame.pose.theta",
+        "pose_in_observer_frame.pose.x",
+        "pose_in_observer_frame.pose.y",
+        "pose_in_observer_frame.pose.z",
+        "pose_in_observer_frame.pose.o_x",
+        "pose_in_observer_frame.pose.o_y",
+        "pose_in_observer_frame.pose.o_z",
+        "pose_in_observer_frame.pose.theta",
     }
 
 
@@ -469,12 +469,12 @@ def test_force_vector_modulates_length_radius_orientation_and_emits_color():
     assert len(color) == 3
     assert all(0 <= c <= 255 for c in color)
     # Field-mask paths cover all four changing attributes.
-    assert "physicalObject.geometryType.value.lengthMm" in paths
-    assert "physicalObject.geometryType.value.radiusMm" in paths
-    assert "poseInObserverFrame.pose.oX" in paths
-    assert "poseInObserverFrame.pose.oY" in paths
-    assert "poseInObserverFrame.pose.oZ" in paths
-    assert "metadata.color" in paths
+    assert "physical_object.geometry_type.value.length_mm" in paths
+    assert "physical_object.geometry_type.value.radius_mm" in paths
+    assert "pose_in_observer_frame.pose.o_x" in paths
+    assert "pose_in_observer_frame.pose.o_y" in paths
+    assert "pose_in_observer_frame.pose.o_z" in paths
+    assert "metadata" in paths
 
 
 def test_force_vector_color_cycles_through_hue():
@@ -528,7 +528,7 @@ def test_pulse_box_axis_z_modulates_only_z_dim():
     assert geom["dims_mm"]["y"] == 100
     assert geom["dims_mm"]["z"] == pytest.approx(200)
     # Only the z field-mask path is emitted.
-    assert paths == ["physicalObject.geometryType.value.dimsMm.z"]
+    assert paths == ["physical_object.geometry_type.value.dims_mm.z"]
 
 
 def test_pulse_box_default_axis_all_keeps_isotropic_behavior():
@@ -560,7 +560,7 @@ def test_breathe_oscillates_opacity_around_base():
     _, _, paths, meta = compute_tick(item, BASE_POSE, base_geom, t=1.0)
     assert meta is not None
     assert meta["opacity"] == pytest.approx(1.0)  # 0.7 + 0.3 clamped
-    assert paths == ["metadata.opacity"]
+    assert paths == ["metadata"]
 
 
 def test_breathe_clamps_opacity_below_zero():
@@ -616,10 +616,80 @@ def test_flicker_phase_offset_shifts_the_cycle():
     assert meta_b["_in_scene"] is False
 
 
+# ---------- lifecycle ----------
+
+def test_lifecycle_phases_emit_convention_colors_and_opacity():
+    """Pin each phase of the lifecycle convention to its (color,
+    opacity, in_scene) tuple. appear=1, alive=2, disappear=1, gone=2."""
+    from src.animation import (
+        LIFECYCLE_COLOR_ALIVE,
+        LIFECYCLE_COLOR_APPEARING,
+        LIFECYCLE_COLOR_DISAPPEARING,
+        LIFECYCLE_OPACITY_ALIVE,
+        LIFECYCLE_OPACITY_APPEARING,
+        LIFECYCLE_OPACITY_DISAPPEARING,
+    )
+    item = {"type": "box", "animation": {
+        "mode": "lifecycle",
+        "appear_s": 1.0, "alive_s": 2.0,
+        "disappear_s": 1.0, "gone_s": 2.0,
+    }}
+    base_geom = {"dims_mm": {"x": 100, "y": 100, "z": 100}}
+    # t=0.5 → appearing.
+    _, _, _, meta = compute_tick(item, BASE_POSE, base_geom, t=0.5)
+    assert meta["_in_scene"] is True
+    assert meta["color"] == LIFECYCLE_COLOR_APPEARING
+    assert meta["opacity"] == LIFECYCLE_OPACITY_APPEARING
+    # t=2.0 → alive (1.0 + 1.0 into the 2s alive window).
+    _, _, _, meta = compute_tick(item, BASE_POSE, base_geom, t=2.0)
+    assert meta["color"] == LIFECYCLE_COLOR_ALIVE
+    assert meta["opacity"] == LIFECYCLE_OPACITY_ALIVE
+    # t=3.5 → disappearing (0.5 into the 1s disappear window).
+    _, _, _, meta = compute_tick(item, BASE_POSE, base_geom, t=3.5)
+    assert meta["color"] == LIFECYCLE_COLOR_DISAPPEARING
+    assert meta["opacity"] == LIFECYCLE_OPACITY_DISAPPEARING
+    # t=5.0 → gone (in the 2s gone window).
+    _, _, _, meta = compute_tick(item, BASE_POSE, base_geom, t=5.0)
+    assert meta["_in_scene"] is False
+
+
+def test_lifecycle_loops_back_to_appearing_after_full_period():
+    item = {"type": "box", "animation": {
+        "mode": "lifecycle",
+        "appear_s": 1.0, "alive_s": 1.0,
+        "disappear_s": 1.0, "gone_s": 1.0,
+    }}
+    base_geom = {"dims_mm": {"x": 100, "y": 100, "z": 100}}
+    _, _, _, meta0 = compute_tick(item, BASE_POSE, base_geom, t=0.5)
+    # Full period = 4s, t=4.5 should be equivalent to t=0.5 (appearing).
+    _, _, _, meta_next = compute_tick(item, BASE_POSE, base_geom, t=4.5)
+    assert meta0 == meta_next
+
+
+def test_lifecycle_phase_offset_shifts_starting_phase():
+    """Two items with the same lifecycle config but different
+    phase_offset_s land in different phases at the same wall-clock
+    time. This is what the demo preset uses to stagger 5 boxes
+    through all four phases simultaneously."""
+    common = {"appear_s": 1.0, "alive_s": 2.0,
+              "disappear_s": 1.0, "gone_s": 2.0}
+    item_a = {"type": "box", "animation": dict(mode="lifecycle", **common)}
+    item_b = {"type": "box", "animation": dict(
+        mode="lifecycle", phase_offset_s=2.0, **common,
+    )}
+    base_geom = {"dims_mm": {"x": 100, "y": 100, "z": 100}}
+    _, _, _, meta_a = compute_tick(item_a, BASE_POSE, base_geom, t=0.5)
+    _, _, _, meta_b = compute_tick(item_b, BASE_POSE, base_geom, t=0.5)
+    # A is at 0.5s → appearing. B is at 2.5s → alive (past appear=1+0.5*alive).
+    from src.animation import LIFECYCLE_COLOR_APPEARING, LIFECYCLE_COLOR_ALIVE
+    assert meta_a["color"] == LIFECYCLE_COLOR_APPEARING
+    assert meta_b["color"] == LIFECYCLE_COLOR_ALIVE
+
+
 def test_supported_modes_constant():
     assert set(SUPPORTED_MODES) == {
         "none", "orbit", "oscillate", "spin", "swing", "pulse", "trajectory",
-        "force_vector", "breathe", "flicker",
+        "force_vector", "breathe", "flicker", "lifecycle",
     }
 
 
