@@ -619,10 +619,10 @@ def test_all_preset_shifts_trajectory_animation_waypoints():
     assert rp["x"] == pytest.approx(awp0["x"])
     assert rp["y"] == pytest.approx(awp0["y"])
     assert rp["z"] == pytest.approx(awp0["z"])
-    # The trajectory row sits at y=-2*row=-2400 in the all preset
-    # layout. The waypoints' static y was 0; after the offset it
-    # should land near -2400.
-    assert rp["y"] < -1500.0, "trajectory should sit on its own -Y row"
+    # The trajectory row sits at y=-2*row=-1000 in the all preset
+    # layout (row=500 since the 0.0.36 tightening). The waypoints'
+    # static y was 0; after the offset it should land near -1000.
+    assert rp["y"] < -800.0, "trajectory should sit on its own -Y row"
 
 
 # ---------- registry + load ----------

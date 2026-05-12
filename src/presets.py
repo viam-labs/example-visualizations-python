@@ -748,56 +748,43 @@ def all_preset() -> List[Mapping[str, Any]]:
     composition demo, and the lifecycle color convention in one
     viewport.
 
-    Row layout (Y from negative to positive). Spacing is 1200 mm
-    between rows.
+    Row layout (Y from negative to positive). Most rows are slim
+    (just a horizontal strip of items), so the spacing between them
+    is tight — 500 mm. The arm row is the one exception: the arm
+    swings through a ~500 mm reach in Y, and the morph row's
+    flicker grid extends ~400 mm in +Y from its baseline. The arm
+    row gets a larger gap before it (1500 mm extra) so neither
+    runs into the other when both are active.
 
       - trajectory_preview   y = -2*row
-                                 (own row, "after" the orientation
-                                  vectors row in the -Y direction)
       - orientation_vectors  y = -row
       - primitives           y =   0
       - lifecycle_demo       y = +row
                                  (5 staggered-phase boxes cycling
-                                  through the official appearing →
-                                  alive → disappearing → gone
-                                  color convention — sits between
-                                  the static primitives and the
-                                  morph row since the lifecycle
-                                  colors fade in/out, a transition
-                                  between "always-on" and "always
-                                  changing")
+                                  through appearing → alive →
+                                  disappearing → gone)
       - force_vector_demo    y = +2*row, x = -500
-                                 (left of the pulsing sphere)
       - geometry_morph       y = +2*row, x ∈ [0, +1700]
-                                 (pulsing sphere, stretching box,
-                                  breathing capsule, flickering grid)
-      - frame_composition    y = +3*row, x ∈ [-1000, +1500]
-                                 (spinning frame + orbiting wheel +
-                                  arm)
+                                 (flicker grid extends to y ≈ +2*row + 400)
+      - frame_composition    y = +2*row + arm_gap, x ∈ [-1000, +1500]
+                                 (arm + spinning frame; the arm
+                                  swings out in +Y by ~500 mm, so
+                                  it needs the extra clearance)
     """
-    row = 1200.0
+    row = 500.0
+    arm_gap = 1500.0
     items: List[Mapping[str, Any]] = []
-    # Trajectory: own row at -2*row, just past the orientation
-    # vectors. _offset_base_items applies the y shift while also
-    # translating the animation's waypoint list, so the runner
-    # follows the shifted path.
     traj = _offset_base_items(trajectory_preview(), "y", -2 * row)
     items.extend(traj)
     items.extend(_offset_base_items_y(orientation_vectors(), -row))
     items.extend(_offset_base_items_y(primitives(), 0.0))
-    # Lifecycle convention demo — sits between the static primitives
-    # row and the geometry-morph row.
     items.extend(_offset_base_items_y(lifecycle_demo(), row))
-    # Morph row with force_vector tucked in alongside the four
-    # geometry/property demos. force_vector exercises all of those
-    # categories at once (size + orientation + color), so it
-    # belongs visually with the rest of the row.
     items.extend(_offset_base_items_y(geometry_morph(), 2 * row))
     fv = _offset_base_items(force_vector_demo(), "x", -500.0)
     fv = _offset_base_items(fv, "y", 2 * row)
     items.extend(fv)
-    # Moving-items row: arm + spinning frame.
-    items.extend(_offset_base_items_y(frame_composition(), 3 * row))
+    # Arm row gets the wide gap.
+    items.extend(_offset_base_items_y(frame_composition(), 2 * row + arm_gap))
     return items
 
 
