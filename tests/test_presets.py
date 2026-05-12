@@ -270,6 +270,25 @@ def test_reference_frame_demo_static_axes():
         assert by_label[axis]["animation"]["mode"] == "none"
 
 
+def test_reference_frame_demo_includes_orbiting_color_wheel():
+    """The color wheel ring lives as children of the spinning anchor
+    so it orbits when the anchor spins. Locks in the count, the
+    parent-frame chain, and the hue sweep so the visible motion of
+    the demo doesn't regress silently."""
+    items = reference_frame_demo()
+    wheel = [it for it in items if it["label"].startswith("spinning_frame_wheel_")]
+    assert len(wheel) == 10, f"expected 10 wheel spheres, got {len(wheel)}"
+    for it in wheel:
+        assert it["type"] == "sphere"
+        assert it["parent_frame"] == "spinning_frame", (
+            "wheel spheres must parent to spinning_frame so they "
+            "orbit it via the frame-composition chain"
+        )
+    # Hue sweep: distinct colors.
+    colors = {(it["color"]["r"], it["color"]["g"], it["color"]["b"]) for it in wheel}
+    assert len(colors) == len(wheel)
+
+
 # ---------- frame_composition ----------
 
 def test_frame_composition_includes_both_demos():

@@ -36,6 +36,10 @@ def test_preset_field_accepts_known_names():
     for name in ("primitives", "color_wheel", "orientation_vectors",
                 "frame_composition", "all"):
         SceneSprites.validate_config(_cfg({"preset": name}))
+    # Sanity: PRESET_NAMES is the canonical registry, no surprises.
+    from src.presets import PRESET_NAMES
+    assert "color_wheel" in PRESET_NAMES
+    assert "frame_composition" in PRESET_NAMES
 
 
 def test_items_list_with_each_primitive_type_validates():

@@ -8,16 +8,19 @@ Presets:
 
   - ``primitives``: every supported primitive plus a tour of more
     complex meshes (torus, teapot) and a point cloud. Single row
-    along X — the default first-install scene and the canonical
-    "show me what this module renders" reference.
-  - ``color_wheel``: ten spheres arranged around a circle, HSV-swept hue.
+    along X — the default first-install scene.
+  - ``color_wheel``: ten static spheres arranged in a circle, HSV-
+    swept hue. The hue-gallery view.
   - ``orientation_vectors``: small sphere markers at axis-aligned
     orientation vectors carrying ``show_axes_helper: True`` so the
     viewer renders an RGB XYZ triad at each entity's origin.
   - ``frame_composition``: two chained-parent-frame demos side by
-    side — a spinning frame anchor with attached triad + mesh, and
-    an articulated robot arm. Probes whether the renderer composes
-    poses through chained ``parent_frame`` links.
+    side. **Spinning frame demo:** anchor sphere + RGB axes triad +
+    attached mesh + a ring of hue-swept spheres orbiting the anchor
+    (the orbiting wheel is the same idea as ``color_wheel`` but
+    parented to the anchor so it moves with the spin). **Arm demo:**
+    articulated kinematic chain. Probes whether the renderer
+    composes poses through chained ``parent_frame`` links.
   - ``all``: every preset above, stacked along Y. One-stop tour.
 """
 import colorsys
@@ -384,27 +387,31 @@ def orientation_vectors() -> List[Mapping[str, Any]]:
 def reference_frame_demo() -> List[Mapping[str, Any]]:
     """Compose poses through the Viam reference frame system.
 
-    Emits five items that form a parent-child chain:
+    Emits a parent-child chain whose root is a spinning anchor and
+    whose children orbit it via ``parent_frame``:
 
-      1. ``spinning_frame`` — a small near-transparent sphere at the
-         origin that spins around its Z axis. This is the **anchor**;
-         other items reference its label as ``parent_frame`` to attach.
-      2. ``spinning_frame_axis_x`` (red), ``_axis_y`` (green),
-         ``_axis_z`` (blue) — three capsules forming a coordinate
-         triad, each parented to ``spinning_frame``. They are static
-         relative to the anchor; they spin because the anchor does.
-      3. ``spinning_frame_attached_mesh`` — the bunny PLY parented to
-         ``spinning_frame``. It also has its own ``spin`` animation,
-         so it rotates **both** with the frame and on its own axis.
+      1. ``spinning_frame`` — small near-transparent sphere at the
+         origin that spins around its Z axis. The anchor; other items
+         set this as their ``parent_frame``.
+      2. ``spinning_frame_axis_x|y|z`` — three capsules forming a
+         colored RGB triad. Static relative to the anchor; they
+         appear to spin because the anchor does.
+      3. ``spinning_frame_attached_mesh`` — icosahedron PLY parented
+         to the anchor. Has its own ``spin`` animation, so it rotates
+         **both** with the frame and on its own axis.
+      4. ``spinning_frame_wheel_NN`` (10 spheres) — hue-swept color
+         wheel orbiting the anchor in its XY plane. Used to be a
+         separate ``color_wheel`` preset; folding it in here makes
+         the orbiting motion the visible centerpiece of the demo.
 
-    This preset is also a renderer-behavior probe: it's the only place
-    in this module (or in any other world-state-store reference I
-    found in the RDK or viam-labs) where an emitted Transform's
+    Renderer behavior probe: this is the only place in this module
+    (or in any reference world-state-store module I found in the RDK
+    or viam-labs) where an emitted Transform's
     ``pose_in_observer_frame.reference_frame`` matches the
     ``reference_frame`` of another emitted Transform. If the viewer
-    composes through that chain, the axes triad and the mesh both
-    orbit the anchor's rotation. If it does not, the children render
-    in world space and the demo looks broken.
+    composes through that chain, the axes triad, attached mesh, AND
+    color wheel all orbit the anchor's rotation. If it does not, the
+    children render in world space and the demo looks broken.
     """
     axis_length_mm = 200.0
     axis_radius_mm = 12.0
@@ -477,7 +484,53 @@ def reference_frame_demo() -> List[Mapping[str, Any]]:
             "opacity": 1.0,
             "animation": {"mode": "spin", "period_s": 2},
         },
+        # Color wheel — ring of hue-swept spheres parented to the
+        # spinning anchor, so they orbit it when it spins. This used
+        # to be a separate `color_wheel` preset; folding it in here
+        # makes the spin/composition story richer (orbiting motion is
+        # immediately visible) and removes the duplicate hue gallery.
+        # Radius chosen to clear the axes triad (200 mm) and to sit
+        # just inside the attached mesh (350 mm out + ~50 mm radius).
+        *_color_wheel_children("spinning_frame", count=10, ring_radius_mm=480.0),
     ]
+
+
+def _color_wheel_children(
+    parent_label: str,
+    count: int = 10,
+    ring_radius_mm: float = 300.0,
+    sphere_radius_mm: float = 30.0,
+    z_mm: float = 0.0,
+) -> List[Mapping[str, Any]]:
+    """Generate ``count`` small hue-swept spheres in a ring parented to
+    ``parent_label``. Sphere positions are in the parent's local XY
+    plane; if the parent spins around its Z, the ring orbits with it
+    via the frame-composition chain.
+
+    Labels follow ``<parent_label>_wheel_NN`` so duplicates don't
+    collide if multiple wheels share a scene.
+    """
+    items: List[Mapping[str, Any]] = []
+    for i in range(count):
+        hue = i / count
+        r, g, b = colorsys.hsv_to_rgb(hue, 1.0, 1.0)
+        angle = 2 * math.pi * i / count
+        items.append({
+            "type": "sphere",
+            "label": f"{parent_label}_wheel_{i:02d}",
+            "parent_frame": parent_label,
+            "pose": {
+                "x": ring_radius_mm * math.cos(angle),
+                "y": ring_radius_mm * math.sin(angle),
+                "z": z_mm,
+                "ox": 0, "oy": 0, "oz": 1, "theta": 0,
+            },
+            "radius_mm": sphere_radius_mm,
+            "color": {"r": int(255 * r), "g": int(255 * g), "b": int(255 * b)},
+            "opacity": 1.0,
+            "animation": {"mode": "none"},
+        })
+    return items
 
 
 def _offset_base_items(
@@ -549,7 +602,7 @@ def all_preset() -> List[Mapping[str, Any]]:
       - orientation_vectors  y = -2*row
       - color_wheel          y = -row
       - primitives           y =   0
-      - frame_composition    y = +row  (spinning frame + arm side-by-side)
+      - frame_composition    y = +row  (spinning frame + orbiting wheel + arm)
     """
     row = 1800.0
     items: List[Mapping[str, Any]] = []
