@@ -56,11 +56,23 @@ def test_all_primitives_spaced_along_x():
     assert len(set(xs)) == len(xs)
 
 
-def test_all_primitives_each_has_color():
-    """The default scene relies on color to distinguish primitives,
-    so every item must carry a color override (not just rely on the
-    viewer's default fill)."""
+def test_all_primitives_each_solid_item_has_color():
+    """The default scene relies on color to distinguish primitives, so
+    every SOLID item must carry a color override (not just rely on the
+    viewer's default fill).
+
+    Point clouds are the exception: they omit `color` on purpose so
+    the viewer falls back to the embedded per-point PCD RGB instead
+    of overriding it with a uniform tint. See
+    LESSONS.md::pcd-colors-precedence."""
     for it in all_primitives():
+        if it["type"] == "pointcloud":
+            assert "color" not in it, (
+                "pointcloud preset items must omit `color` so the "
+                "embedded PCD RGB renders; setting color overrides it "
+                "with a uniform tint"
+            )
+            continue
         assert "color" in it
         c = it["color"]
         for ch in ("r", "g", "b"):

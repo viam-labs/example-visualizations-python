@@ -96,12 +96,16 @@ def all_primitives() -> List[Mapping[str, Any]]:
             "opacity": 1.0,
             "animation": {"mode": "none"},
         },
+        # NOTE: no `color` here on purpose — when metadata.colors is
+        # set on a point cloud item, the viewer uses it as a uniform
+        # tint and IGNORES the per-point RGB embedded in the PCD body.
+        # Omitting color lets the helix's per-point colors render.
+        # See LESSONS.md::pcd-colors-precedence.
         {
             "type": "pointcloud",
             "label": "demo_pointcloud",
             "pose": _identity_pose(x=3 * sp),
             "pointcloud_path": "assets/helix.pcd",
-            "color": {"r": 70, "g": 240, "b": 240},
             "opacity": 1.0,
             "animation": {"mode": "none"},
         },
@@ -155,12 +159,13 @@ def mesh_gallery() -> List[Mapping[str, Any]]:
             "opacity": 1.0,
             "animation": {"mode": "none"},
         },
+        # No `color` so the embedded per-point PCD RGB shows through;
+        # metadata.colors would override it with a uniform tint.
         {
             "type": "pointcloud",
             "label": "gallery_pcd",
             "pose": _identity_pose(x=sp),
             "pointcloud_path": "assets/helix.pcd",
-            "color": {"r": 220, "g": 220, "b": 220},
             "opacity": 1.0,
             "animation": {"mode": "none"},
         },

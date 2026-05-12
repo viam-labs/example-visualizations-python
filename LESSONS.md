@@ -109,6 +109,33 @@ The RDK fake at `services/worldstatestore/fake/moving_geos_world.go` uses the ob
 
 **Fix.** Two levers in the asset generator: **path density** (more points along the curve) and **radial thickness** (a tube of points instead of a single line). Generator now emits `steps * tube_ring_count` points — at each of `steps` positions along the helix path, `tube_ring_count` points are placed in a small ring perpendicular to the helix direction (tangent + normal + binormal frame). Default 2400 steps × 6 ring points = 14,400 points; the spiral reads as a thick colored ribbon.
 
+### pcd-colors-precedence
+
+**Symptom.** Generated a helix PCD with HSV-swept per-point RGB
+embedded in the file body. The viewer rendered it as a uniform cyan
+tube — not the rainbow ribbon I expected.
+
+**Root cause.** When a point cloud item carries `metadata.colors`
+(even a single color), the viewer uses that as a uniform tint for
+every point and **ignores the per-point RGB stored in the PCD body**.
+The visualization library is explicit about this in
+`viamrobotics/visualization::draw/point_cloud.go`: *"Supply either a
+single color (applied to every point) or one color per point. If
+empty, the cloud's per-point color data is used by the visualizer."*
+
+The same `color` config field that's useful for solid primitives
+(box, sphere, capsule, mesh) becomes a footgun for point clouds: it
+turns a rainbow into a single color.
+
+**Fix.** In presets, omit `color` on `pointcloud` items so the
+embedded RGB shows through. Documented the override semantics in the
+preset comments and added a test enforcing "no color on pointcloud
+preset items". User-authored configs that *want* a uniform-tint look
+can still set `color`; the default behavior reads the embedded
+colors. Logged this as bug #9 — the override should at least be
+documented, ideally visible in the metadata struct so authors know
+what's winning.
+
 ### service-quirks
 
 **Symptom.** A service module loads and starts, but `do_command` says no items are configured and the tick never fires.
@@ -176,6 +203,8 @@ Related: `validate_config` must return `Tuple[Sequence[str], Sequence[str]]` —
 6. **Stable UUID + `UPDATED` regression history is invisible.** apriltag-tracker's `CLAUDE.md` says UPDATED *froze* geometries in their testing; the RDK fake at HEAD relies on it. Add the renderer-side history (when did it work, what fixed it, what could re-break it) to the visualization repo's README.
 
 7. **Geometry oneof has no Point variant.** A first-class Point primitive would let modules represent landmarks without the radius-0-sphere hack and would document the minimum-visible-radius behavior.
+
+8. **`metadata.colors` silently overrides PCD-embedded RGB for point clouds.** A user-authored item with both a `pointcloud_path` containing per-point colors AND a uniform `color` metadata gets the metadata color applied to every point — the PCD's RGB is dropped. This is documented in `viamrobotics/visualization::draw/point_cloud.go` as code-level behavior but isn't surfaced in user-facing docs. Either render warning when both are set, or expose a config knob to choose precedence.
 
 ## Features to request from the viz team
 
