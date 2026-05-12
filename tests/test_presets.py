@@ -10,6 +10,7 @@ from src.presets import (
     PRESETS,
     primitives,
     color_wheel,
+    force_vector_demo,
     frame_composition,
     load,
     orientation_vectors,
@@ -494,6 +495,32 @@ def test_trajectory_preview_line_segments_align_with_segment_directions():
         assert seg_pose["ox"] == pytest.approx(ox_expected, abs=1e-6)
         assert seg_pose["oy"] == pytest.approx(oy_expected, abs=1e-6)
         assert seg_pose["oz"] == pytest.approx(oz_expected, abs=1e-6)
+
+
+# ---------- force_vector_demo ----------
+
+def test_force_vector_demo_is_a_single_animated_arrow():
+    """Standalone preset is exactly one arrow with force_vector
+    animation. Compositional simplicity is the point — the visual
+    interest comes from the animation, not from item count."""
+    items = force_vector_demo()
+    assert len(items) == 1
+    item = items[0]
+    assert item["type"] == "arrow"
+    assert item["animation"]["mode"] == "force_vector"
+
+
+def test_force_vector_demo_animation_carries_all_four_attributes():
+    """The animation config must specify all four changing attributes:
+    length amplitude, radius amplitude, tilt (drives orientation
+    precession), and color speed."""
+    anim = force_vector_demo()[0]["animation"]
+    assert "length_amplitude_mm" in anim
+    assert "radius_amplitude_mm" in anim
+    assert "tilt_deg" in anim
+    # color_speed has a default so it might be implicit, but the
+    # period_s is what actually drives the hue cycle.
+    assert "period_s" in anim
 
 
 # ---------- all preset trajectory-shift behavior ----------

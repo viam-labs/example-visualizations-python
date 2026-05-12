@@ -399,7 +399,7 @@ class SceneSprites(WorldStateStore, EasyResource):
                 item = s["item"]
                 if not anim_mod.is_animated(item):
                     continue
-                pose, geom, paths = anim_mod.compute_tick(
+                pose, geom, paths, color_override = anim_mod.compute_tick(
                     item, s["base_pose"], s["base_geom"], t,
                 )
                 if not paths:
@@ -407,9 +407,22 @@ class SceneSprites(WorldStateStore, EasyResource):
                     # (e.g. pulse on a point) — skip.
                     continue
                 geom_proto = _build_geometry(item, geom)
+                # When the animation supplies a color override for
+                # this tick (force_vector cycles its hue over time),
+                # pass a synthetic item dict with the override color
+                # to _build_transform so the metadata reflects it.
+                item_for_tf = item
+                if color_override is not None:
+                    item_for_tf = dict(item)
+                    item_for_tf["color"] = {
+                        "r": color_override[0],
+                        "g": color_override[1],
+                        "b": color_override[2],
+                    }
                 if self.uuid_strategy == "stable":
                     new_tf = _build_transform(
-                        item, pose, geom_proto, s["uuid"], self.parent_frame,
+                        item_for_tf, pose, geom_proto,
+                        s["uuid"], self.parent_frame,
                     )
                     s["transform"] = new_tf
                     self._broadcast(StreamTransformChangesResponse(
@@ -421,7 +434,8 @@ class SceneSprites(WorldStateStore, EasyResource):
                     old_tf = s["transform"]
                     new_uuid = _versioned_uuid(label)
                     new_tf = _build_transform(
-                        item, pose, geom_proto, new_uuid, self.parent_frame,
+                        item_for_tf, pose, geom_proto,
+                        new_uuid, self.parent_frame,
                     )
                     s["uuid"] = new_uuid
                     s["transform"] = new_tf

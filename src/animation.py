@@ -38,6 +38,16 @@ Modes (all parameters in mm and seconds):
     lerping the orientation vector + theta then renormalizing. With
     ``loop: true`` (default) the walk repeats indefinitely; with
     ``loop: false`` the entity stops at the final waypoint.
+  - ``force_vector``: simulate a virtual force arrow with all four
+    visible attributes changing — ``length_mm``, ``radius_mm``,
+    orientation (precesses around world +Z at a fixed ``tilt_deg``),
+    and metadata color (hue cycles through HSV). Designed for the
+    ``arrow`` primitive type. Params: ``period_s`` (base time unit),
+    ``length_amplitude_mm`` (length oscillates ±this around base),
+    ``radius_amplitude_mm`` (radius oscillates ±this), ``tilt_deg``
+    (cone half-angle the arrow's local +Z traces), ``precession_speed``
+    (orientation revolutions per ``period_s``, default 1), and
+    ``color_speed`` (HSV hue revolutions per ``period_s``, default 1).
 
 The animation module is purely functional; the service threads the
 elapsed time and base pose in. Tests can pin t to known values.
@@ -61,6 +71,7 @@ PATH_BOX_DIMS_Z = "physicalObject.geometryType.value.dimsMm.z"
 
 SUPPORTED_MODES = (
     "none", "orbit", "oscillate", "spin", "swing", "pulse", "trajectory",
+    "force_vector",
 )
 SUPPORTED_AXES = ("x", "y", "z")
 
@@ -73,6 +84,15 @@ SUPPORTED_AXES = ("x", "y", "z")
 PATH_OX = "poseInObserverFrame.pose.oX"
 PATH_OY = "poseInObserverFrame.pose.oY"
 PATH_OZ = "poseInObserverFrame.pose.oZ"
+
+# Field-mask path for the metadata color sub-field. Matches the
+# convention used by do_command::update when patching `color`. Whether
+# the viewer applies metadata.color deltas via UPDATED events is
+# unverified — only force_vector currently relies on it. The fallback
+# is the same as for trajectory's orientation updates: switch the
+# service to ``uuid_strategy: "versioned"`` and the whole transform
+# (including fresh metadata) is re-emitted each tick.
+PATH_METADATA_COLOR = "metadata.color"
 
 
 def is_animated(item: Mapping[str, Any]) -> bool:
@@ -87,7 +107,7 @@ def compute_tick(
     base_pose: Mapping[str, float],
     base_geom: Mapping[str, Any],
     t: float,
-) -> Tuple[Mapping[str, float], Mapping[str, Any], List[str]]:
+) -> Tuple[Mapping[str, float], Mapping[str, Any], List[str], Optional[Tuple[int, int, int]]]:
     """Compute per-tick overrides for an animated item.
 
     Args:
@@ -101,13 +121,19 @@ def compute_tick(
       t: seconds since the animation started.
 
     Returns:
-      (new_pose, new_geom, updated_fields)
+      (new_pose, new_geom, updated_fields, color_override)
         new_pose: full pose dict — fields not touched by the animation
                   pass through from base_pose.
         new_geom: geometry overrides keyed the same way as base_geom.
                   Fields not touched pass through.
         updated_fields: ordered list of field-mask paths to set on the
                   UPDATED change event.
+        color_override: ``(r, g, b)`` to override the item's metadata
+                  color this tick, or ``None`` to leave the static
+                  ``item["color"]`` in place. Only ``force_vector``
+                  currently sets this; the service is responsible for
+                  rebuilding metadata + emitting the appropriate
+                  field-mask path when it's set.
     """
     anim = item.get("animation") or {}
     mode = anim.get("mode", "none")
@@ -116,7 +142,7 @@ def compute_tick(
     paths: List[str] = []
 
     if mode == "none":
-        return new_pose, new_geom, paths
+        return new_pose, new_geom, paths, None
 
     if mode == "orbit":
         radius_mm = float(anim.get("radius_mm", 100.0))
@@ -127,7 +153,7 @@ def compute_tick(
         new_pose["x"] = float(base_pose.get("x", 0.0)) + radius_mm * math.cos(angle)
         new_pose["y"] = float(base_pose.get("y", 0.0)) + radius_mm * math.sin(angle)
         paths = [PATH_X, PATH_Y]
-        return new_pose, new_geom, paths
+        return new_pose, new_geom, paths, None
 
     if mode == "oscillate":
         axis = anim.get("axis", "y")
@@ -142,7 +168,7 @@ def compute_tick(
         paths = [
             {"x": PATH_X, "y": PATH_Y, "z": PATH_Z}[axis],
         ]
-        return new_pose, new_geom, paths
+        return new_pose, new_geom, paths, None
 
     if mode == "spin":
         period_s = float(anim.get("period_s", 4.0))
@@ -151,7 +177,7 @@ def compute_tick(
         theta = (360.0 * t / period_s) % 360.0
         new_pose["theta"] = theta
         paths = [PATH_THETA]
-        return new_pose, new_geom, paths
+        return new_pose, new_geom, paths, None
 
     if mode == "swing":
         amplitude_deg = float(anim.get("amplitude_deg", 45.0))
@@ -162,7 +188,7 @@ def compute_tick(
         theta = base_theta + amplitude_deg * math.sin(2 * math.pi * t / period_s)
         new_pose["theta"] = theta
         paths = [PATH_THETA]
-        return new_pose, new_geom, paths
+        return new_pose, new_geom, paths, None
 
     if mode == "pulse":
         amplitude_mm = float(anim.get("amplitude_mm", 25.0))
@@ -197,12 +223,12 @@ def compute_tick(
             # pulse on point/mesh/pointcloud is a no-op — those have
             # no scalable primary dim under the field-mask convention.
             paths = []
-        return new_pose, new_geom, paths
+        return new_pose, new_geom, paths, None
 
     if mode == "trajectory":
         waypoints = anim.get("waypoints") or []
         if len(waypoints) < 2:
-            return new_pose, new_geom, paths
+            return new_pose, new_geom, paths, None
         duration_s = float(anim.get("duration_s", 8.0))
         if duration_s <= 0:
             duration_s = 8.0
@@ -244,11 +270,77 @@ def compute_tick(
             PATH_OX, PATH_OY, PATH_OZ,
             PATH_THETA,
         ]
-        return new_pose, new_geom, paths
+        return new_pose, new_geom, paths, None
+
+    if mode == "force_vector":
+        period_s = float(anim.get("period_s", 4.0))
+        if period_s <= 0:
+            period_s = 4.0
+        # Phase of the base sinusoid.
+        phase = 2 * math.pi * t / period_s
+        # Length oscillates ±length_amplitude_mm around base length.
+        length_amp = float(anim.get("length_amplitude_mm", 60.0))
+        base_length = float(base_geom.get("length_mm", 200.0))
+        new_geom["length_mm"] = max(0.1, base_length + length_amp * math.sin(phase))
+        # Radius oscillates with a phase offset so the "fattening" isn't
+        # in sync with the "lengthening" — looks more like a real force
+        # changing two independent quantities.
+        radius_amp = float(anim.get("radius_amplitude_mm", 4.0))
+        base_radius = float(base_geom.get("radius_mm", 10.0))
+        new_geom["radius_mm"] = max(
+            0.1, base_radius + radius_amp * math.sin(phase + math.pi / 3)
+        )
+        # Orientation: precess around world +Z at a fixed cone half-
+        # angle (``tilt_deg``). The arrow's tip traces a circle at
+        # altitude cos(tilt). precession_speed scales the precession
+        # rate relative to period_s (1 revolution per period_s by
+        # default).
+        tilt_rad = math.radians(float(anim.get("tilt_deg", 45.0)))
+        precession_speed = float(anim.get("precession_speed", 1.0))
+        precession_angle = phase * precession_speed
+        new_pose["ox"] = math.sin(tilt_rad) * math.cos(precession_angle)
+        new_pose["oy"] = math.sin(tilt_rad) * math.sin(precession_angle)
+        new_pose["oz"] = math.cos(tilt_rad)
+        new_pose["theta"] = 0.0
+        # Color: cycle the hue through HSV at color_speed revolutions
+        # per period_s. Full saturation, full value — bright rainbow.
+        color_speed = float(anim.get("color_speed", 1.0))
+        hue = (t * color_speed / period_s) % 1.0
+        color_override = _hsv_to_rgb_u8(hue, 1.0, 1.0)
+        paths = [
+            PATH_CAPSULE_LENGTH,
+            PATH_SPHERE_RADIUS,
+            PATH_OX, PATH_OY, PATH_OZ,
+            PATH_THETA,
+            PATH_METADATA_COLOR,
+        ]
+        return new_pose, new_geom, paths, color_override
 
     # Unknown mode: treat as static. validate_config should have
     # rejected it before we got here.
-    return new_pose, new_geom, paths
+    return new_pose, new_geom, paths, None
+
+
+def _hsv_to_rgb_u8(h: float, s: float, v: float) -> Tuple[int, int, int]:
+    """HSV (each in [0, 1]) → (R, G, B) bytes in [0, 255]."""
+    i = int(h * 6) % 6
+    f = h * 6 - int(h * 6)
+    p = v * (1 - s)
+    q = v * (1 - s * f)
+    tt = v * (1 - s * (1 - f))
+    if i == 0:
+        r, g, b = v, tt, p
+    elif i == 1:
+        r, g, b = q, v, p
+    elif i == 2:
+        r, g, b = p, v, tt
+    elif i == 3:
+        r, g, b = p, q, v
+    elif i == 4:
+        r, g, b = tt, p, v
+    else:
+        r, g, b = v, p, q
+    return (int(r * 255) & 0xFF, int(g * 255) & 0xFF, int(b * 255) & 0xFF)
 
 
 def _lerp(a: float, b: float, alpha: float) -> float:

@@ -36,6 +36,7 @@ PRESET_NAMES = (
     "orientation_vectors",
     "frame_composition",
     "trajectory_preview",
+    "force_vector_demo",
 )
 
 # Default spacing between primitives in the row-style preset (mm).
@@ -737,6 +738,11 @@ def all_preset() -> List[Mapping[str, Any]]:
                                  (added to the same row as the arm +
                                   spinning frame; offset in X so it
                                   doesn't overlap)
+      - force_vector_demo    y = +row, x = +4500
+                                 (also on the moving-items row; one
+                                  arrow whose length, radius,
+                                  orientation, and color all change
+                                  over time)
     """
     row = 1800.0
     items: List[Mapping[str, Any]] = []
@@ -752,6 +758,11 @@ def all_preset() -> List[Mapping[str, Any]]:
     traj = _offset_base_items(trajectory_preview(), "x", 2500.0)
     traj = _offset_base_items(traj, "y", row)
     items.extend(traj)
+    # force_vector_demo lives even further along X so its precessing
+    # arrow doesn't sweep through the trajectory runner's path.
+    fv = _offset_base_items(force_vector_demo(), "x", 4500.0)
+    fv = _offset_base_items(fv, "y", row)
+    items.extend(fv)
     return items
 
 
@@ -865,6 +876,43 @@ def trajectory_preview() -> List[Mapping[str, Any]]:
     return items
 
 
+def force_vector_demo() -> List[Mapping[str, Any]]:
+    """A virtual force vector at the origin — one ``arrow`` primitive
+    with the ``force_vector`` animation mode driving all four visible
+    attributes simultaneously:
+
+      - ``length_mm`` oscillates ±80 mm around a 220 mm base
+      - ``radius_mm`` oscillates ±5 mm around 10 mm, phase-offset
+        from length so the arrow's "fatness" isn't synchronized with
+        its "magnitude"
+      - orientation precesses around world +Z at a fixed 45° tilt
+        (the arrow's local +Z traces a cone)
+      - metadata color cycles through HSV hue
+
+    Useful for previewing wrench / force vector visualizations in
+    motion-planning UIs. Standalone preset; placed alongside the
+    arm, spinning frame, and trajectory in the ``all`` row layout.
+    """
+    return [{
+        "type": "arrow",
+        "label": "force_vector",
+        "pose": _identity_pose(),
+        "length_mm": 220,
+        "radius_mm": 10,
+        "color": {"r": 230, "g": 60, "b": 100},
+        "opacity": 1.0,
+        "animation": {
+            "mode": "force_vector",
+            "period_s": 5.0,
+            "length_amplitude_mm": 80,
+            "radius_amplitude_mm": 5,
+            "tilt_deg": 45,
+            "precession_speed": 1.0,
+            "color_speed": 0.7,
+        },
+    }]
+
+
 def _waypoints_with_tangent_orientations(
     positions: List[Mapping[str, float]],
 ) -> List[Mapping[str, Any]]:
@@ -911,6 +959,7 @@ PRESETS = {
     "orientation_vectors": orientation_vectors,
     "frame_composition": frame_composition,
     "trajectory_preview": trajectory_preview,
+    "force_vector_demo": force_vector_demo,
 }
 
 
