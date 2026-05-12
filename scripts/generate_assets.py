@@ -137,19 +137,31 @@ def write_cube_stl(side_mm: float = 200.0) -> Path:
 
 # ---------- binary PCD helix ----------
 
-def write_helix_pcd(points: int = 2000, height_mm: float = 400.0,
-                    radius_mm: float = 75.0, turns: float = 4.0) -> Path:
+def write_helix_pcd(steps: int = 2400, height_mm: float = 400.0,
+                    radius_mm: float = 90.0, turns: float = 4.0,
+                    tube_ring_count: int = 6,
+                    tube_radius_mm: float = 8.0) -> Path:
     """Vertical helix of colored points in PCDBinary format.
+
+    Rendered as a **tube** of points: at each of ``steps`` positions
+    along the helix path, ``tube_ring_count`` points are placed in a
+    small ring of ``tube_radius_mm`` perpendicular to the helix
+    direction. Total points = ``steps * tube_ring_count``. The viewer
+    has no point-size knob (`viamrobotics/visualization::draw/point_cloud.go`
+    has options for color and downscaling but nothing for render size),
+    so radial thickness + path density are the only levers to make a
+    point cloud read clearly.
 
     Coordinates are written in **meters** (RDK PCD writer convention,
     ``mm / 1000``). The RGB ``TYPE`` letter is **I** (signed int) to
     match exactly what RDK's ``pointcloud.ToPCD`` writes — see
     rdk/pointcloud/pointcloud_file.go line 104:
-    ``"TYPE F F F I\\n"``. The reader is permissive about U-vs-I but
-    the viewer's parser may not be."""
+    ``"TYPE F F F I\\n"``."""
     # Convert user-facing mm dims to meters once.
     radius_m = radius_mm / MM_PER_M
     height_m = height_mm / MM_PER_M
+    tube_radius_m = tube_radius_mm / MM_PER_M
+    total_points = steps * tube_ring_count
     # Header MUST match what `pointcloud.ToPCD` in the RDK emits,
     # byte-for-byte. The reader is permissive (skips comments, accepts
     # both VERSION 0.7 and VERSION .7), but the viewer's parser is
@@ -164,48 +176,87 @@ def write_helix_pcd(points: int = 2000, height_mm: float = 400.0,
         "SIZE 4 4 4 4",
         "TYPE F F F I",
         "COUNT 1 1 1 1",
-        f"WIDTH {points}",
+        f"WIDTH {total_points}",
         "HEIGHT 1",
         "VIEWPOINT 0 0 0 1 0 0 0",
-        f"POINTS {points}",
+        f"POINTS {total_points}",
         "DATA binary",
         "",
     ]
     header = "\n".join(header_lines).encode("ascii")
     body = bytearray()
-    for i in range(points):
-        frac = i / max(1, points - 1)
+    # Color sweeps once through the hue wheel along the full helix —
+    # adjacent rings share nearly-identical hues so the spiral reads as
+    # a smooth color ribbon, not confetti. (A single solid color is
+    # legible too; sweeping makes the path direction visible.)
+    for step in range(steps):
+        frac = step / max(1, steps - 1)
         angle = 2 * math.pi * turns * frac
-        x = radius_m * math.cos(angle)
-        y = radius_m * math.sin(angle)
-        # Center vertically so the helix straddles z=0.
-        z = (frac - 0.5) * height_m
-        # Hue swept along the helix so it's visually striking.
+        # Path centerline.
+        cx = radius_m * math.cos(angle)
+        cy = radius_m * math.sin(angle)
+        cz = (frac - 0.5) * height_m
+        # Tangent (helix derivative); used to build the perpendicular
+        # basis for the cross-section ring.
+        tx = -radius_m * math.sin(angle)
+        ty = radius_m * math.cos(angle)
+        tz = height_m / (2 * math.pi * turns) if turns else 0.0
+        t_len = math.sqrt(tx * tx + ty * ty + tz * tz) or 1.0
+        tx, ty, tz = tx / t_len, ty / t_len, tz / t_len
+        # Pick a normal: use world-up crossed with tangent. Fall back to
+        # +X if degenerate.
+        ux, uy, uz = 0.0, 0.0, 1.0
+        nx = uy * tz - uz * ty
+        ny = uz * tx - ux * tz
+        nz = ux * ty - uy * tx
+        n_len = math.sqrt(nx * nx + ny * ny + nz * nz)
+        if n_len < 1e-9:
+            nx, ny, nz = 1.0, 0.0, 0.0
+        else:
+            nx, ny, nz = nx / n_len, ny / n_len, nz / n_len
+        # Binormal = tangent × normal.
+        bx = ty * nz - tz * ny
+        by = tz * nx - tx * nz
+        bz = tx * ny - ty * nx
+        # HSV->RGB for this ring's color.
         h = frac
-        # HSV -> RGB.
         i_h = int(h * 6) % 6
-        f = h * 6 - int(h * 6)
+        ff = h * 6 - int(h * 6)
         v = 1.0
         p = 0.0
-        q = 1 - f
-        t = f
+        q = 1 - ff
+        tt = ff
         if i_h == 0:
-            r, g, b = v, t, p
+            r, g, b = v, tt, p
         elif i_h == 1:
             r, g, b = q, v, p
         elif i_h == 2:
-            r, g, b = p, v, t
+            r, g, b = p, v, tt
         elif i_h == 3:
             r, g, b = p, q, v
         elif i_h == 4:
-            r, g, b = t, p, v
+            r, g, b = tt, p, v
         else:
             r, g, b = v, p, q
         r_i = int(r * 255) & 0xFF
         g_i = int(g * 255) & 0xFF
         b_i = int(b * 255) & 0xFF
         rgb = (r_i << 16) | (g_i << 8) | b_i
-        body += struct.pack("<fffI", x, y, z, rgb)
+        # Place tube_ring_count points around the cross-section ring.
+        for ring_step in range(tube_ring_count):
+            phi = 2 * math.pi * ring_step / tube_ring_count
+            cos_phi = math.cos(phi)
+            sin_phi = math.sin(phi)
+            offset_x = tube_radius_m * (cos_phi * nx + sin_phi * bx)
+            offset_y = tube_radius_m * (cos_phi * ny + sin_phi * by)
+            offset_z = tube_radius_m * (cos_phi * nz + sin_phi * bz)
+            body += struct.pack(
+                "<fffI",
+                cx + offset_x,
+                cy + offset_y,
+                cz + offset_z,
+                rgb,
+            )
     path = OUT / "helix.pcd"
     path.write_bytes(header + bytes(body))
     return path

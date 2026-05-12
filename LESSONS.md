@@ -101,6 +101,14 @@ The RDK fake at `services/worldstatestore/fake/moving_geos_world.go` uses the ob
 
 **Status.** TBD. User will report what they see on `desktop-dell-2` after switching to the `reference_frame_demo` preset.
 
+### point-size-not-a-knob
+
+**Symptom.** A 2000-point helix with ~75 mm radius rendered as essentially invisible dots — the path-shape of the spiral wasn't readable. User reported "I can see 2000 points in the properties pane but can't see them in the 3D scene".
+
+**Root cause.** The viewer has no point-size config. `viamrobotics/visualization::draw/point_cloud.go` exposes options for color (`WithSinglePointCloudColor`, `WithPerPointCloudColors`, `WithPointCloudColorPalette`) and downscaling (`WithPointCloudDownscaling`), but nothing for render size. Each point apparently renders at a fixed small screen-space size. For a sparse line of points the screen-space dots blend into the background.
+
+**Fix.** Two levers in the asset generator: **path density** (more points along the curve) and **radial thickness** (a tube of points instead of a single line). Generator now emits `steps * tube_ring_count` points — at each of `steps` positions along the helix path, `tube_ring_count` points are placed in a small ring perpendicular to the helix direction (tangent + normal + binormal frame). Default 2400 steps × 6 ring points = 14,400 points; the spiral reads as a thick colored ribbon.
+
 ### service-quirks
 
 **Symptom.** A service module loads and starts, but `do_command` says no items are configured and the tick never fires.
@@ -184,6 +192,8 @@ Related: `validate_config` must return `Tuple[Sequence[str], Sequence[str]]` —
 6. **DoCommand verb registry.** The visualization fixture defines DoCommand verbs like `add_box`, `add_pointcloud`, `get_entity_chunk`, `add_chunked` that the viewer apparently knows to call. Publish the official set so modules can implement them and gain viewer features (chunked PCs, etc.) without reverse-engineering.
 
 7. **Better error reporting.** Most viewer failures are silent. Surface parse errors, format mismatches, and dropped events to the module's debug snapshot (or to a viewer-side error channel) so module authors don't need byte-diffs to diagnose.
+
+8. **Point cloud render size knob.** The viewer offers no control over the per-point rendered size, so sparse point clouds (even those positioned and colored correctly) read as blank space. Modules can compensate by inflating density + radial thickness, but a `point_size` metadata field (in pixels, or in mm with a min-pixels clamp) would let module authors author at natural densities and use the file size budget for real point counts rather than visibility hacks.
 
 ## Library sketch — `viam-viz-helpers`
 
