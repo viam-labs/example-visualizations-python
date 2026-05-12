@@ -43,20 +43,21 @@ orange STL cube → cyan helical PCD point cloud.
 
 Want a different default scene? Set `preset` to one of:
 
-- `all_primitives` (default) — one of every type, static, distinct colors
+- `primitives` (default) — one of every type, static, distinct colors
 - `color_wheel` — 10 spheres around a ring, HSV-swept hue
 - `mesh_gallery` — bunny, cube, helix side by side
 - `orientation_vectors` — same capsule at OX/OY/OZ permutations, with a `theta` demo
 - `reference_frame_demo` — a spinning anchor + colored X/Y/Z triad parented to it + a child mesh that spins on its own axis. Demonstrates that the renderer composes poses through the Viam frame system: each child's `parent_frame` is the **label of another emitted Transform**, and the child inherits the parent's rotation through the chain.
+- `all` — every preset above, stacked along Y at ~1.8 m intervals. One-stop tour.
 
 ## Config reference
 
 | Key             | Type          | Default          | Description |
 | --------------- | ------------- | ---------------- | ----------- |
-| `tick_hz`       | number (0,30] | `5`              | Animation tick rate. Static-only configs ignore this. |
+| `tick_hz`       | number (0,30] | `30`             | Animation tick rate. Static-only configs ignore this. |
 | `uuid_strategy` | `"stable"` \| `"versioned"` | `"stable"` | How UUIDs are managed under animation. `stable`: keep one UUID per item, emit `UPDATED` with a field-mask. `versioned`: re-issue UUIDs per tick, emit `REMOVED`+`ADDED`. See "UUID strategies" below. |
 | `parent_frame`  | string        | `"world"`        | Default parent frame for every item. Per-item `parent_frame` overrides this. |
-| `preset`        | string        | `"all_primitives"` | Named scene bundle. Ignored when `items` is set. |
+| `preset`        | string        | `"primitives"`   | Named scene bundle. Ignored when `items` is set. |
 | `items`         | list          | `[]`             | Explicit item list. See below. |
 
 ### Item schema

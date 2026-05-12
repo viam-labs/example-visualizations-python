@@ -260,9 +260,9 @@ async def test_preset_unknown_name_raises():
         await s.do_command({"command": "preset", "name": "not_a_real_preset"})
 
 
-async def test_preset_all_primitives_loads_seven_items():
+async def test_preset_primitives_loads_seven_items():
     s = _bare_service()
-    out = await s.do_command({"command": "preset", "name": "all_primitives"})
+    out = await s.do_command({"command": "preset", "name": "primitives"})
     assert out["count"] == 7
 
 
@@ -294,7 +294,7 @@ async def test_snapshot_roundtrips_through_validate_config():
     from viam.utils import dict_to_struct
 
     s = _bare_service()
-    await s.do_command({"command": "preset", "name": "all_primitives"})
+    await s.do_command({"command": "preset", "name": "primitives"})
     snap = (await s.do_command({"command": "snapshot"}))["config"]
     cfg = ComponentConfig(attributes=dict_to_struct(snap))
     SceneSprites.validate_config(cfg)

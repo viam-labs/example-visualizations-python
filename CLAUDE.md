@@ -21,7 +21,7 @@ src/main.py             # Module entrypoint. Imports SceneSprites so EasyResourc
 src/service.py          # SceneSprites — the WorldStateStore implementation. Owns state, subscribers, animation tick, do_command dispatch.
 src/geometries.py       # Pure proto builders: build_box/sphere/capsule/point/mesh/pointcloud, build_metadata, build_pose, stl_to_ply, asset path resolution.
 src/animation.py        # Per-mode pose math: none, orbit, oscillate, spin, pulse. Returns (pose, geom, updated_fields) — the third is the field-mask path list for UPDATED events.
-src/presets.py          # Named scene bundles: all_primitives, color_wheel, mesh_gallery, orientation_vectors, reference_frame_demo.
+src/presets.py          # Named scene bundles: primitives, color_wheel, mesh_gallery, orientation_vectors, reference_frame_demo, all (merges every other preset along Y).
 scripts/generate_assets.py  # Regenerates assets/bunny.ply, assets/cube.stl, assets/helix.pcd from math. No external assets are bundled.
 assets/                 # Shipped reference geometry — see assets/README.md for provenance.
 tests/                  # pytest. Run from repo root via `make test`. 179+ tests as of 0.0.6.
@@ -79,7 +79,7 @@ To deploy on `desktop-dell-2`, either:
 
 ### Animation tick
 
-`_tick_loop` runs at `tick_hz` (default 5). Each tick calls `_tick_once`, which iterates animated items and dispatches based on `uuid_strategy`:
+`_tick_loop` runs at `tick_hz` (default 30, max 30). Each tick calls `_tick_once`, which iterates animated items and dispatches based on `uuid_strategy`:
 
 - **`stable`** — recompute the pose/geom, update the cached transform in place, push `UPDATED` with `FieldMask(paths=...)`. The field-mask paths come from `animation.py` and must match the conventions in `rdk/services/worldstatestore/fake/moving_geos_world.go` (e.g. `poseInObserverFrame.pose.theta`, `physicalObject.geometryType.value.radiusMm`).
 - **`versioned`** — allocate a new UUID (`<label>_<epoch_ms>_<counter>`), build a fresh transform, push `REMOVED` for the old + `ADDED` for the new.
@@ -115,7 +115,7 @@ These are the load-bearing facts an agent working in this repo needs to know up 
 - **Don't trust the RDK fake at `services/worldstatestore/fake/` as the source of truth for what the viewer reads.** It's stale on metadata. The canonical reference for the viewer's wire format is `viamrobotics/visualization` — specifically `draw/transform.go`, `draw/drawing.go`, `draw/buffer_packer.go`, and `protos/draw/v1/metadata.proto`.
 - **Don't add new geometry types speculatively.** The Geometry oneof in `common.proto` is closed. Box, Sphere, Capsule, Mesh, PointCloud — that's the full set the viewer can render. Composite primitives (axes triads, frame markers) are built by emitting multiple Transforms parented to a shared anchor; see the `reference_frame_demo` preset.
 - **Don't introduce GLTF/GLB/OBJ support without verifying the viewer accepts the converted output.** README points users at `trimesh` for offline conversion. `stl_to_ply` works because we verified PLY renders; other formats are unconfirmed.
-- **Don't bump `tick_hz` over ~10 without measuring viewer load.** The RDK fake runs at 10 Hz default; apriltag-tracker uses 5 Hz. Higher rates may starve subscriber queues.
+- **Tick rate is capped at 30 Hz** via validate_config, with 30 the default. The RDK fake runs at 10 Hz, apriltag-tracker at 5 Hz; 30 is reserved for this module's playground use specifically — measure viewer load if you bump this elsewhere.
 - **Don't change asset coordinate units without updating `tests/test_assets_units.py`.** That test catches the most expensive regression class — invisible geometries because of unit mismatch.
 - **Don't deploy to `desktop-dell-2` without first checking it isn't already running another `rdk:service:world_state_store`** at the same time. Two services emitting to the same viewer is unverified behavior.
 

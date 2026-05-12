@@ -78,6 +78,14 @@ def build_metadata(
     Returns ``None`` only when literally nothing is set. Otherwise
     emits at least ``opacities`` so the viewer has a defined alpha.
     """
+    # Match viamrobotics/visualization::draw/transform.go::MetadataToStruct
+    # EXACTLY: always emit colors, color_format, opacities,
+    # show_axes_helper, invisible. Omitting any of them produced an
+    # invisible point cloud in 0.0.9 — the renderer apparently treats
+    # absent keys as an invalid metadata struct rather than "use
+    # defaults". With empty `colors` and opacity 255, the renderer
+    # falls back to embedded per-point RGB on point clouds and a
+    # viewer-default fill on solids. Never returns None now.
     fields: dict = {}
     if color is not None:
         rgb_bytes = bytes([
@@ -86,17 +94,15 @@ def build_metadata(
             _clamp_u8(color.get("b", 0)),
         ])
         fields["colors"] = base64.b64encode(rgb_bytes).decode("ascii")
-        # color_format is required when colors is present; 1 = RGB.
-        fields["color_format"] = 1.0
-    if opacity is not None:
-        alpha = _clamp_u8(round(float(opacity) * 255))
-        fields["opacities"] = base64.b64encode(bytes([alpha])).decode("ascii")
-    if show_axes_helper:
-        fields["show_axes_helper"] = True
-    if invisible:
-        fields["invisible"] = True
-    if not fields:
-        return None
+    else:
+        # Empty colors → viewer falls back to embedded (PCD) RGB or
+        # default fill. We MUST still emit the key.
+        fields["colors"] = ""
+    fields["color_format"] = 1.0  # COLOR_FORMAT_RGB
+    alpha = 255 if opacity is None else _clamp_u8(round(float(opacity) * 255))
+    fields["opacities"] = base64.b64encode(bytes([alpha])).decode("ascii")
+    fields["show_axes_helper"] = bool(show_axes_helper)
+    fields["invisible"] = bool(invisible)
     return dict_to_struct(fields)
 
 

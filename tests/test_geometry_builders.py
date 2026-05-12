@@ -25,18 +25,42 @@ from src.geometries import (
 # ---------- build_metadata ----------
 #
 # Schema MUST match viamrobotics/visualization::draw/transform.go::MetadataToStruct
-# and protos/draw/v1/metadata.proto. The RDK fake's old shape was wrong
-# and silently no-op'd through 0.0.5.
+# and protos/draw/v1/metadata.proto. The library ALWAYS emits all five
+# keys (colors, color_format, opacities, show_axes_helper, invisible);
+# omitting any of them makes the viewer skip the entity entirely. This
+# bit us at 0.0.9 when point clouds went invisible because we'd
+# stopped emitting `colors` for items without a user-set color.
 
 import base64 as _b64
+
+
+def _all_required_keys_present(d):
+    """Lock in the schema contract: the five keys the library always emits."""
+    for k in ("colors", "color_format", "opacities", "show_axes_helper", "invisible"):
+        assert k in d, f"missing required metadata key {k!r}; have {sorted(d.keys())}"
+
+
+def test_build_metadata_with_no_args_still_emits_all_required_keys():
+    """The viewer treats a struct missing any of these keys as
+    invalid and skips the entity. Empty `colors` is the signal to
+    fall back to embedded RGB / viewer default — NOT the absence of
+    the key."""
+    md = build_metadata()
+    d = struct_to_dict(md)
+    _all_required_keys_present(d)
+    assert d["colors"] == ""
+    assert d["color_format"] == 1.0
+    # Default opacity is fully opaque (alpha=255).
+    assert d["opacities"] == _b64.b64encode(bytes([255])).decode("ascii")
+    assert d["show_axes_helper"] is False
+    assert d["invisible"] is False
 
 
 def test_build_metadata_color_packs_as_base64_rgb_bytes():
     md = build_metadata(color={"r": 255, "g": 128, "b": 0})
     d = struct_to_dict(md)
-    # colors is a base64 string of 3 packed bytes [R, G, B].
+    _all_required_keys_present(d)
     assert d["colors"] == _b64.b64encode(bytes([255, 128, 0])).decode("ascii")
-    # color_format = 1 (COLOR_FORMAT_RGB), the only value defined.
     assert d["color_format"] == 1.0
 
 
@@ -44,6 +68,7 @@ def test_build_metadata_opacity_packs_as_base64_alpha_byte():
     """opacity 0..1 becomes a single uint8 byte 0..255."""
     md = build_metadata(opacity=0.5)
     d = struct_to_dict(md)
+    _all_required_keys_present(d)
     # 0.5 * 255 = 127.5 → rounds to 128.
     assert d["opacities"] == _b64.b64encode(bytes([128])).decode("ascii")
 
@@ -58,30 +83,44 @@ def test_build_metadata_opacity_endpoints():
 def test_build_metadata_color_and_opacity_together():
     md = build_metadata(color={"r": 10, "g": 20, "b": 30}, opacity=0.4)
     d = struct_to_dict(md)
+    _all_required_keys_present(d)
     assert d["colors"] == _b64.b64encode(bytes([10, 20, 30])).decode("ascii")
     assert d["color_format"] == 1.0
     assert d["opacities"] == _b64.b64encode(bytes([round(0.4 * 255)])).decode("ascii")
 
 
-def test_build_metadata_returns_none_when_nothing_set():
-    assert build_metadata() is None
-    assert build_metadata(color=None, opacity=None) is None
+def test_build_metadata_returns_struct_even_when_nothing_set():
+    """A canonical "empty" metadata still has all five keys — the
+    point cloud disappearance at 0.0.9 was caused by returning None
+    here, which left the renderer with no metadata to parse."""
+    md = build_metadata()
+    assert md is not None
+    md_explicit = build_metadata(color=None, opacity=None)
+    assert md_explicit is not None
 
 
-def test_build_metadata_show_axes_helper_only_emitted_when_true():
-    """Avoid emitting noisy fields the viewer would treat as explicit
-    'false' overrides — only set the flag when the user actually wants
-    the XYZ triad rendered at the entity origin."""
+def test_build_metadata_no_color_emits_empty_colors_string():
+    """Empty `colors` is the canonical signal to the viewer to fall
+    back to embedded per-point RGB (for PCDs) or its default fill (for
+    solids). The KEY must still be present."""
+    md = build_metadata(opacity=1.0)
+    d = struct_to_dict(md)
+    assert d["colors"] == ""
+
+
+def test_build_metadata_show_axes_helper_always_emitted():
+    """Library always emits `show_axes_helper`; matching exactly avoids
+    parser surprises. The bool itself is the meaningful signal."""
     md_off = build_metadata(color={"r": 0, "g": 0, "b": 0}, show_axes_helper=False)
     md_on = build_metadata(color={"r": 0, "g": 0, "b": 0}, show_axes_helper=True)
-    assert "show_axes_helper" not in struct_to_dict(md_off)
+    assert struct_to_dict(md_off)["show_axes_helper"] is False
     assert struct_to_dict(md_on)["show_axes_helper"] is True
 
 
-def test_build_metadata_invisible_only_emitted_when_true():
+def test_build_metadata_invisible_always_emitted():
     md_off = build_metadata(color={"r": 0, "g": 0, "b": 0}, invisible=False)
     md_on = build_metadata(color={"r": 0, "g": 0, "b": 0}, invisible=True)
-    assert "invisible" not in struct_to_dict(md_off)
+    assert struct_to_dict(md_off)["invisible"] is False
     assert struct_to_dict(md_on)["invisible"] is True
 
 

@@ -6,7 +6,7 @@ serializable for the ``snapshot`` DoCommand round-trip.
 
 Presets:
 
-  - ``all_primitives``: one of each supported primitive, spaced along X,
+  - ``primitives``: one of each supported primitive, spaced along X,
     distinct colors, static. This is the default first-install scene.
   - ``color_wheel``: ten spheres arranged around a circle, HSV-swept hue.
   - ``mesh_gallery``: bunny PLY + cube STL + helix point cloud, side by
@@ -21,7 +21,8 @@ from typing import Any, List, Mapping
 
 
 PRESET_NAMES = (
-    "all_primitives",
+    "all",
+    "primitives",
     "color_wheel",
     "mesh_gallery",
     "orientation_vectors",
@@ -36,7 +37,7 @@ def _identity_pose(x: float = 0.0, y: float = 0.0, z: float = 0.0) -> Mapping[st
     return {"x": x, "y": y, "z": z, "ox": 0, "oy": 0, "oz": 1, "theta": 0}
 
 
-def all_primitives() -> List[Mapping[str, Any]]:
+def primitives() -> List[Mapping[str, Any]]:
     """One of every supported primitive in a row along X. Colors are
     distinct rainbow stops so each primitive is identifiable at a
     glance. All static."""
@@ -342,8 +343,58 @@ def reference_frame_demo() -> List[Mapping[str, Any]]:
     ]
 
 
+def _offset_base_items_y(
+    items: List[Mapping[str, Any]],
+    dy: float,
+) -> List[Mapping[str, Any]]:
+    """Translate "base" items (those whose ``parent_frame`` is unset
+    or ``"world"``) along the Y axis by ``dy``. Items parented to
+    another emitted Transform are left alone — they inherit the
+    offset through the frame chain (if the renderer composes through
+    chained parents). Used by the ``all`` preset to stack other
+    presets along Y so their bounding boxes don't overlap visually.
+    """
+    out: List[Mapping[str, Any]] = []
+    for it in items:
+        pf = it.get("parent_frame")
+        if pf in (None, "", "world"):
+            new_pose = dict(it.get("pose") or {})
+            new_pose["y"] = float(new_pose.get("y", 0.0)) + dy
+            new_it = dict(it)
+            new_it["pose"] = new_pose
+            out.append(new_it)
+        else:
+            out.append(dict(it))
+    return out
+
+
+def all_preset() -> List[Mapping[str, Any]]:
+    """Every other preset, stacked along Y at ~1.8 m intervals so they
+    don't visually collide. Load this once and you've seen every
+    primitive, color, orientation convention, and the chained-frame
+    composition demo in one viewport.
+
+    Row layout (Y from negative to positive):
+
+      - orientation_vectors  y = -3600
+      - color_wheel          y = -1800
+      - primitives           y =     0
+      - mesh_gallery         y = +1800
+      - reference_frame_demo y = +3600
+    """
+    row = 1800.0
+    items: List[Mapping[str, Any]] = []
+    items.extend(_offset_base_items_y(orientation_vectors(), -2 * row))
+    items.extend(_offset_base_items_y(color_wheel(), -row))
+    items.extend(_offset_base_items_y(primitives(), 0.0))
+    items.extend(_offset_base_items_y(mesh_gallery(), row))
+    items.extend(_offset_base_items_y(reference_frame_demo(), 2 * row))
+    return items
+
+
 PRESETS = {
-    "all_primitives": all_primitives,
+    "all": all_preset,
+    "primitives": primitives,
     "color_wheel": color_wheel,
     "mesh_gallery": mesh_gallery,
     "orientation_vectors": orientation_vectors,

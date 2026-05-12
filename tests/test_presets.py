@@ -6,7 +6,7 @@ from src.geometries import SUPPORTED_TYPES
 from src.presets import (
     PRESET_NAMES,
     PRESETS,
-    all_primitives,
+    primitives,
     color_wheel,
     load,
     mesh_gallery,
@@ -15,13 +15,13 @@ from src.presets import (
 )
 
 
-# ---------- all_primitives ----------
+# ---------- primitives ----------
 
-def test_all_primitives_emits_one_of_every_supported_type():
+def test_primitives_emits_one_of_every_supported_type():
     """The default scene is the user's first impression — every
     primitive type must be represented exactly once (with the box +
     mesh+ply + mesh+stl counted as separate mesh entries)."""
-    items = all_primitives()
+    items = primitives()
     types = [it["type"] for it in items]
     # 1 box, 1 sphere, 1 capsule, 1 point, 2 mesh (ply + stl), 1 pointcloud.
     assert types.count("box") == 1
@@ -33,30 +33,30 @@ def test_all_primitives_emits_one_of_every_supported_type():
     assert set(types) == set(SUPPORTED_TYPES)
 
 
-def test_all_primitives_has_unique_labels():
-    items = all_primitives()
+def test_primitives_has_unique_labels():
+    items = primitives()
     labels = [it["label"] for it in items]
     assert len(labels) == len(set(labels))
 
 
-def test_all_primitives_are_static():
+def test_primitives_are_static():
     """First-install scene should be static — animation is opt-in via
     DoCommand or item override."""
-    items = all_primitives()
+    items = primitives()
     for it in items:
         assert it["animation"]["mode"] == "none"
 
 
-def test_all_primitives_spaced_along_x():
+def test_primitives_spaced_along_x():
     """Items are spaced along X so they don't visually overlap."""
-    items = all_primitives()
+    items = primitives()
     xs = [it["pose"]["x"] for it in items]
     # Strictly increasing.
     assert xs == sorted(xs)
     assert len(set(xs)) == len(xs)
 
 
-def test_all_primitives_each_solid_item_has_color():
+def test_primitives_each_solid_item_has_color():
     """The default scene relies on color to distinguish primitives, so
     every SOLID item must carry a color override (not just rely on the
     viewer's default fill).
@@ -65,7 +65,7 @@ def test_all_primitives_each_solid_item_has_color():
     the viewer falls back to the embedded per-point PCD RGB instead
     of overriding it with a uniform tint. See
     LESSONS.md::pcd-colors-precedence."""
-    for it in all_primitives():
+    for it in primitives():
         if it["type"] == "pointcloud":
             assert "color" not in it, (
                 "pointcloud preset items must omit `color` so the "
@@ -79,16 +79,16 @@ def test_all_primitives_each_solid_item_has_color():
             assert 0 <= c[ch] <= 255
 
 
-def test_all_primitives_mesh_items_reference_asset_paths():
-    items = all_primitives()
+def test_primitives_mesh_items_reference_asset_paths():
+    items = primitives()
     mesh_items = [it for it in items if it["type"] == "mesh"]
     paths = [it["mesh_path"] for it in mesh_items]
     assert any(p.endswith(".ply") for p in paths)
     assert any(p.endswith(".stl") for p in paths)
 
 
-def test_all_primitives_pointcloud_item_references_pcd():
-    items = all_primitives()
+def test_primitives_pointcloud_item_references_pcd():
+    items = primitives()
     pc = [it for it in items if it["type"] == "pointcloud"][0]
     assert pc["pointcloud_path"].endswith(".pcd")
 
@@ -221,7 +221,7 @@ def test_presets_registry_matches_names_constant():
 
 
 def test_load_returns_items_for_known_preset():
-    items = load("all_primitives")
+    items = load("primitives")
     assert isinstance(items, list)
     assert len(items) > 0
 

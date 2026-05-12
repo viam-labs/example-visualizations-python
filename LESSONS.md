@@ -101,6 +101,18 @@ The RDK fake at `services/worldstatestore/fake/moving_geos_world.go` uses the ob
 
 **Status.** TBD. User will report what they see on `desktop-dell-2` after switching to the `reference_frame_demo` preset.
 
+### metadata-keys-must-all-be-present
+
+**Symptom.** After dropping `color` from the point cloud preset item at 0.0.9 (because metadata.colors overrides PCD per-point RGB), the helix disappeared entirely. Properties pane still showed 14,400 points; viewport rendered nothing.
+
+**Root cause.** My `build_metadata` was conditionally emitting keys — if the user didn't set a color, `colors` and `color_format` weren't in the struct at all. The viewer apparently treats a metadata struct that's missing any of `colors`/`color_format`/`opacities`/`show_axes_helper`/`invisible` as invalid and skips the entity. The reference library at `viamrobotics/visualization::draw/transform.go::MetadataToStruct` **always** emits all five keys, with empty/zero values when nothing is set — empty `colors` is the *signal* to fall back to embedded RGB / viewer default, not the absence of the key.
+
+**Evidence.**
+- `viamrobotics/visualization::draw/transform.go` lines 33-47: `MetadataToStruct` populates all five fields unconditionally
+- `viamrobotics/visualization::draw/transform.go` lines 51-80: `StructToMetadata` early-returns the default metadata when `colors` is missing — viewer-side parsing apparently isn't that forgiving
+
+**Fix.** Rewrote `build_metadata` to mirror the library exactly: always emit `colors` (empty string when no user color), `color_format` (always `1.0` for RGB), `opacities` (defaults to base64 of `[255]`), `show_axes_helper` (always emitted as bool), `invisible` (always emitted as bool). Locks in the contract via `_all_required_keys_present` helper in `test_geometry_builders.py`.
+
 ### point-size-not-a-knob
 
 **Symptom.** A 2000-point helix with ~75 mm radius rendered as essentially invisible dots — the path-shape of the spiral wasn't readable. User reported "I can see 2000 points in the properties pane but can't see them in the 3D scene".
