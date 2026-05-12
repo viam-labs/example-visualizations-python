@@ -1,6 +1,11 @@
-# `viz` — Go library plan
+# ViamVizHelpers — Go library plan
 
-A Go library that wraps the world-state-store + viewer gotchas so a module author writes the interesting code instead of re-deriving the wire format from `moving_geos_world.go`. Eventually merges into `viamrobotics/visualization` (the canonical viewer-side repo); starts as `viam-labs/viz` so iteration doesn't churn the upstream package while we figure out the API.
+A Go library that wraps the world-state-store + viewer gotchas so a module author writes the interesting code instead of re-deriving the wire format from `moving_geos_world.go`. Eventually merges into `viamrobotics/visualization` (the canonical viewer-side repo); starts as `viam-labs/viam-viz-helpers` so iteration doesn't churn the upstream package while we figure out the API.
+
+- **Project / branding name:** ViamVizHelpers
+- **Repo:** `github.com/viam-labs/viam-viz-helpers`
+- **Imported package name:** `vizhelpers` (short, lowercase, Go-idiomatic — callers type `vizhelpers.Box(...)`)
+- **RDK service subpackage:** `github.com/viam-labs/viam-viz-helpers/wsstore`
 
 This document is the planning artifact. The accumulated findings in `LESSONS.md` are the input; the `src/{geometries,animation,presets,service}.py` Python prototype in this repo is the working reference implementation. Anything painful in the Python is what the Go API has to make trivial.
 
@@ -34,15 +39,15 @@ This document is the planning artifact. The accumulated findings in `LESSONS.md`
 
 Two packages. Everything a scene author writes lives in `viz`. The `wsstore` subpackage is only relevant if you're also implementing an RDK service — split out because most "make a few visualizations" callers don't need it.
 
-Repository: `github.com/viam-labs/viz` (rename to `go.viam.com/visualization/helpers` once upstreamed).
+Repository: `github.com/viam-labs/viam-viz-helpers` (rename to `go.viam.com/visualization/helpers` once upstreamed).
 
 ```
-viz/
+viam-viz-helpers/
 ├── go.mod
 ├── README.md
 ├── LICENSE                              # Apache-2.0
 │
-├── viz.go                               # Scene type + New + options
+├── vizhelpers.go                               # Scene type + New + options
 ├── geom.go                              # Box, Sphere, Capsule, Point, Arrow, Mesh, PointCloud — constructors + functional options
 ├── pose.go                              # Pose, Identity, FromMm, WithTheta; lerp + tangent helpers
 ├── color.go                             # Color type + RGB/Hex/Named; lifecycle convention constants (Appearing/Alive/Disappearing)
@@ -65,7 +70,7 @@ viz/
     └── module/main.go                   # Full RDK module using wsstore
 ```
 
-For most callers the relevant import is just `import "github.com/viam-labs/viz"` and everything is on one dot. The `wsstore` package is its own import because it pulls in `go.viam.com/rdk` as a dependency — split keeps the lightweight "draw a scene" use case from dragging in the full RDK.
+For most callers the relevant import is just `import "github.com/viam-labs/viam-viz-helpers"` and everything is on one dot. The `wsstore` package is its own import because it pulls in `go.viam.com/rdk` as a dependency — split keeps the lightweight "draw a scene" use case from dragging in the full RDK.
 
 If a single file gets unwieldy as the library grows, splitting *within* the `viz` package is cheap (Go doesn't care about file count, just package count). The package-count budget stays at two.
 
@@ -78,8 +83,8 @@ import (
     "context"
     "fmt"
 
-    "github.com/viam-labs/viz"
-    "github.com/viam-labs/viz/wsstore"  // only because we're embedding it in an RDK module
+    "github.com/viam-labs/viam-viz-helpers"
+    "github.com/viam-labs/viam-viz-helpers/wsstore"  // only because we're embedding it in an RDK module
 )
 
 type MyModule struct {
@@ -87,64 +92,64 @@ type MyModule struct {
 }
 
 func (m *MyModule) Reconfigure(ctx context.Context, deps resource.Dependencies, conf resource.Config) error {
-    s := viz.New(
-        viz.WithTickHz(5),
-        viz.WithUUIDStrategy(viz.UUIDStable),
+    s := vizhelpers.New(
+        vizhelpers.WithTickHz(5),
+        vizhelpers.WithUUIDStrategy(vizhelpers.UUIDStable),
     )
 
     // Static items.
-    s.MustAdd(viz.Box("base",
-        viz.WithPose(viz.Identity()),
-        viz.WithDimsMm(100, 100, 100),
-        viz.WithColor(viz.RGB(230, 25, 75)),
-        viz.WithOpacity(0.8),
+    s.MustAdd(vizhelpers.Box("base",
+        vizhelpers.WithPose(vizhelpers.Identity()),
+        vizhelpers.WithDimsMm(100, 100, 100),
+        vizhelpers.WithColor(vizhelpers.RGB(230, 25, 75)),
+        vizhelpers.WithOpacity(0.8),
     ))
 
     // Animated sphere — animations are structs, not strings.
-    s.MustAdd(viz.Sphere("bobber",
-        viz.WithPose(viz.FromMm(300, 0, 0)),
-        viz.WithRadiusMm(90),
-        viz.WithColor(viz.Named("green")),
-        viz.WithAnimation(viz.Oscillate{
-            Axis: viz.AxisY, AmplitudeMM: 100, PeriodS: 3,
+    s.MustAdd(vizhelpers.Sphere("bobber",
+        vizhelpers.WithPose(vizhelpers.FromMm(300, 0, 0)),
+        vizhelpers.WithRadiusMm(90),
+        vizhelpers.WithColor(vizhelpers.Named("green")),
+        vizhelpers.WithAnimation(vizhelpers.Oscillate{
+            Axis: vizhelpers.AxisY, AmplitudeMM: 100, PeriodS: 3,
         }),
     ))
 
     // STL auto-converts to PLY on the way in; per-vertex colors in
     // PLY get transcoded to metadata.colors transparently.
-    mesh, err := viz.MeshFromFile("bunny", "assets/bunny.stl",
-        viz.WithPose(viz.FromMm(600, 0, 0)),
-        viz.WithColor(viz.Hex("#FF8000")),
+    mesh, err := vizhelpers.MeshFromFile("bunny", "assets/bunny.stl",
+        vizhelpers.WithPose(vizhelpers.FromMm(600, 0, 0)),
+        vizhelpers.WithColor(vizhelpers.Hex("#FF8000")),
     )
     if err != nil { return err }
     s.MustAdd(mesh)
 
     // Frame composition — child inherits parent's animated pose.
-    s.MustAdd(viz.Sphere("anchor",
-        viz.WithPose(viz.FromMm(0, 0, 500)),
-        viz.WithShowAxesHelper(true),
-        viz.WithAnimation(viz.Spin{PeriodS: 6}),
+    s.MustAdd(vizhelpers.Sphere("anchor",
+        vizhelpers.WithPose(vizhelpers.FromMm(0, 0, 500)),
+        vizhelpers.WithShowAxesHelper(true),
+        vizhelpers.WithAnimation(vizhelpers.Spin{PeriodS: 6}),
     ))
-    s.MustAdd(viz.Capsule("attached",
-        viz.WithParent("anchor"),
-        viz.WithPose(viz.FromMm(200, 0, 0)),
-        viz.WithRadiusMm(20),
-        viz.WithLengthMm(150),
-        viz.WithAnimation(viz.Spin{PeriodS: 2}),
+    s.MustAdd(vizhelpers.Capsule("attached",
+        vizhelpers.WithParent("anchor"),
+        vizhelpers.WithPose(vizhelpers.FromMm(200, 0, 0)),
+        vizhelpers.WithRadiusMm(20),
+        vizhelpers.WithLengthMm(150),
+        vizhelpers.WithAnimation(vizhelpers.Spin{PeriodS: 2}),
     ))
 
     // Chunked delivery (experimental).
-    s.MustAdd(viz.PointCloudFromFile("helix", "assets/helix.pcd",
-        viz.WithPose(viz.FromMm(1000, 0, 0)),
-        viz.WithChunked(2000),  // first 2000 points inline; rest via DoCommand
+    s.MustAdd(vizhelpers.PointCloudFromFile("helix", "assets/helix.pcd",
+        vizhelpers.WithPose(vizhelpers.FromMm(1000, 0, 0)),
+        vizhelpers.WithChunked(2000),  // first 2000 points inline; rest via DoCommand
     ))
 
     // Lifecycle convention demo — 5 boxes phase-offset.
     for i := 0; i < 5; i++ {
-        s.MustAdd(viz.Box(fmt.Sprintf("lifecycle_%02d", i),
-            viz.WithPose(viz.FromMm(float64(i-2)*250, 0, 0)),
-            viz.WithDimsMm(120, 120, 120),
-            viz.WithAnimation(viz.Lifecycle{
+        s.MustAdd(vizhelpers.Box(fmt.Sprintf("lifecycle_%02d", i),
+            vizhelpers.WithPose(vizhelpers.FromMm(float64(i-2)*250, 0, 0)),
+            vizhelpers.WithDimsMm(120, 120, 120),
+            vizhelpers.WithAnimation(vizhelpers.Lifecycle{
                 AppearS: 1, AliveS: 2, DisappearS: 1, GoneS: 2,
                 PhaseOffsetS: float64(i) * 6.0 / 5,
             }),
@@ -158,10 +163,10 @@ func (m *MyModule) Reconfigure(ctx context.Context, deps resource.Dependencies, 
 For "I just want to draw a scene to test something" (no RDK module wrapping it):
 
 ```go
-import "github.com/viam-labs/viz"
+import "github.com/viam-labs/viam-viz-helpers"
 
-s := viz.New()
-s.MustAdd(viz.Box("hello", viz.WithDimsMm(100, 100, 100)))
+s := vizhelpers.New()
+s.MustAdd(vizhelpers.Box("hello", vizhelpers.WithDimsMm(100, 100, 100)))
 // `s` is now a queryable Scene — call s.ListUUIDs(), s.GetTransform(uuid),
 // s.Stream(ctx) directly. No RDK service needed.
 ```
@@ -203,9 +208,9 @@ Each step in 1–3 has a "this module migrates to it" milestone — `example-vis
 
 Two-step.
 
-**Step 1 (during 0.x).** Library lives at `github.com/viam-labs/viz`. Iterate freely. Cut releases. As features stabilize, propose RFCs into `viamrobotics/visualization` for the shared types — specifically the metadata struct schema constants, the field-mask path strings, and the chunked-delivery wire format. Goal: by the time we want to merge, those types are already shared, and the library's exports are mostly importing from upstream.
+**Step 1 (during 0.x).** Library lives at `github.com/viam-labs/viam-viz-helpers`. Iterate freely. Cut releases. As features stabilize, propose RFCs into `viamrobotics/visualization` for the shared types — specifically the metadata struct schema constants, the field-mask path strings, and the chunked-delivery wire format. Goal: by the time we want to merge, those types are already shared, and the library's exports are mostly importing from upstream.
 
-**Step 2 (1.x).** Move the package to `go.viam.com/visualization/helpers` (or whatever path the viz team prefers). Stub `github.com/viam-labs/viz` to re-export from the new location for one release, then deprecate. All module authors point at the upstream package.
+**Step 2 (1.x).** Move the package to `go.viam.com/visualization/helpers` (or whatever path the viz team prefers). Stub `github.com/viam-labs/viam-viz-helpers` to re-export from the new location for one release, then deprecate. All module authors point at the upstream package.
 
 ## Risks
 
