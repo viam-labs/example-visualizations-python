@@ -386,6 +386,36 @@ async def test_flicker_uses_fresh_uuid_on_each_rising_edge():
     assert new_uuid.startswith(b"blink_")
 
 
+async def test_flicker_with_rotate_uuid_on_readd_false_keeps_uuid_stable():
+    """Opt-out: when an item's animation sets
+    ``rotate_uuid_on_readd: false``, the UUID stays the same across
+    every REMOVED+ADDED cycle. This intentionally trips the
+    viewer's UUID cache (the side-by-side broken-grid demo in
+    geometry_morph) — the entity never re-appears in the viewer
+    after the first cycle, even though our service correctly emits
+    REMOVED/ADDED on the wire. Pinned so the teaching demo
+    behavior doesn't accidentally regress to working."""
+    import time
+    s = _bare_service(strategy="stable")
+    s.tick_hz = 100
+    item = _sphere_item("stuck", animated_mode="flicker",
+                        period_s=4.0, duty_cycle=0.5)
+    item["animation"]["rotate_uuid_on_readd"] = False
+    await s.do_command({"command": "add", "item": item})
+    initial_uuid = s._state["stuck"]["uuid"]
+    # Falling edge.
+    s._animation_t0 = time.monotonic() - 3.0
+    await s._tick_once()
+    # Rising edge — without the opt-in rotation, UUID stays the same.
+    s._animation_t0 = time.monotonic() - 4.0
+    await s._tick_once()
+    assert s._state["stuck"]["uuid"] == initial_uuid, (
+        "rotate_uuid_on_readd=False must keep the UUID stable; the "
+        "viewer caches the original UUID and will silently drop the "
+        "subsequent ADDED — that's the bug this opt-out demonstrates"
+    )
+
+
 async def test_flicker_removed_item_is_filtered_from_list_uuids_and_get_transform():
     """While an entity is in the flicker 'off' phase, it must be
     invisible to subscribers: list_uuids omits its UUID, and

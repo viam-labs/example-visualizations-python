@@ -956,34 +956,55 @@ def geometry_morph() -> List[Mapping[str, Any]]:
     })
     slot_x += 380
 
-    # 5×5 grid of flickering spheres. Phase-offset by grid position
-    # so the wave rolls diagonally across the grid.
+    # Two 5×5 grids of flickering spheres side by side. Phase-offset
+    # by grid position so the wave rolls diagonally across each
+    # grid. The LEFT grid (green) uses the default
+    # rotate_uuid_on_readd=True so it actually re-appears every
+    # cycle. The RIGHT grid (red) sets rotate_uuid_on_readd=False
+    # — that re-uses the entity's original UUID for every ADDED
+    # event, exposing the viewer-side bug where REMOVED UUIDs are
+    # cached and subsequent ADDED events get dropped. The red grid
+    # is a teaching demo: it disappears once and then stays gone
+    # until the page is refreshed. See LESSONS.md::renderer-caches-
+    # removed-uuids-rotate-on-readd.
     grid_n = 5
     grid_spacing = 80.0
     period_s = 4.0
-    grid_origin_x = slot_x + 60  # left edge of the grid
-    for row_idx in range(grid_n):
-        for col_idx in range(grid_n):
-            # Diagonal wave: phase advances with (row + col).
-            phase_offset = (row_idx + col_idx) / (2 * grid_n - 1) * period_s
-            items.append({
-                "type": "sphere",
-                "label": f"morph_grid_{row_idx}{col_idx}",
-                "pose": _identity_pose(
-                    x=grid_origin_x + col_idx * grid_spacing,
-                    y=row_idx * grid_spacing,
-                    z=0,
-                ),
-                "radius_mm": 22,
-                "color": {"r": 80, "g": 200, "b": 140},
-                "opacity": 1.0,
-                "animation": {
-                    "mode": "flicker",
-                    "period_s": period_s,
-                    "duty_cycle": 0.55,
-                    "phase_offset_s": phase_offset,
-                },
-            })
+
+    def _add_grid(prefix: str, origin_x: float, color: Mapping[str, int],
+                  rotate_uuid: bool) -> None:
+        for row_idx in range(grid_n):
+            for col_idx in range(grid_n):
+                phase_offset = (row_idx + col_idx) / (2 * grid_n - 1) * period_s
+                items.append({
+                    "type": "sphere",
+                    "label": f"{prefix}_{row_idx}{col_idx}",
+                    "pose": _identity_pose(
+                        x=origin_x + col_idx * grid_spacing,
+                        y=row_idx * grid_spacing,
+                        z=0,
+                    ),
+                    "radius_mm": 22,
+                    "color": dict(color),
+                    "opacity": 1.0,
+                    "animation": {
+                        "mode": "flicker",
+                        "period_s": period_s,
+                        "duty_cycle": 0.55,
+                        "phase_offset_s": phase_offset,
+                        "rotate_uuid_on_readd": rotate_uuid,
+                    },
+                })
+
+    # Working grid (green) — UUID rotates on each rising edge.
+    working_origin_x = slot_x + 60
+    _add_grid("morph_grid", working_origin_x,
+              {"r": 80, "g": 200, "b": 140}, rotate_uuid=True)
+    # Broken-by-design grid (red) — UUID stable across re-adds.
+    # ~80 mm gap past the right edge of the working grid.
+    broken_origin_x = working_origin_x + grid_n * grid_spacing + 80
+    _add_grid("morph_grid_broken", broken_origin_x,
+              {"r": 230, "g": 60, "b": 60}, rotate_uuid=False)
 
     return items
 

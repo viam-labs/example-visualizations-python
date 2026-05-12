@@ -512,8 +512,10 @@ def test_geometry_morph_includes_all_four_animation_modes():
     assert by_label["morph_stretch_box"]["animation"]["axis"] == "z"
     assert by_label["morph_breathe_capsule"]["animation"]["mode"] == "breathe"
     # Any one of the grid items uses flicker.
+    # Two 5×5 grids: a working (green) one and a broken (red) one
+    # for the renderer-cache teaching demo. Both use flicker.
     grid_items = [v for k, v in by_label.items() if k.startswith("morph_grid_")]
-    assert len(grid_items) == 25, f"expected 5×5 grid, got {len(grid_items)}"
+    assert len(grid_items) == 50, f"expected 2 × 5×5 grids, got {len(grid_items)}"
     for g in grid_items:
         assert g["animation"]["mode"] == "flicker"
 
@@ -523,11 +525,48 @@ def test_geometry_morph_grid_phase_offsets_vary_per_cell():
     If everyone shared a phase, the grid would flicker as one
     block — visually less interesting and not a wave."""
     items = geometry_morph()
-    grid_items = [it for it in items if it["label"].startswith("morph_grid_")]
+    # The working grid (green) — use morph_grid_NN labels, not the
+    # broken-grid morph_grid_broken_* labels.
+    grid_items = [
+        it for it in items
+        if it["label"].startswith("morph_grid_")
+        and not it["label"].startswith("morph_grid_broken_")
+    ]
     offsets = {it["animation"]["phase_offset_s"] for it in grid_items}
     # Diagonal pattern: (row+col) ∈ [0, 8] gives 9 distinct offset
     # buckets across the 25 cells.
     assert len(offsets) == 9
+
+
+def test_geometry_morph_includes_working_and_broken_grids():
+    """The morph row carries TWO 5×5 flicker grids: the working
+    (green) one which rotates UUIDs on re-add (default), and the
+    broken (red) one which sets rotate_uuid_on_readd=False to
+    demonstrate the renderer's UUID cache bug. The broken grid is
+    intentionally broken — it stops flickering after the first
+    cycle and stays invisible until the viewer refreshes. Keeping
+    them side-by-side makes the bug visually obvious for teaching
+    and for QA against future viewer fixes."""
+    items = geometry_morph()
+    working = [it for it in items
+               if it["label"].startswith("morph_grid_")
+               and not it["label"].startswith("morph_grid_broken_")]
+    broken = [it for it in items if it["label"].startswith("morph_grid_broken_")]
+    assert len(working) == 25
+    assert len(broken) == 25
+    # Working grid: rotate_uuid_on_readd defaults to True (working).
+    for w in working:
+        assert w["animation"].get("rotate_uuid_on_readd", True) is True
+    # Broken grid: explicit opt-out.
+    for b in broken:
+        assert b["animation"]["rotate_uuid_on_readd"] is False
+    # And the colors are visually distinct — green vs red is the
+    # cue that says "the demo is intentional, not a regression".
+    working_color = working[0]["color"]
+    broken_color = broken[0]["color"]
+    # Working is green-dominant; broken is red-dominant.
+    assert working_color["g"] > working_color["r"]
+    assert broken_color["r"] > broken_color["g"]
 
 
 # ---------- force_vector_demo ----------
