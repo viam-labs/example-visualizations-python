@@ -8,6 +8,7 @@ from src.presets import (
     PRESETS,
     primitives,
     color_wheel,
+    frame_composition,
     load,
     orientation_vectors,
     reference_frame_demo,
@@ -267,6 +268,36 @@ def test_reference_frame_demo_static_axes():
     by_label = {it["label"]: it for it in items}
     for axis in ("spinning_frame_axis_x", "spinning_frame_axis_y", "spinning_frame_axis_z"):
         assert by_label[axis]["animation"]["mode"] == "none"
+
+
+# ---------- frame_composition ----------
+
+def test_frame_composition_includes_both_demos():
+    """The merged preset must carry both the spinning_frame anchor
+    (from reference_frame_demo) and the arm_base (from robot_arm).
+    Labels are the load-bearing identifiers in the parent-frame
+    chains — if either is missing, the children break."""
+    labels = {it["label"] for it in frame_composition()}
+    assert "spinning_frame" in labels
+    assert "arm_base" in labels
+    # And the chained children from both demos.
+    assert "spinning_frame_attached_mesh" in labels
+    assert "arm_end_effector" in labels
+
+
+def test_frame_composition_offsets_bases_along_x_only():
+    """The merged preset shifts the spinning_frame anchor to negative
+    X and the arm_base to positive X so they don't visually overlap.
+    Child items (with parent_frame set) are NOT translated — they
+    inherit through the frame system. Tests both halves of that."""
+    items = frame_composition()
+    by_label = {it["label"]: it for it in items}
+    # Bases were shifted.
+    assert by_label["spinning_frame"]["pose"]["x"] < -500
+    assert by_label["arm_base"]["pose"]["x"] > 500
+    # A child (parent_frame=spinning_frame) keeps its local pose.
+    # In reference_frame_demo the attached mesh sits at local x=350.
+    assert by_label["spinning_frame_attached_mesh"]["pose"]["x"] == pytest.approx(350)
 
 
 # ---------- registry + load ----------

@@ -14,8 +14,10 @@ Presets:
   - ``orientation_vectors``: small sphere markers at axis-aligned
     orientation vectors carrying ``show_axes_helper: True`` so the
     viewer renders an RGB XYZ triad at each entity's origin.
-  - ``reference_frame_demo``: chained parent-frame composition probe.
-  - ``robot_arm``: stylized articulated arm built from primitives.
+  - ``frame_composition``: two chained-parent-frame demos side by
+    side — a spinning frame anchor with attached triad + mesh, and
+    an articulated robot arm. Probes whether the renderer composes
+    poses through chained ``parent_frame`` links.
   - ``all``: every preset above, stacked along Y. One-stop tour.
 """
 import colorsys
@@ -28,8 +30,7 @@ PRESET_NAMES = (
     "primitives",
     "color_wheel",
     "orientation_vectors",
-    "reference_frame_demo",
-    "robot_arm",
+    "frame_composition",
 )
 
 # Default spacing between primitives in the row-style preset (mm).
@@ -479,29 +480,62 @@ def reference_frame_demo() -> List[Mapping[str, Any]]:
     ]
 
 
-def _offset_base_items_y(
+def _offset_base_items(
     items: List[Mapping[str, Any]],
-    dy: float,
+    axis: str,
+    delta: float,
 ) -> List[Mapping[str, Any]]:
     """Translate "base" items (those whose ``parent_frame`` is unset
-    or ``"world"``) along the Y axis by ``dy``. Items parented to
+    or ``"world"``) along ``axis`` by ``delta``. Items parented to
     another emitted Transform are left alone — they inherit the
     offset through the frame chain (if the renderer composes through
-    chained parents). Used by the ``all`` preset to stack other
-    presets along Y so their bounding boxes don't overlap visually.
+    chained parents). Used by combined presets so the included
+    sub-presets don't overlap visually.
     """
+    if axis not in ("x", "y", "z"):
+        raise ValueError(f"axis must be x|y|z, got {axis!r}")
     out: List[Mapping[str, Any]] = []
     for it in items:
         pf = it.get("parent_frame")
         if pf in (None, "", "world"):
             new_pose = dict(it.get("pose") or {})
-            new_pose["y"] = float(new_pose.get("y", 0.0)) + dy
+            new_pose[axis] = float(new_pose.get(axis, 0.0)) + delta
             new_it = dict(it)
             new_it["pose"] = new_pose
             out.append(new_it)
         else:
             out.append(dict(it))
     return out
+
+
+def _offset_base_items_y(
+    items: List[Mapping[str, Any]],
+    dy: float,
+) -> List[Mapping[str, Any]]:
+    """Backward-compatible alias — delegates to _offset_base_items."""
+    return _offset_base_items(items, "y", dy)
+
+
+def frame_composition() -> List[Mapping[str, Any]]:
+    """Two demonstrations of chained ``parent_frame`` composition in
+    one row: a spinning frame triad on the left, an articulated robot
+    arm on the right. Both depend on the same renderer behavior — a
+    child item's ``parent_frame`` matching the ``reference_frame`` of
+    another emitted Transform — and so render correctly iff the
+    viewer composes through that chain.
+
+    Layout (X axis):
+
+      - spinning_frame demo at x = -1000  (axes triad + attached mesh,
+        anchor spins so the children inherit rotation)
+      - arm_base demo       at x = +1000  (base + shoulder + upper arm
+        + elbow + forearm + wrist + end-effector arrow, kinematic
+        chain driven by the spinning base and elbow)
+    """
+    items: List[Mapping[str, Any]] = []
+    items.extend(_offset_base_items(reference_frame_demo(), "x", -1000.0))
+    items.extend(_offset_base_items(robot_arm(), "x", 1000.0))
+    return items
 
 
 def all_preset() -> List[Mapping[str, Any]]:
@@ -515,16 +549,14 @@ def all_preset() -> List[Mapping[str, Any]]:
       - orientation_vectors  y = -2*row
       - color_wheel          y = -row
       - primitives           y =   0
-      - robot_arm            y = +row
-      - reference_frame_demo y = +2*row
+      - frame_composition    y = +row  (spinning frame + arm side-by-side)
     """
     row = 1800.0
     items: List[Mapping[str, Any]] = []
     items.extend(_offset_base_items_y(orientation_vectors(), -2 * row))
     items.extend(_offset_base_items_y(color_wheel(), -row))
     items.extend(_offset_base_items_y(primitives(), 0.0))
-    items.extend(_offset_base_items_y(robot_arm(), row))
-    items.extend(_offset_base_items_y(reference_frame_demo(), 2 * row))
+    items.extend(_offset_base_items_y(frame_composition(), row))
     return items
 
 
@@ -533,8 +565,7 @@ PRESETS = {
     "primitives": primitives,
     "color_wheel": color_wheel,
     "orientation_vectors": orientation_vectors,
-    "reference_frame_demo": reference_frame_demo,
-    "robot_arm": robot_arm,
+    "frame_composition": frame_composition,
 }
 
 

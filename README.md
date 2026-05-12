@@ -46,8 +46,7 @@ Want a different default scene? Set `preset` to one of:
 - `primitives` (default) — every supported primitive type plus a tour of more complex meshes. 10 items in a row: box → sphere → capsule → point → arrow → icosahedron (PLY) → bunny (STL) → torus (PLY) → Utah teapot (PLY) → helix (PCD).
 - `color_wheel` — 10 spheres around a ring, HSV-swept hue.
 - `orientation_vectors` — small sphere markers at axis-aligned orientation vectors, with `show_axes_helper: true` so the viewer renders an RGB XYZ triad at each entity's origin. Shows how `(OX, OY, OZ, theta)` maps to a coordinate frame.
-- `reference_frame_demo` — a spinning anchor + colored X/Y/Z triad parented to it + a child mesh that spins on its own axis. Probes the renderer's parent-chain composition.
-- `robot_arm` — articulated arm built from primitives (base + shoulder + upper arm + elbow + forearm + wrist + arrow end-effector), each link parented to the previous. Spinning base/elbow drives the chain if frame composition works.
+- `frame_composition` — two chained-parent-frame demos side by side. **Left:** a spinning frame anchor + colored X/Y/Z triad parented to it + a child mesh that spins on its own axis. **Right:** an articulated robot arm (base + shoulder + upper arm + elbow + forearm + wrist + arrow end-effector), each link parented to the previous. Both render correctly iff the viewer composes through chained `parent_frame` links.
 - `all` — every preset above, stacked along Y at ~1.8 m intervals. One-stop tour.
 
 ## Config reference
