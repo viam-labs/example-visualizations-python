@@ -147,16 +147,19 @@ def primitives() -> List[Mapping[str, Any]]:
             "opacity": 1.0,
             "animation": {"mode": "none"},
         },
-        # Colorful subdivision icosphere — 5120 triangles with per-
-        # vertex rainbow colors embedded in the PLY. The point of
-        # this item is to test whether the viewer honors PLY vertex
-        # colors. No `color` field here (we want the embedded RGB to
-        # render, not a uniform metadata tint).
+        # Colorful sphere — point cloud, not mesh, because the viewer
+        # renders per-point PCD colors but renders meshes with a
+        # single uniform tint regardless of how many colors we send
+        # in metadata.colors. See LESSONS.md::
+        # mesh-metadata-colors-only-uses-first-color for the
+        # confirmed-from-empirical-evidence limit. The
+        # colorful_sphere.ply asset still exists as a reference for
+        # the misbehavior but isn't used in any preset.
         {
-            "type": "mesh",
+            "type": "pointcloud",
             "label": "demo_colorful_sphere",
             "pose": _identity_pose(x=5 * sp),
-            "mesh_path": "assets/colorful_sphere.ply",
+            "pointcloud_path": "assets/colorful_sphere.pcd",
             "opacity": 1.0,
             "animation": {"mode": "none"},
         },

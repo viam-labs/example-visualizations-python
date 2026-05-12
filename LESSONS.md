@@ -118,46 +118,57 @@ The RDK fake at `services/worldstatestore/fake/moving_geos_world.go` uses the ob
 
 **Why we don't add every conceivable shape as sugar.** Each sugar type adds a config knob, a validation branch, a builder, and tests. The right test for "should this be a sugar type" is: do enough users want it that the sugar is worth the maintenance? `arrow` clears that bar because direction visualization is common. `cylinder`, `cone`, `torus`, `disk` likely clear it too; `mobius_strip` probably doesn't.
 
-### ply-vertex-colors-are-ignored-transcode-to-metadata
+### mesh-metadata-colors-only-uses-first-color
 
-**Confirmed (0.0.22 → 0.0.23).** The Viam 3D scene viewer **does not**
-honor PLY-embedded vertex colors via ``property uchar red/green/blue``.
-We shipped ``assets/colorful_sphere.ply`` with embedded rainbow vertex
-colors and the user reported "the colorful sphere is solid black" —
-the renderer fell back to its default fill instead of reading the PLY
-colors.
+**Confirmed (0.0.22 → 0.0.23 → 0.0.24).** Two stacked findings — the
+second one revises the apparent fix from the first:
 
-**Working alternative.** The viewer **does** honor ``metadata.colors``
-as a base64-packed sequence of N RGB triples (one per vertex). The
-visualization library's docstring states this explicitly: "Pass
-either a single color (applied to every vertex) or one color per
-vertex; the component-count interpretation is geometry-specific."
+**(1)** The Viam 3D scene viewer does NOT honor PLY-embedded vertex
+colors via ``property uchar red/green/blue``. Shipping
+``assets/colorful_sphere.ply`` with embedded rainbow colors and no
+``metadata.colors`` rendered as a solid-black default fill.
 
-**Fix shipped.** ``src/geometries.py`` now ships:
+**(2)** Transcoding PLY colors → ``metadata.colors`` (N RGB triples
+matching the vertex count) did NOT produce a rainbow mesh either —
+the viewer rendered the entire mesh as a single solid color, and
+that color was reliably the **first** color in the packed array.
+With my icosphere's first vertex at longitude ~301°, the result
+was solid purple.
 
-  - ``extract_ply_vertex_colors(ply_bytes)`` — parses ASCII PLY and
-    returns ``[(R, G, B), ...]`` if the file has color attributes.
-  - ``build_metadata(..., vertex_colors=...)`` — packs N RGB triples
-    into the colors field when provided, taking precedence over a
-    uniform ``color``.
+**Empirical conclusion.** Per-vertex coloring of MESHES via
+``metadata.colors`` is not supported by the renderer. Only the first
+color in the packed sequence is read; the rest is dropped. This is
+the case even though:
 
-``service._build_transform`` auto-extracts vertex colors from the
-mesh's PLY when the user hasn't set an explicit uniform ``color``,
-and feeds them through to metadata. Net effect: any colored PLY
-asset — shipped or user-supplied — "just works."
+  - The visualization library's docstring suggests N-per-component
+    coloring should work for any geometry.
+  - The same metadata channel **does** carry N-per-point colors
+    correctly for point clouds (confirmed via the helix PCD).
 
-**Caveat.** The extractor is ascii-PLY only. The shipped asset
-generator emits ascii PLY, so this is fine for procedurally-generated
-files; binary-PLY input would need a format branch.
+**Workaround for "high-resolution colored surface": use a point
+cloud, not a mesh.** ``assets/colorful_sphere.pcd`` (added in 0.0.24)
+samples 8000 Fibonacci-lattice points on a sphere surface, each with
+a per-point RGB color derived from spherical coordinates. The
+primitives preset's ``demo_colorful_sphere`` now uses this PCD; the
+``.ply`` asset remains in the repo as a reference for the
+misbehavior but isn't referenced by any preset.
+
+**The transcoder stays in place.** ``extract_ply_vertex_colors`` +
+``build_metadata(..., vertex_colors=...)`` are still wired in
+``src/geometries.py`` so that if a future viewer version starts
+honoring N mesh colors, vertex-colored PLYs will "just work" again
+without any further plumbing. Until then, mesh-with-color is stuck
+at uniform-tint and high-resolution color belongs to point clouds.
 
 **What we still don't know.**
 
-  - Textures (UV + image) — almost certainly not supported. The Mesh
-    proto has no texture field and the visualization library has no
-    texture option. Per-vertex coloring is the substitute.
-  - Whether ``metadata.colors`` with N values works for textures of
-    that scale (we successfully tested 2562 vertices = ~7.5 KB of
-    color data in the metadata struct).
+  - Whether the viewer would honor per-FACE colors (N = number of
+    triangles, not number of vertices). Untested. Same renderer
+    behavior is plausible — only the first color used — but no
+    primary-source evidence either way.
+  - Whether textures (UV + image) are supported. Mesh proto has no
+    texture field and the visualization library has no texture
+    option → almost certainly not.
 
 ### invisible-intermediate-frames-for-extra-spin-axes
 
@@ -347,7 +358,9 @@ Related: `validate_config` must return `Tuple[Sequence[str], Sequence[str]]` —
 
 8. **`metadata.colors` silently overrides PCD-embedded RGB for point clouds.** A user-authored item with both a `pointcloud_path` containing per-point colors AND a uniform `color` metadata gets the metadata color applied to every point — the PCD's RGB is dropped. This is documented in `viamrobotics/visualization::draw/point_cloud.go` as code-level behavior but isn't surfaced in user-facing docs. Either render warning when both are set, or expose a config knob to choose precedence.
 
-9. **PLY per-vertex colors are silently ignored.** A standard PLY with `property uchar red/green/blue` alongside `property float x/y/z` renders as a default-dark fill, not as the colored mesh the file describes. The renderer should either honor PLY vertex colors directly (the format-standard behavior) or surface a parse-time warning so authors don't have to discover the issue by visually inspecting their meshes. Working alternative today: parse PLY colors out and pack into `metadata.colors` (this module ships an extractor at `src/geometries.py::extract_ply_vertex_colors`).
+9. **PLY per-vertex colors are silently ignored.** A standard PLY with `property uchar red/green/blue` alongside `property float x/y/z` renders as a default-dark fill, not as the colored mesh the file describes. The renderer should either honor PLY vertex colors directly (the format-standard behavior) or surface a parse-time warning so authors don't have to discover the issue by visually inspecting their meshes.
+
+10. **`metadata.colors` with N>1 entries collapses to one color for meshes.** The same channel carries N-per-point colors correctly for point clouds, so the inconsistency is hard to spot from outside. Either honor N colors per vertex (or per face) for meshes the same way point clouds work, OR explicitly cap mesh colors at 1 and surface a warning when N>1 is sent. The current silent-collapse-to-first-color behavior costs a debugging cycle and confuses the schema contract that the library's WithMetadataColors docstring sets up.
 
 ## Features to request from the viz team
 

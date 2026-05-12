@@ -572,6 +572,89 @@ def write_colorful_sphere_ply(
     return path
 
 
+def write_colorful_sphere_pcd(
+    n_points: int = 8000,
+    radius_mm: float = 90.0,
+) -> Path:
+    """Dense colorful sphere as a binary PCD point cloud.
+
+    The Viam 3D scene viewer renders per-point colors from a PCD
+    correctly, but renders a mesh with ``metadata.colors`` of length
+    N as a **single uniform tint** (the first color in the array). So
+    the "high-def colorful surface" demo lives as a point cloud, not
+    a mesh — same visual goal, the channel that actually works.
+
+    Points are distributed on the sphere surface via the Fibonacci
+    lattice (golden-angle spiral) so coverage is roughly uniform
+    without obvious banding. Hue cycles around the equator
+    (atan2(z, x)); brightness varies mildly with latitude so the
+    poles read.
+
+    8000 points × 16 bytes per point (3×float32 + uint32 RGB) +
+    header = ~128 KB binary."""
+    # Convert mm radius to meters once; PCD coordinates are in meters
+    # (RDK writes mm/1000; the symmetric reader expects meters).
+    radius_m = radius_mm / MM_PER_M
+
+    header_lines = [
+        "VERSION .7",
+        "FIELDS x y z rgb",
+        "SIZE 4 4 4 4",
+        "TYPE F F F I",
+        "COUNT 1 1 1 1",
+        f"WIDTH {n_points}",
+        "HEIGHT 1",
+        "VIEWPOINT 0 0 0 1 0 0 0",
+        f"POINTS {n_points}",
+        "DATA binary",
+        "",
+    ]
+    header = "\n".join(header_lines).encode("ascii")
+    body = bytearray()
+    golden_angle = math.pi * (math.sqrt(5.0) - 1.0)
+    for i in range(n_points):
+        # Fibonacci lattice on unit sphere.
+        y_unit = 1.0 - (i / max(1, n_points - 1)) * 2.0
+        ring_radius = math.sqrt(max(0.0, 1.0 - y_unit * y_unit))
+        theta = golden_angle * i
+        x_unit = math.cos(theta) * ring_radius
+        z_unit = math.sin(theta) * ring_radius
+        x_m = x_unit * radius_m
+        y_m = y_unit * radius_m
+        z_m = z_unit * radius_m
+        # Color from spherical coordinates (hue cycles around the
+        # equator; brightness dips slightly at the poles).
+        hue = (math.atan2(z_unit, x_unit) + math.pi) / (2.0 * math.pi)
+        latitude = max(-1.0, min(1.0, y_unit))
+        value = 0.75 + 0.25 * (1.0 - abs(latitude))
+        i_h = int(hue * 6) % 6
+        ff = hue * 6 - int(hue * 6)
+        p = value * 0.0
+        q = value * (1.0 - ff)
+        tt = value * ff
+        if i_h == 0:
+            r_, g_, b_ = value, tt, p
+        elif i_h == 1:
+            r_, g_, b_ = q, value, p
+        elif i_h == 2:
+            r_, g_, b_ = p, value, tt
+        elif i_h == 3:
+            r_, g_, b_ = p, q, value
+        elif i_h == 4:
+            r_, g_, b_ = tt, p, value
+        else:
+            r_, g_, b_ = value, p, q
+        r_i = int(r_ * 255) & 0xFF
+        g_i = int(g_ * 255) & 0xFF
+        b_i = int(b_ * 255) & 0xFF
+        rgb = (r_i << 16) | (g_i << 8) | b_i
+        body += struct.pack("<fffI", x_m, y_m, z_m, rgb)
+
+    path = OUT / "colorful_sphere.pcd"
+    path.write_bytes(header + bytes(body))
+    return path
+
+
 def write_torus_ply(
     major_radius_mm: float = 90.0,
     minor_radius_mm: float = 30.0,
@@ -705,6 +788,7 @@ if __name__ == "__main__":
         write_torus_ply(),
         write_teapot_ply(),
         write_colorful_sphere_ply(),
+        write_colorful_sphere_pcd(),
         write_bunny_stl(),
         write_helix_pcd(),
     ]

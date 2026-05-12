@@ -30,10 +30,14 @@ def test_primitives_emits_one_of_every_supported_type():
     assert types.count("capsule") == 1
     assert types.count("point") == 1
     assert types.count("arrow") == 1
-    # 5 meshes: icosahedron PLY, bunny STL, torus PLY, teapot PLY,
-    # colorful_sphere PLY (the per-vertex-colored mesh).
-    assert types.count("mesh") == 5
-    assert types.count("pointcloud") == 1
+    # 4 meshes: icosahedron PLY, bunny STL, torus PLY, teapot PLY.
+    # The "colorful sphere" lives as a point cloud, not a mesh —
+    # meshes only honor a single uniform color from metadata.colors,
+    # so a high-resolution colored surface has to be a point cloud
+    # to render correctly. See LESSONS.md::mesh-metadata-colors-
+    # only-uses-first-color.
+    assert types.count("mesh") == 4
+    assert types.count("pointcloud") == 2  # helix + colorful_sphere
     assert set(types) == set(SUPPORTED_TYPES)
 
 
