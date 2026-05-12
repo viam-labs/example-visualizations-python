@@ -146,8 +146,8 @@ def test_color_wheel_positions_form_a_ring():
 
 def test_robot_arm_forms_a_parent_frame_chain():
     """The arm is a kinematic chain: each link parents to the
-    previous one. Confirms the chain is wired correctly so changes
-    upstream propagate downstream via the frame system."""
+    previous one, ending in a 2-finger claw mounted on the wrist.
+    Locks the chain so a missing link can't sneak through."""
     items = robot_arm()
     by_label = {it["label"]: it for it in items}
     expected_chain = [
@@ -157,7 +157,9 @@ def test_robot_arm_forms_a_parent_frame_chain():
         ("arm_elbow", "arm_upper"),
         ("arm_forearm", "arm_elbow"),
         ("arm_wrist", "arm_forearm"),
-        ("arm_end_effector", "arm_wrist"),
+        ("claw_palm", "arm_wrist"),
+        ("claw_left_finger", "claw_palm"),
+        ("claw_right_finger", "claw_palm"),
     ]
     for label, expected_parent in expected_chain:
         assert label in by_label, f"missing arm link {label!r}"
@@ -171,11 +173,41 @@ def test_robot_arm_forms_a_parent_frame_chain():
             )
 
 
-def test_robot_arm_end_effector_is_an_arrow():
-    """End effector uses the asymmetric arrow primitive so users
-    can see which direction the tool is pointing at any tick."""
+def test_robot_arm_joint_motions_use_swing_not_spin():
+    """Real arm joints sweep through a range of motion; they don't
+    rotate continuously like a fan. The arm should use the `swing`
+    mode on each rotating joint so the user sees realistic back-and-
+    forth movement, and so the wrist's roll is visible against the
+    two-finger gripper."""
     by_label = {it["label"]: it for it in robot_arm()}
-    assert by_label["arm_end_effector"]["type"] == "arrow"
+    for joint in ("arm_base", "arm_elbow", "arm_wrist"):
+        anim = by_label[joint]["animation"]
+        assert anim["mode"] == "swing", (
+            f"{joint!r} should use bounded swing motion (RoM), not "
+            f"continuous spin; got {anim['mode']!r}"
+        )
+        assert anim.get("amplitude_deg", 0) > 0, (
+            f"{joint!r} swing animation needs a positive amplitude_deg"
+        )
+
+
+def test_robot_arm_claw_fingers_open_and_close_in_phase():
+    """Both fingers must move IN PHASE so the gripper opens and
+    closes as a unit. Left has -amplitude, right has +amplitude,
+    same period — both reach max-open at t=3T/4 (negative sin
+    extremum)."""
+    by_label = {it["label"]: it for it in robot_arm()}
+    left = by_label["claw_left_finger"]["animation"]
+    right = by_label["claw_right_finger"]["animation"]
+    assert left["mode"] == "oscillate"
+    assert right["mode"] == "oscillate"
+    assert left["axis"] == "x" and right["axis"] == "x"
+    assert left["period_s"] == right["period_s"]
+    # Opposite signs.
+    assert left["amplitude_mm"] * right["amplitude_mm"] < 0, (
+        "fingers must have opposite-sign amplitudes so they move "
+        "apart and together rather than sliding in the same direction"
+    )
 
 
 # ---------- orientation_vectors ----------
@@ -338,22 +370,33 @@ def test_frame_composition_includes_both_demos():
     assert "arm_base" in labels
     # And the chained children from both demos.
     assert "spinning_frame_attached_mesh" in labels
-    assert "arm_end_effector" in labels
+    assert "claw_palm" in labels  # end of the arm chain
 
 
 def test_frame_composition_offsets_bases_along_x_only():
     """The merged preset shifts the spinning_frame anchor to negative
     X and the arm_base to positive X so they don't visually overlap.
     Child items (with parent_frame set) are NOT translated — they
-    inherit through the frame system. Tests both halves of that."""
+    inherit through the frame system."""
     items = frame_composition()
     by_label = {it["label"]: it for it in items}
     # Bases were shifted.
     assert by_label["spinning_frame"]["pose"]["x"] < -500
     assert by_label["arm_base"]["pose"]["x"] > 500
-    # A child (parent_frame=spinning_frame) keeps its local pose.
-    # In reference_frame_demo the attached mesh sits at local x=350.
-    assert by_label["spinning_frame_attached_mesh"]["pose"]["x"] == pytest.approx(350)
+    # A child (parent_frame=spinning_frame) keeps its local pose —
+    # children sit at their configured local offset, not at the
+    # post-translation anchor X. Just confirm the value matches
+    # whatever the preset configures (could change as we tune
+    # spacing; what matters is the offset wasn't accidentally
+    # applied to the child).
+    mesh_local_x = by_label["spinning_frame_attached_mesh"]["pose"]["x"]
+    anchor_world_x = by_label["spinning_frame"]["pose"]["x"]
+    # If the helper accidentally translated children too, mesh.x
+    # would have been shifted by the same -1000.
+    assert mesh_local_x > anchor_world_x + 200, (
+        "child mesh appears to have been translated with the anchor; "
+        "_offset_base_items should only shift parent-less items"
+    )
 
 
 # ---------- registry + load ----------

@@ -189,24 +189,39 @@ def color_wheel(count: int = 10, ring_radius_mm: float = 300.0) -> List[Mapping[
 def robot_arm() -> List[Mapping[str, Any]]:
     """Stylized articulated robot arm built from primitives, chained
     via ``parent_frame``. Demonstrates how a kinematic structure
-    naturally falls out of the world-state-store API:
+    naturally falls out of the world-state-store API.
 
-      base (cylinder-ish box) → shoulder → upper_arm → elbow → forearm → wrist → end_effector (arrow)
+    Chain (each link parents to the previous):
 
-    Each link parents to the previous; an animation on the shoulder
-    rotates everything downstream (if the renderer composes through
-    chained parents — same probe as ``reference_frame_demo``). A
-    Viam-relevant scene for users building real arm modules.
+      arm_base → arm_shoulder → arm_upper → arm_elbow → arm_forearm
+        → arm_wrist → claw_palm → {claw_left_finger, claw_right_finger}
+
+    Joint motion uses ``swing`` (bounded RoM) rather than ``spin``
+    (continuous rotation) so the arm sweeps back and forth like a
+    real teaching example rather than spinning endlessly:
+
+      - arm_base    swings ±75° around Z   (shoulder yaw)
+      - arm_elbow   swings ±50° around local axis  (elbow flexion)
+      - arm_wrist   swings ±90° around local Z      (tool roll)
+      - claw fingers oscillate ±10 mm apart/together (gripper open/close)
+
+    The 2-finger gripper at the end makes the wrist's rotation
+    visible: a single arrow would have an invisible roll about its
+    own axis, but the parallel fingers visibly rotate as a pair when
+    the wrist sweeps. A Viam-relevant scene for users building real
+    arm modules.
     """
     LINK_RADIUS = 25.0
     BASE_HEIGHT = 80.0
     UPPER_LENGTH = 220.0
     FOREARM_LENGTH = 180.0
     JOINT_RADIUS = 35.0
-    EE_LENGTH = 90.0
+    PALM_THICKNESS = 10.0
+    FINGER_LENGTH = 70.0
+    FINGER_THICKNESS = 8.0
     items: List[Mapping[str, Any]] = []
-    # Base — a stout cylinder (modeled as a capsule for visual
-    # interest; could be a box). Spins slowly to drive the chain.
+    # Base — stout capsule, swings on Z (a real base joint never
+    # rotates a full revolution; it sweeps through its work envelope).
     items.append({
         "type": "capsule",
         "label": "arm_base",
@@ -215,7 +230,7 @@ def robot_arm() -> List[Mapping[str, Any]]:
         "length_mm": BASE_HEIGHT,
         "color": {"r": 70, "g": 70, "b": 75},
         "opacity": 1.0,
-        "animation": {"mode": "spin", "period_s": 8},
+        "animation": {"mode": "swing", "amplitude_deg": 75.0, "period_s": 8},
     })
     # Shoulder joint — sphere at top of base.
     items.append({
@@ -233,7 +248,8 @@ def robot_arm() -> List[Mapping[str, Any]]:
     })
     # Upper arm — capsule extending out of the shoulder along its
     # local +Z (which, with the shoulder's OY=1 orientation, points
-    # in world +Y → makes the arm sweep around as the base spins).
+    # in world +Y → makes the arm reach forward when the base is at
+    # neutral, and sweep around as the base swings).
     items.append({
         "type": "capsule",
         "label": "arm_upper",
@@ -245,19 +261,18 @@ def robot_arm() -> List[Mapping[str, Any]]:
         "opacity": 1.0,
         "animation": {"mode": "none"},
     })
-    # Elbow joint — sphere at the far end of the upper arm.
+    # Elbow joint — sphere at the far end of the upper arm. Swings
+    # in a bounded RoM (real elbows don't spin all the way around).
     items.append({
         "type": "sphere",
         "label": "arm_elbow",
         "parent_frame": "arm_upper",
-        # The elbow rotates around its own local axis so the forearm
-        # swings — slower than the base for a more readable motion.
         "pose": {"x": 0, "y": 0, "z": UPPER_LENGTH / 2 + LINK_RADIUS,
                  "ox": 0, "oy": 1, "oz": 0, "theta": -60},
         "radius_mm": JOINT_RADIUS * 0.8,
         "color": {"r": 230, "g": 25, "b": 75},
         "opacity": 1.0,
-        "animation": {"mode": "spin", "period_s": 5},
+        "animation": {"mode": "swing", "amplitude_deg": 50.0, "period_s": 5},
     })
     # Forearm — capsule from elbow outward.
     items.append({
@@ -271,7 +286,10 @@ def robot_arm() -> List[Mapping[str, Any]]:
         "opacity": 1.0,
         "animation": {"mode": "none"},
     })
-    # Wrist joint — small sphere at the end of the forearm.
+    # Wrist joint — swings on its local Z (= the forearm direction)
+    # so the tool *rolls* about the forearm. A symmetric end-effector
+    # (a sphere, a capsule along the same axis) would hide this
+    # rotation; the 2-finger claw below makes it visible.
     items.append({
         "type": "sphere",
         "label": "arm_wrist",
@@ -281,20 +299,60 @@ def robot_arm() -> List[Mapping[str, Any]]:
         "radius_mm": JOINT_RADIUS * 0.65,
         "color": {"r": 230, "g": 25, "b": 75},
         "opacity": 1.0,
-        "animation": {"mode": "none"},
+        "animation": {"mode": "swing", "amplitude_deg": 90.0, "period_s": 6},
     })
-    # End effector — arrow showing the tool direction. Asymmetric so
-    # users can see where the arm is pointing at any tick.
+    # Claw palm — small flat box mounted on the wrist. Anchors the
+    # two fingers; rotates with the wrist's swing.
     items.append({
-        "type": "arrow",
-        "label": "arm_end_effector",
+        "type": "box",
+        "label": "claw_palm",
         "parent_frame": "arm_wrist",
-        "pose": _identity_pose(z=JOINT_RADIUS * 0.6),
-        "length_mm": EE_LENGTH,
-        "radius_mm": 7.0,
-        "color": {"r": 255, "g": 200, "b": 0},
+        "pose": _identity_pose(z=JOINT_RADIUS * 0.6 + PALM_THICKNESS / 2),
+        "dims_mm": {"x": 70.0, "y": 28.0, "z": PALM_THICKNESS},
+        "color": {"r": 220, "g": 220, "b": 70},
         "opacity": 1.0,
         "animation": {"mode": "none"},
+    })
+    # Left finger — thin tall box offset to -X of the palm; oscillates
+    # in X to open/close. Negative amplitude on x makes "low time"
+    # = open (further from center) and "high time" = closed (closer
+    # to center); both fingers are in phase so they open and close
+    # together. (Right finger uses +amplitude → mirror motion.)
+    items.append({
+        "type": "box",
+        "label": "claw_left_finger",
+        "parent_frame": "claw_palm",
+        "pose": _identity_pose(
+            x=-22.0,
+            z=PALM_THICKNESS / 2 + FINGER_LENGTH / 2,
+        ),
+        "dims_mm": {"x": FINGER_THICKNESS, "y": FINGER_THICKNESS, "z": FINGER_LENGTH},
+        "color": {"r": 220, "g": 220, "b": 70},
+        "opacity": 1.0,
+        "animation": {
+            "mode": "oscillate",
+            "axis": "x",
+            "amplitude_mm": -10.0,
+            "period_s": 3,
+        },
+    })
+    items.append({
+        "type": "box",
+        "label": "claw_right_finger",
+        "parent_frame": "claw_palm",
+        "pose": _identity_pose(
+            x=22.0,
+            z=PALM_THICKNESS / 2 + FINGER_LENGTH / 2,
+        ),
+        "dims_mm": {"x": FINGER_THICKNESS, "y": FINGER_THICKNESS, "z": FINGER_LENGTH},
+        "color": {"r": 220, "g": 220, "b": 70},
+        "opacity": 1.0,
+        "animation": {
+            "mode": "oscillate",
+            "axis": "x",
+            "amplitude_mm": 10.0,
+            "period_s": 3,
+        },
     })
     return items
 
@@ -480,11 +538,14 @@ def reference_frame_demo() -> List[Mapping[str, Any]]:
         },
         # The attached mesh — orbits with the frame AND spins on its
         # own axis at a different rate, so the composition is visible.
+        # Position offset chosen to keep clear of the axes triad
+        # (200 mm out) and the orbiting color wheel (220 mm hub
+        # radius).
         {
             "type": "mesh",
             "label": "spinning_frame_attached_mesh",
             "parent_frame": "spinning_frame",
-            "pose": {"x": 350, "y": 0, "z": 0,
+            "pose": {"x": 700, "y": 0, "z": 0,
                      "ox": 0, "oy": 0, "oz": 1, "theta": 0},
             "mesh_path": "assets/icosahedron.ply",
             "color": {"r": 240, "g": 200, "b": 50},
@@ -516,7 +577,7 @@ def reference_frame_demo() -> List[Mapping[str, Any]]:
             "radius_mm": 4,
             "color": {"r": 255, "g": 255, "b": 255},
             "opacity": 0.0,
-            "animation": {"mode": "spin", "period_s": 4},
+            "animation": {"mode": "spin", "period_s": 10},
         },
         # Color wheel — children of wheel_hub, ring in hub's local
         # XY plane. As wheel_hub's theta animates, the spheres rotate

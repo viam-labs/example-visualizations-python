@@ -46,7 +46,7 @@ Want a different default scene? Set `preset` to one of:
 - `primitives` (default) — every supported primitive type plus a tour of more complex meshes. 10 items in a row: box → sphere → capsule → point → arrow → icosahedron (PLY) → bunny (STL) → torus (PLY) → Utah teapot (PLY) → helix (PCD).
 - `color_wheel` — 10 static spheres around a ring, HSV-swept hue. The hue-gallery view; for the *orbiting* version see `frame_composition`.
 - `orientation_vectors` — small sphere markers at axis-aligned orientation vectors, with `show_axes_helper: true` so the viewer renders an RGB XYZ triad at each entity's origin. Shows how `(OX, OY, OZ, theta)` maps to a coordinate frame.
-- `frame_composition` — two chained-parent-frame demos side by side. **Left:** a spinning frame anchor + RGB axes triad + attached mesh + **a ring of hue-swept spheres orbiting it** (same idea as `color_wheel` but parented to the anchor so they move with the spin). **Right:** an articulated robot arm. Both render correctly iff the viewer composes through chained `parent_frame` links.
+- `frame_composition` — two chained-parent-frame demos side by side. **Left:** a spinning anchor + RGB axes triad + an attached mesh placed further out (now 700 mm from the anchor) + a ring of hue-swept spheres orbiting the mesh around its own axis. **Right:** an articulated robot arm — base swings on Z, shoulder/upper, elbow swings on its joint, forearm, wrist swings (roll), and a 2-finger gripper that opens and closes. The wrist's roll is visible *because* of the parallel-finger gripper: a symmetric end-effector would hide the rotation. All animations use `swing` (bounded RoM) on the arm rather than `spin` (continuous rotation), matching real arm behavior.
 - `all` — every preset above, stacked along Y at ~1.8 m intervals. One-stop tour.
 
 ## Config reference
@@ -93,8 +93,9 @@ Every item carries `type`, `label`, `pose`, optional `color` /
 | ------------ | -------------------------------------------- | ------ |
 | `none`       | —                                            | Static. Emitted once on add/reconfigure; never ticks. |
 | `orbit`      | `radius_mm` (default 100), `period_s` (5)    | Translate around the item's local Z in the XY plane. |
-| `oscillate`  | `axis` (`x`/`y`/`z`, default `y`), `amplitude_mm` (100), `period_s` (4) | Sinusoidal translation along one axis. |
-| `spin`       | `period_s` (4)                                | Rotate in place around the orientation vector (modulates `theta`). |
+| `oscillate`  | `axis` (`x`/`y`/`z`, default `y`), `amplitude_mm` (100), `period_s` (4) | Sinusoidal translation along one axis. Negative `amplitude_mm` reverses direction (useful for symmetric pairs like gripper fingers). |
+| `spin`       | `period_s` (4)                                | Continuous rotation around the orientation vector — `theta` increments monotonically through 360°. |
+| `swing`      | `amplitude_deg` (45), `period_s` (4)          | Bounded rotation — `theta` oscillates in `[base − amplitude, base + amplitude]` over `period_s`. Use this for joints with a range of motion (arm joints, wrist roll) instead of `spin`. |
 | `pulse`      | `amplitude_mm` (25), `period_s` (3)           | Modulate primary dimension. Sphere/capsule: radius. Box: all three dims. Capsule also pulses length. No-op for point/mesh/pointcloud. |
 
 ## DoCommand reference

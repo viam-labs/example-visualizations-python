@@ -20,8 +20,13 @@ Modes (all parameters in mm and seconds):
   - ``oscillate``: sinusoidal translation along ``axis`` (``x``, ``y``,
     or ``z``) with ``amplitude_mm`` and ``period_s``.
   - ``spin``: rotate the item about its own Z axis at ``period_s``.
-    Updates only `theta`. Geometry-agnostic but most visible on box /
-    capsule because spheres look the same.
+    Updates only `theta`. Continuous rotation through 360°. Best for
+    "always-on" demos (color wheels, decorative spinners).
+  - ``swing``: like ``spin`` but bounded — oscillates `theta` in
+    ``[base - amplitude_deg, base + amplitude_deg]`` over `period_s`.
+    Use for joints that move through a range of motion (arm joints,
+    wrist rotation) rather than spinning continuously in one
+    direction.
   - ``pulse``: modulate the primary dimension (radius for sphere /
     capsule / point, dims_mm.x|y|z for box) between
     ``amplitude_mm`` ± ``base``. ``base`` is computed from the item's
@@ -47,7 +52,7 @@ PATH_BOX_DIMS_X = "physicalObject.geometryType.value.dimsMm.x"
 PATH_BOX_DIMS_Y = "physicalObject.geometryType.value.dimsMm.y"
 PATH_BOX_DIMS_Z = "physicalObject.geometryType.value.dimsMm.z"
 
-SUPPORTED_MODES = ("none", "orbit", "oscillate", "spin", "pulse")
+SUPPORTED_MODES = ("none", "orbit", "oscillate", "spin", "swing", "pulse")
 SUPPORTED_AXES = ("x", "y", "z")
 
 
@@ -125,6 +130,17 @@ def compute_tick(
         if period_s <= 0:
             period_s = 4.0
         theta = (360.0 * t / period_s) % 360.0
+        new_pose["theta"] = theta
+        paths = [PATH_THETA]
+        return new_pose, new_geom, paths
+
+    if mode == "swing":
+        amplitude_deg = float(anim.get("amplitude_deg", 45.0))
+        period_s = float(anim.get("period_s", 4.0))
+        if period_s <= 0:
+            period_s = 4.0
+        base_theta = float(base_pose.get("theta", 0.0))
+        theta = base_theta + amplitude_deg * math.sin(2 * math.pi * t / period_s)
         new_pose["theta"] = theta
         paths = [PATH_THETA]
         return new_pose, new_geom, paths

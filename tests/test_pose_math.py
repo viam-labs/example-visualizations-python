@@ -167,6 +167,60 @@ def test_spin_wraps_modulo_360():
     assert pose["theta"] == pytest.approx(45.0)
 
 
+# ---------- swing ----------
+
+def test_swing_at_t_zero_is_at_base_theta():
+    """At t=0, sin(0)=0, so swing yields base_theta unchanged. Joints
+    starting "at rest" should be at their configured angle, not at
+    an extreme."""
+    pose, _, paths = compute_tick(
+        {"type": "capsule", "animation": {"mode": "swing", "amplitude_deg": 60, "period_s": 4}},
+        {"x": 0, "y": 0, "z": 0, "ox": 0, "oy": 1, "oz": 0, "theta": 30},
+        {"radius_mm": 20, "length_mm": 100},
+        t=0.0,
+    )
+    assert pose["theta"] == pytest.approx(30.0)
+    assert paths == ["poseInObserverFrame.pose.theta"]
+
+
+def test_swing_at_quarter_period_reaches_max_amplitude():
+    """At t=T/4, sin(pi/2)=1, full amplitude reached. The amplitude
+    is added to base theta, not the absolute angle."""
+    pose, _, _ = compute_tick(
+        {"type": "capsule", "animation": {"mode": "swing", "amplitude_deg": 60, "period_s": 4}},
+        {"x": 0, "y": 0, "z": 0, "ox": 0, "oy": 0, "oz": 1, "theta": 30},
+        {"radius_mm": 20, "length_mm": 100},
+        t=1.0,
+    )
+    assert pose["theta"] == pytest.approx(90.0)
+
+
+def test_swing_at_three_quarter_period_reaches_negative_amplitude():
+    """At t=3T/4, sin(3pi/2)=-1, theta = base - amplitude."""
+    pose, _, _ = compute_tick(
+        {"type": "capsule", "animation": {"mode": "swing", "amplitude_deg": 45, "period_s": 8}},
+        {"x": 0, "y": 0, "z": 0, "ox": 0, "oy": 0, "oz": 1, "theta": 0},
+        {"radius_mm": 20, "length_mm": 100},
+        t=6.0,
+    )
+    assert pose["theta"] == pytest.approx(-45.0)
+
+
+def test_swing_preserves_translation_and_orientation_vector():
+    """Like spin, swing should only modulate theta; translation and
+    (ox, oy, oz) pass through."""
+    pose, _, _ = compute_tick(
+        {"type": "box", "animation": {"mode": "swing", "amplitude_deg": 60, "period_s": 4}},
+        {"x": 100, "y": 200, "z": 300, "ox": 0, "oy": 1, "oz": 0, "theta": 0},
+        {"dims_mm": {"x": 50, "y": 50, "z": 50}},
+        t=1.0,
+    )
+    assert (pose["x"], pose["y"], pose["z"]) == (100, 200, 300)
+    assert (pose["ox"], pose["oy"], pose["oz"]) == (0, 1, 0)
+
+
+# ---------- spin (continued) ----------
+
 def test_spin_preserves_translation_and_orientation_vector():
     pose, _, _ = compute_tick(
         {"type": "box", "animation": {"mode": "spin", "period_s": 4}},
@@ -253,7 +307,7 @@ def test_pulse_on_unsupported_type_is_noop():
 # ---------- module surface sanity ----------
 
 def test_supported_modes_constant():
-    assert set(SUPPORTED_MODES) == {"none", "orbit", "oscillate", "spin", "pulse"}
+    assert set(SUPPORTED_MODES) == {"none", "orbit", "oscillate", "spin", "swing", "pulse"}
 
 
 def test_supported_axes_constant():
