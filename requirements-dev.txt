@@ -1,3 +1,9 @@
 -r requirements.txt
 pytest
 pytest-asyncio
+# Asset-generation deps (used only by scripts/generate_assets.py for
+# label PLYs — not imported by the runtime module).
+matplotlib
+trimesh
+shapely
+mapbox-earcut

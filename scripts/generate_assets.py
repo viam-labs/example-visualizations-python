@@ -44,7 +44,7 @@ import re
 import struct
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Set
 
 # Allow `from src.geometries import ...` when running this script
 # from anywhere (including via `make assets`).
@@ -909,6 +909,167 @@ def _bernstein_cubic(u):
     ]
 
 
+# ----- text labels ---------------------------------------------------------
+#
+# Text labels are baked into PLY assets at asset-gen time so the
+# runtime venv stays slim (matplotlib + trimesh are dev-only deps).
+# `src/presets.py` references these via `_label_asset_name` which
+# uses the same sanitization scheme as `_label_asset_path` below.
+
+
+# Item labels float above the geometry they're labeling. The row
+# labels in the `all` preset are larger so they read across the
+# whole stack. Both depths are deliberately thin so the labels
+# read as flat plaques, not chunky 3D text.
+ITEM_LABEL_HEIGHT_MM = 25.0
+ROW_LABEL_HEIGHT_MM = 70.0
+LABEL_DEPTH_MM = 3.0
+
+
+def _label_asset_filename(text: str, height_mm: float) -> str:
+    """Stable filename for a baked text-label PLY. Must match the
+    sister helper in `src/presets.py`."""
+    safe = re.sub(r"[^A-Za-z0-9_-]", "_", text)
+    return f"text__{int(round(height_mm))}mm__{safe}.ply"
+
+
+def text_to_ply(text: str, height_mm: float, depth_mm: float = LABEL_DEPTH_MM) -> bytes:
+    """Convert ``text`` to an extruded PLY mesh.
+
+    Uses matplotlib for font→2D outline (so any installed system
+    font works; DejaVu Sans ships with matplotlib), shapely for
+    polygon assembly with holes, trimesh for the extrusion +
+    triangulation. mapbox-earcut is the triangulation backend
+    trimesh picks up automatically.
+
+    Output PLY vertices are in METERS so the RDK reader scales by
+    1000 to mm correctly. The mesh is centered on (X, Y) with its
+    cap-height set to ``height_mm`` and extruded along +Z by
+    ``depth_mm``."""
+    # Imports here so the script can still run without the dev deps
+    # for tasks that don't need text generation.
+    import numpy as np
+    import trimesh
+    from matplotlib.font_manager import FontProperties
+    from matplotlib.textpath import TextPath
+    from shapely.geometry import Polygon
+
+    tp = TextPath((0, 0), text, size=100.0, prop=FontProperties(family="DejaVu Sans"))
+    polys = tp.to_polygons()
+    outers, holes = [], []
+    for p in polys:
+        if len(p) < 3:
+            continue
+        arr = np.asarray(p)
+        # Signed area: CCW > 0 (outer); CW < 0 (hole).
+        sa = 0.5 * np.sum(arr[:-1, 0] * arr[1:, 1] - arr[1:, 0] * arr[:-1, 1])
+        (outers if sa > 0 else holes).append(arr)
+
+    if not outers:
+        raise ValueError(f"text {text!r} produced no outer contours")
+
+    shapes = []
+    outer_polys = [Polygon(o.tolist()) for o in outers]
+    for i, op in enumerate(outer_polys):
+        my_holes = []
+        for h in holes:
+            hp = Polygon(h.tolist())
+            if op.contains(hp.representative_point()):
+                my_holes.append(h.tolist())
+        shapes.append(Polygon(outers[i].tolist(), holes=my_holes))
+
+    meshes = [trimesh.creation.extrude_polygon(s, depth_mm) for s in shapes]
+    mesh = trimesh.util.concatenate(meshes)
+
+    # Scale: cap-height (Y span) → height_mm; convert mm→m for PLY.
+    y_span = mesh.bounds[1][1] - mesh.bounds[0][1]
+    if y_span <= 0:
+        raise ValueError(f"text {text!r} has zero-height bounding box")
+    mesh.apply_scale((height_mm / y_span) / MM_PER_M)
+
+    # Rotate 90° around X so the text reads in the XZ plane (vertical
+    # plaque facing ±Y) rather than the XY plane (lying flat on the
+    # ground). Vertical text is readable from most orbit-camera
+    # positions; flat-on-ground is only readable from directly above.
+    rot = trimesh.transformations.rotation_matrix(math.pi / 2, [1, 0, 0])
+    mesh.apply_transform(rot)
+
+    # Center on (X, Z); rest Y on 0 so the host item's pose lifts the
+    # whole plaque to the desired world position.
+    center = (mesh.bounds[0] + mesh.bounds[1]) / 2
+    mesh.apply_translation([-center[0], 0, -center[2]])
+
+    return mesh.export(file_type="ply", encoding="ascii")
+
+
+def _collect_label_texts() -> "tuple[Set[str], Set[str]]":
+    """Walk presets to find every label string + every row name.
+
+    Returns (item_labels, row_labels). Generated label PLYs cover
+    both sets so presets.py can reference them by name."""
+    # Import lazily so this script doesn't load the full presets
+    # module unless write_label_plys() is being called.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from src.presets import (
+        chunked_pcd_demo,
+        force_vector_demo,
+        frame_composition,
+        geometry_morph,
+        lifecycle_demo,
+        orientation_vectors,
+        primitives,
+        trajectory_preview,
+    )
+
+    # Mirror src/presets.py::_should_label so we only bake PLYs for
+    # labels the runtime will actually reference.
+    from src.presets import _should_label  # noqa: WPS433
+
+    item_labels: Set[str] = set()
+    for fn in (
+        primitives,
+        orientation_vectors,
+        frame_composition,
+        trajectory_preview,
+        force_vector_demo,
+        geometry_morph,
+        lifecycle_demo,
+        chunked_pcd_demo,
+    ):
+        for it in fn():
+            if _should_label(it):
+                item_labels.add(it["label"])
+
+    row_labels: Set[str] = {
+        "primitives",
+        "orientation_vectors",
+        "frame_composition",
+        "trajectory_preview",
+        "force_vector_demo",
+        "geometry_morph",
+        "lifecycle_demo",
+        "chunked_pcd_demo",
+    }
+    return item_labels, row_labels
+
+
+def write_label_plys() -> "list[Path]":
+    """Generate one PLY per (label-text, label-height-mm) combination
+    used by the presets. Items use ITEM_LABEL_HEIGHT_MM, rows use
+    ROW_LABEL_HEIGHT_MM."""
+    item_labels, row_labels = _collect_label_texts()
+    written: list[Path] = []
+    for text in sorted(item_labels):
+        path = OUT / _label_asset_filename(text, ITEM_LABEL_HEIGHT_MM)
+        path.write_bytes(text_to_ply(text, ITEM_LABEL_HEIGHT_MM))
+        written.append(path)
+    for text in sorted(row_labels):
+        path = OUT / _label_asset_filename(text, ROW_LABEL_HEIGHT_MM)
+        path.write_bytes(text_to_ply(text, ROW_LABEL_HEIGHT_MM))
+        written.append(path)
+    return written
+
+
 if __name__ == "__main__":
     paths = [
         write_icosahedron_ply(),
@@ -922,5 +1083,6 @@ if __name__ == "__main__":
         write_bunny_stl(),
         write_helix_pcd(),
     ]
+    paths.extend(write_label_plys())
     for p in paths:
         print(f"wrote {p} ({p.stat().st_size} bytes)")

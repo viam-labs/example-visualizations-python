@@ -27,7 +27,17 @@ duplicate didn't earn its keep.
 """
 import colorsys
 import math
+import re
 from typing import Any, List, Mapping
+
+
+# Label sizing — must match scripts/generate_assets.py.
+ITEM_LABEL_HEIGHT_MM = 25.0
+ROW_LABEL_HEIGHT_MM = 70.0
+# Vertical distance from an item's pose to its label.
+ITEM_LABEL_Z_OFFSET_MM = 250.0
+# Vertical distance from a row's nominal Y to its row-label Z height.
+ROW_LABEL_Z_OFFSET_MM = 700.0
 
 
 PRESET_NAMES = (
@@ -48,6 +58,90 @@ PRIMITIVE_ROW_SPACING_MM = 400.0
 
 def _identity_pose(x: float = 0.0, y: float = 0.0, z: float = 0.0) -> Mapping[str, Any]:
     return {"x": x, "y": y, "z": z, "ox": 0, "oy": 0, "oz": 1, "theta": 0}
+
+
+def _label_asset_filename(text: str, height_mm: float) -> str:
+    """Filename of a baked text-label PLY. Mirrors the sister helper
+    in scripts/generate_assets.py."""
+    safe = re.sub(r"[^A-Za-z0-9_-]", "_", text)
+    return f"text__{int(round(height_mm))}mm__{safe}.ply"
+
+
+# Labels we explicitly skip when auto-decorating presets. The big
+# repeating groups (5×5 flicker grids, color-wheel children) get one
+# row-label between them rather than 25+ near-identical labels.
+_SKIP_LABEL_PATTERNS = ("morph_grid", "_wheel_")
+
+
+def _should_label(item: Mapping[str, Any]) -> bool:
+    """Whether this item gets an auto-generated text-label sibling."""
+    label = item.get("label", "")
+    if not label:
+        return False
+    if any(p in label for p in _SKIP_LABEL_PATTERNS):
+        return False
+    # Skip items that are themselves labels (avoid recursion).
+    if label.startswith("label_"):
+        return False
+    # Only label items that live in the world frame. Items parented
+    # to another emitted Transform follow chain motion that's hard
+    # to mirror with a static label, and the chain's owning entity
+    # is itself labeled.
+    pf = item.get("parent_frame")
+    return pf in (None, "", "world")
+
+
+def _label_for(
+    item: Mapping[str, Any],
+    height_mm: float = ITEM_LABEL_HEIGHT_MM,
+    z_offset_mm: float = ITEM_LABEL_Z_OFFSET_MM,
+) -> Mapping[str, Any]:
+    """Build a label-mesh item floating above ``item``."""
+    target_label = item["label"]
+    base_pose = item.get("pose") or {}
+    pose = {
+        "x": float(base_pose.get("x", 0.0)),
+        "y": float(base_pose.get("y", 0.0)),
+        "z": float(base_pose.get("z", 0.0)) + z_offset_mm,
+        "ox": 0, "oy": 0, "oz": 1, "theta": 0,
+    }
+    return {
+        "type": "mesh",
+        "label": f"label_{target_label}",
+        "pose": pose,
+        "mesh_path": f"assets/{_label_asset_filename(target_label, height_mm)}",
+        "color": {"r": 220, "g": 220, "b": 220},
+        "opacity": 0.9,
+        "animation": {"mode": "none"},
+    }
+
+
+def _with_item_labels(items: List[Mapping[str, Any]]) -> List[Mapping[str, Any]]:
+    """Return ``items`` with a label-mesh sibling appended for every
+    world-parented item (per ``_should_label``)."""
+    out = list(items)
+    for it in items:
+        if _should_label(it):
+            out.append(_label_for(it))
+    return out
+
+
+def _row_label(
+    row_name: str,
+    y: float,
+    x: float = -2000.0,
+    z: float = ROW_LABEL_Z_OFFSET_MM,
+) -> Mapping[str, Any]:
+    """Build a large text-label-mesh item naming a row in ``all``."""
+    return {
+        "type": "mesh",
+        "label": f"label_row_{row_name}",
+        "pose": _identity_pose(x=x, y=y, z=z),
+        "mesh_path": f"assets/{_label_asset_filename(row_name, ROW_LABEL_HEIGHT_MM)}",
+        "color": {"r": 255, "g": 255, "b": 255},
+        "opacity": 1.0,
+        "animation": {"mode": "none"},
+    }
 
 
 def primitives() -> List[Mapping[str, Any]]:
@@ -853,17 +947,32 @@ def all_preset() -> List[Mapping[str, Any]]:
     row = 500.0
     arm_gap = 1500.0
     items: List[Mapping[str, Any]] = []
-    traj = _offset_base_items(trajectory_preview(), "y", -2 * row)
+    # Each sub-preset gets item labels (per-item text floating above
+    # the geometry) before it's offset into its row. Item-labels
+    # follow the same Y offset as their target item.
+    traj = _offset_base_items(_with_item_labels(trajectory_preview()), "y", -2 * row)
     items.extend(traj)
-    items.extend(_offset_base_items_y(orientation_vectors(), -row))
-    items.extend(_offset_base_items_y(primitives(), 0.0))
-    items.extend(_offset_base_items_y(lifecycle_demo(), row))
-    items.extend(_offset_base_items_y(geometry_morph(), 2 * row))
-    fv = _offset_base_items(force_vector_demo(), "x", -500.0)
+    items.extend(_offset_base_items_y(_with_item_labels(orientation_vectors()), -row))
+    items.extend(_offset_base_items_y(_with_item_labels(primitives()), 0.0))
+    items.extend(_offset_base_items_y(_with_item_labels(lifecycle_demo()), row))
+    items.extend(_offset_base_items_y(_with_item_labels(geometry_morph()), 2 * row))
+    fv = _offset_base_items(_with_item_labels(force_vector_demo()), "x", -500.0)
     fv = _offset_base_items(fv, "y", 2 * row)
     items.extend(fv)
     # Arm row gets the wide gap.
-    items.extend(_offset_base_items_y(frame_composition(), 2 * row + arm_gap))
+    items.extend(_offset_base_items_y(_with_item_labels(frame_composition()), 2 * row + arm_gap))
+
+    # Row-name labels at the left edge of each row. Big enough to read
+    # across the whole scene. X is well to the left of every row so
+    # they don't collide with any items.
+    row_label_x = -2200.0
+    items.append(_row_label("trajectory_preview", y=-2 * row, x=row_label_x))
+    items.append(_row_label("orientation_vectors", y=-row, x=row_label_x))
+    items.append(_row_label("primitives", y=0.0, x=row_label_x))
+    items.append(_row_label("lifecycle_demo", y=row, x=row_label_x))
+    items.append(_row_label("force_vector_demo", y=2 * row - 70.0, x=row_label_x))
+    items.append(_row_label("geometry_morph", y=2 * row + 70.0, x=row_label_x))
+    items.append(_row_label("frame_composition", y=2 * row + arm_gap, x=row_label_x))
     return items
 
 
