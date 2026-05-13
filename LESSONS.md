@@ -30,6 +30,14 @@ Each entry follows the same shape: **Symptom → Root cause → Evidence (with f
 
 **Root cause.** The 3D viewer only renders PLY meshes. STL is a supported *input* format for the RDK's parser (`spatialmath.NewMeshFromSTLFile`), but on the wire to the viewer the RDK always converts to PLY. Sending STL bytes with `content_type: "stl"` results in the viewer silently dropping the geometry.
 
+**Spec-vs-implementation mismatch.** The proto API and the RDK's mesh-parsing API both **claim** STL support:
+
+- `commonpb.Mesh.ContentType` is a free string with no validator.
+- `rdk/spatialmath/mesh.go:234-243` (`NewMeshFromProto`) explicitly switches on `m.ContentType`: `"ply"` → `newMeshFromBytes`, `"stl"` → `newMeshFromSTLBytes`, anything else → error. So if a module emits `content_type: "stl"` on the wire, the RDK reader parses it cleanly.
+- The viewer (the OTHER consumer of the same wire bytes) is the one that drops it. `ToProtobuf` at `mesh.go:262-279` documents this in a comment: "Meshes are always converted to PLY format for compatibility with the visualizer. The visualizer expects all meshes to be in PLY format."
+
+The bug is in the discoverability: a module author reading the proto definition or the RDK reader would reasonably believe `content_type: "stl"` works end-to-end. It doesn't, because the viewer (one half of the consumer set) silently drops STL.
+
 **Evidence.**
 - `rdk/spatialmath/mesh.go` ToProtobuf comment: *"Meshes are always converted to PLY format for compatibility with the visualizer. The visualizer expects all meshes to be in PLY format."*
 - No reference module emits `content_type: "stl"` on a Transform — only `content_type: "ply"`.
@@ -250,15 +258,23 @@ honoring N mesh colors, vertex-colored PLYs will "just work" again
 without any further plumbing. Until then, mesh-with-color is stuck
 at uniform-tint and high-resolution color belongs to point clouds.
 
-**What we still don't know.**
+**What we still don't know — but now have playground demos for.**
 
-  - Whether the viewer would honor per-FACE colors (N = number of
-    triangles, not number of vertices). Untested. Same renderer
-    behavior is plausible — only the first color used — but no
-    primary-source evidence either way.
-  - Whether textures (UV + image) are supported. Mesh proto has no
-    texture field and the visualization library has no texture
-    option → almost certainly not.
+  - **Per-FACE colors** (N = number of triangles, not vertices).
+    ``assets/colorful_sphere_faces.ply`` ships a sphere with
+    ``property uchar red/green/blue`` on the ``element face`` block.
+    Preset ``primitives`` includes ``demo_colorful_sphere_faces_mesh``
+    next to the per-vertex sibling so the comparison is one glance.
+    Plausible outcomes: same broken behavior (uniform tint = first
+    face's color), per-face actually works, or parser ignores
+    face-level color props and falls back to default fill.
+  - **UV maps.** ``assets/uv_sphere.ply`` ships a sphere with
+    ``property float s/t`` per vertex and a ``comment TextureFile
+    uv_sphere.png`` header (no image is committed — the wire format
+    has no slot for texture bytes regardless). Preset
+    ``primitives`` includes ``demo_uv_sphere_mesh``. Tests: does the
+    viewer parse PLY with UV props (gray render), choke on them
+    (drop silently), or derive vertex colors from UV (creative)?
 
 ### invisible-intermediate-frames-for-extra-spin-axes
 

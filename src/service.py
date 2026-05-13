@@ -146,6 +146,11 @@ def _build_geometry(item: Mapping[str, Any], override_geom: Mapping[str, Any]) -
     if t == "mesh":
         path = item["mesh_path"]
         raw = geometries.read_asset(path, MODULE_DIR)
+        # raw_stl: bug-demo for the viz team — ship the STL bytes
+        # straight through with content_type="stl" so the viewer's
+        # silent-drop is observable. See LESSONS.md::mesh-formats.
+        if item.get("raw_stl"):
+            return geometries.build_mesh(raw, "stl", label, allow_non_ply=True)
         ply_bytes = geometries.load_mesh_bytes_as_ply(raw, path)
         # build_mesh requires content_type="ply"; STL got converted above.
         return geometries.build_mesh(ply_bytes, "ply", label)
@@ -1041,10 +1046,18 @@ def _validate_item(item: Mapping[str, Any], index: int) -> None:
         if not path:
             raise Exception(f"{where} mesh requires 'mesh_path'")
         # Reject uppercase content type — the renderer is case-sensitive.
-        geometries.infer_mesh_content_type(str(path))
+        fmt = geometries.infer_mesh_content_type(str(path))
         resolved = _resolve_asset_path(str(path))
         if not resolved.exists():
             raise Exception(f"{where} mesh asset not found: {resolved}")
+        if "raw_stl" in item:
+            if not isinstance(item["raw_stl"], bool):
+                raise Exception(f"{where} mesh 'raw_stl' must be a bool")
+            if item["raw_stl"] and fmt != "stl":
+                raise Exception(
+                    f"{where} mesh 'raw_stl' only valid on .stl assets; "
+                    f"got {path!r} (inferred {fmt!r})"
+                )
     elif t == "pointcloud":
         path = item.get("pointcloud_path")
         if not path:

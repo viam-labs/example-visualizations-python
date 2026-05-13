@@ -442,15 +442,30 @@ def build_point(label: str) -> Geometry:
     )
 
 
-def build_mesh(mesh_bytes: bytes, content_type: str, label: str) -> Geometry:
+def build_mesh(
+    mesh_bytes: bytes,
+    content_type: str,
+    label: str,
+    allow_non_ply: bool = False,
+) -> Geometry:
     """Embed mesh bytes into a Geometry.
 
     content_type MUST be ``"ply"`` for the viewer to render it. STL
     input must be converted to PLY first via ``stl_to_ply``. The RDK
-    parses both formats, but on the wire to the viewer it converts
-    everything to PLY; the comment in ``rdk/spatialmath/mesh.go``
-    states the visualizer expects PLY only."""
-    if content_type != RENDERER_MESH_CONTENT_TYPE:
+    parses both formats (``NewMeshFromProto`` at
+    ``rdk/spatialmath/mesh.go:234-243`` switches on content_type and
+    accepts both ``ply`` and ``stl``), but on the wire to the viewer
+    it converts everything to PLY; the comment in
+    ``rdk/spatialmath/mesh.go`` states the visualizer expects PLY only.
+
+    ``allow_non_ply=True`` is an explicit opt-out of this guard. It
+    exists for the playground's ``raw_stl`` demo item, which ships
+    raw STL bytes with content_type=``stl`` specifically to show the
+    viewer's silent-drop behavior — a bug-demo for the viz team,
+    not something production modules should ever do. Every other
+    caller leaves the default so the guard catches accidental STL
+    emissions."""
+    if not allow_non_ply and content_type != RENDERER_MESH_CONTENT_TYPE:
         raise ValueError(
             f"build_mesh requires content_type {RENDERER_MESH_CONTENT_TYPE!r}; "
             f"got {content_type!r}. STL must be converted via stl_to_ply first."

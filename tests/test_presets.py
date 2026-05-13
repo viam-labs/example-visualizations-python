@@ -25,9 +25,12 @@ from src.presets import (
 
 def test_primitives_emits_one_of_every_supported_type():
     """The default scene is every primitive type at least once + a
-    tour of more complex meshes (torus, teapot) so users see both
-    "minimal example" and "real-mesh example" in one preset. mesh
-    appears 4× now: icosahedron PLY, bunny STL, torus PLY, teapot PLY."""
+    tour of more complex meshes (torus, teapot, colorful sphere) so
+    users see both "minimal example" and "real-mesh example" in one
+    preset. mesh appears 7× now: icosahedron, bunny STL, torus,
+    teapot, plus three colored-mesh bug-demos for the viz team
+    (per-vertex broken, per-face untested, UV-map untested — see
+    LESSONS.md::mesh-metadata-colors-only-uses-first-color)."""
     items = primitives()
     types = [it["type"] for it in items]
     assert types.count("box") == 1
@@ -35,14 +38,12 @@ def test_primitives_emits_one_of_every_supported_type():
     assert types.count("capsule") == 1
     assert types.count("point") == 1
     assert types.count("arrow") == 1
-    # 4 meshes: icosahedron PLY, bunny STL, torus PLY, teapot PLY.
-    # The "colorful sphere" lives as a point cloud, not a mesh —
-    # meshes only honor a single uniform color from metadata.colors,
-    # so a high-resolution colored surface has to be a point cloud
-    # to render correctly. See LESSONS.md::mesh-metadata-colors-
-    # only-uses-first-color.
-    assert types.count("mesh") == 4
-    # 3 pointclouds: colorful_sphere + helix + chunked-delivery helix sibling.
+    # 8 meshes: icosahedron, bunny STL (converted), bunny raw-STL
+    # bug-demo, torus, teapot, plus colorful_sphere (per-vertex),
+    # colorful_sphere_faces (per-face), and uv_sphere (UV-mapped)
+    # bug-demos.
+    assert types.count("mesh") == 8
+    # 3 pointclouds: colorful_sphere PCD + helix + chunked helix sibling.
     assert types.count("pointcloud") == 3
     assert set(types) == set(SUPPORTED_TYPES)
 
@@ -94,8 +95,18 @@ def test_primitives_each_solid_item_has_color():
       - Per-vertex-colored meshes (e.g. assets/colorful_sphere.ply):
         omit `color` so the PLY's embedded vertex colors render
         instead of being overridden by a uniform metadata tint.
+      - Per-face-colored meshes (assets/colorful_sphere_faces.ply):
+        same logic — embedded colors should be observable on their
+        own without a metadata override muddying the test.
+      - UV-mapped meshes (assets/uv_sphere.ply): no `color` so we
+        can observe whatever the viewer does with UV data in the
+        absence of an explicit color override.
     """
-    omit_color_paths = {"assets/colorful_sphere.ply"}
+    omit_color_paths = {
+        "assets/colorful_sphere.ply",
+        "assets/colorful_sphere_faces.ply",
+        "assets/uv_sphere.ply",
+    }
     for it in primitives():
         if it["type"] == "pointcloud":
             assert "color" not in it

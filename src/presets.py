@@ -58,10 +58,18 @@ def primitives() -> List[Mapping[str, Any]]:
     Row layout (left → right):
 
       demo_box, demo_sphere, demo_capsule, demo_point, demo_arrow,
-      demo_icosahedron (PLY), demo_bunny (STL), demo_torus (PLY),
-      demo_teapot (PLY), demo_pointcloud (PCD)
+      demo_icosahedron (PLY), demo_bunny (STL→PLY, works),
+      demo_bunny_raw_stl (raw STL with content_type="stl" — known
+      silently dropped, see LESSONS.md::mesh-formats),
+      demo_torus (PLY), demo_teapot (PLY), THREE broken-or-untested
+      colored-mesh demos (vertex colors known broken, per-face
+      colors untested, UV-map untested — see LESSONS.md::
+      mesh-metadata-colors-only-uses-first-color),
+      demo_colorful_sphere (PCD w/ per-point RGB — works),
+      demo_pointcloud (PCD), and the chunked sibling
+      demo_pointcloud_chunked.
 
-    Total span ~3.6 m along X, centered at the origin."""
+    Total span ~6 m along X, centered at the origin."""
     sp = PRIMITIVE_ROW_SPACING_MM
     return [
         {
@@ -122,7 +130,9 @@ def primitives() -> List[Mapping[str, Any]]:
             "opacity": 1.0,
             "animation": {"mode": "none"},
         },
-        # STL mesh — actual Stanford bunny.
+        # STL mesh — actual Stanford bunny. Loaded via stl_to_ply at
+        # construction so the wire format the viewer receives is PLY
+        # (the only format it renders). Works.
         {
             "type": "mesh",
             "label": "demo_bunny",
@@ -132,11 +142,30 @@ def primitives() -> List[Mapping[str, Any]]:
             "opacity": 1.0,
             "animation": {"mode": "none"},
         },
+        # Same bunny STL — but shipped raw, content_type="stl",
+        # bypassing the stl_to_ply workaround. Bug-demo for the viz
+        # team: the proto/RDK contract says STL on the wire should
+        # work (NewMeshFromProto at rdk/spatialmath/mesh.go:234-243
+        # explicitly accepts "stl"), but the viewer drops it
+        # silently. Sits immediately to the right of the working
+        # PLY-converted twin so the silent-drop is unambiguous —
+        # left is orange bunny, right is empty space.
+        # See LESSONS.md::mesh-formats.
+        {
+            "type": "mesh",
+            "label": "demo_bunny_raw_stl",
+            "pose": _identity_pose(x=3 * sp),
+            "mesh_path": "assets/bunny.stl",
+            "raw_stl": True,
+            "color": {"r": 245, "g": 130, "b": 49},
+            "opacity": 1.0,
+            "animation": {"mode": "none"},
+        },
         # Procedural torus PLY — "more complex than a primitive shape".
         {
             "type": "mesh",
             "label": "demo_torus",
-            "pose": _identity_pose(x=3 * sp),
+            "pose": _identity_pose(x=4 * sp),
             "mesh_path": "assets/torus.ply",
             "color": {"r": 70, "g": 240, "b": 240},
             "opacity": 1.0,
@@ -146,24 +175,74 @@ def primitives() -> List[Mapping[str, Any]]:
         {
             "type": "mesh",
             "label": "demo_teapot",
-            "pose": _identity_pose(x=4 * sp),
+            "pose": _identity_pose(x=5 * sp),
             "mesh_path": "assets/teapot.ply",
             "color": {"r": 60, "g": 180, "b": 75},
             "opacity": 1.0,
             "animation": {"mode": "none"},
         },
-        # Colorful sphere — point cloud, not mesh, because the viewer
-        # renders per-point PCD colors but renders meshes with a
-        # single uniform tint regardless of how many colors we send
-        # in metadata.colors. See LESSONS.md::
-        # mesh-metadata-colors-only-uses-first-color for the
-        # confirmed-from-empirical-evidence limit. The
-        # colorful_sphere.ply asset still exists as a reference for
-        # the misbehavior but isn't used in any preset.
+        # Colorful sphere — MESH version. PLY with embedded
+        # `property uchar red/green/blue` per vertex AND a
+        # transcoded `metadata.colors` array carrying the same N
+        # RGB triples (one per vertex). This is the broken case
+        # for the viz team: the viewer ignores the embedded PLY
+        # colors AND collapses metadata.colors to a single tint
+        # (the first color in the packed array). Sits immediately
+        # to the left of the PCD sibling below so the visual diff
+        # is unambiguous — left is uniform-color blob, right is
+        # rainbow. See LESSONS.md::
+        # mesh-metadata-colors-only-uses-first-color.
+        {
+            "type": "mesh",
+            "label": "demo_colorful_sphere_mesh",
+            "pose": _identity_pose(x=6 * sp),
+            "mesh_path": "assets/colorful_sphere.ply",
+            "opacity": 1.0,
+            "animation": {"mode": "none"},
+        },
+        # Colorful sphere — MESH version, PER-FACE colors. PLY with
+        # `property uchar red/green/blue` on `element face` (NOT on
+        # `element vertex`). Sister bug-demo for the viz team: the
+        # per-vertex case to the left is known broken; this asset
+        # asks "does the same renderer treat per-FACE colors any
+        # differently?". Untested as of asset generation.
+        # See LESSONS.md::mesh-metadata-colors-only-uses-first-color.
+        {
+            "type": "mesh",
+            "label": "demo_colorful_sphere_faces_mesh",
+            "pose": _identity_pose(x=7 * sp),
+            "mesh_path": "assets/colorful_sphere_faces.ply",
+            "opacity": 1.0,
+            "animation": {"mode": "none"},
+        },
+        # UV-mapped sphere mesh. PLY with `property float s/t` per
+        # vertex and a `comment TextureFile uv_sphere.png` header.
+        # No texture image is shipped — `commonpb.Mesh` has no slot
+        # for texture bytes anyway. The point of this asset is to
+        # observe what the viewer does when it receives PLY UV
+        # properties at all (parse + render gray? parse fail?
+        # something else?). See LESSONS.md::
+        # mesh-metadata-colors-only-uses-first-color "What we still
+        # don't know" — UVs/textures.
+        {
+            "type": "mesh",
+            "label": "demo_uv_sphere_mesh",
+            "pose": _identity_pose(x=8 * sp),
+            "mesh_path": "assets/uv_sphere.ply",
+            "opacity": 1.0,
+            "animation": {"mode": "none"},
+        },
+        # Colorful sphere — POINT CLOUD version. Renders correctly
+        # because the viewer reads PCD per-point RGB when
+        # metadata.colors is absent. Direct comparison with the
+        # three mesh siblings to the left: same colorscheme, same
+        # geometry sphere, but only this one shows the rainbow.
+        # See LESSONS.md::mesh-metadata-colors-only-uses-first-color
+        # and LESSONS.md::pcd-colors-precedence.
         {
             "type": "pointcloud",
             "label": "demo_colorful_sphere",
-            "pose": _identity_pose(x=5 * sp),
+            "pose": _identity_pose(x=9 * sp),
             "pointcloud_path": "assets/colorful_sphere.pcd",
             "opacity": 1.0,
             "animation": {"mode": "none"},
@@ -176,7 +255,7 @@ def primitives() -> List[Mapping[str, Any]]:
         {
             "type": "pointcloud",
             "label": "demo_pointcloud",
-            "pose": _identity_pose(x=6 * sp),
+            "pose": _identity_pose(x=10 * sp),
             "pointcloud_path": "assets/helix.pcd",
             "opacity": 1.0,
             "animation": {"mode": "none"},
@@ -190,7 +269,7 @@ def primitives() -> List[Mapping[str, Any]]:
         {
             "type": "pointcloud",
             "label": "demo_pointcloud_chunked",
-            "pose": _identity_pose(x=7 * sp),
+            "pose": _identity_pose(x=11 * sp),
             "pointcloud_path": "assets/helix.pcd",
             "opacity": 1.0,
             "chunked": True,

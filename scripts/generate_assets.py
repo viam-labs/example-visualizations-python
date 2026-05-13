@@ -38,6 +38,7 @@ makes the renderer draw it 1000× too big.
 # Conversion factor for file output. Everything that hits disk gets
 # divided by this; everything inside the helpers stays in mm.
 MM_PER_M = 1000.0
+import colorsys
 import math
 import re
 import struct
@@ -572,6 +573,133 @@ def write_colorful_sphere_ply(
     return path
 
 
+def write_colorful_sphere_faces_ply(
+    subdivisions: int = 3,
+    radius_mm: float = 90.0,
+) -> Path:
+    """Icosphere with per-FACE rainbow colors (``property uchar
+    red/green/blue`` on the ``element face`` block, NOT on
+    ``element vertex``). At ``subdivisions=3`` this is 642 vertices
+    / 1280 triangles.
+
+    Companion to ``colorful_sphere.ply`` (per-vertex colors). The
+    per-vertex variant is known broken in the Viam 3D scene viewer
+    (renders as a single uniform tint — see LESSONS.md::
+    mesh-metadata-colors-only-uses-first-color). The per-FACE
+    variant is **untested** as of 0.0.x — this asset exists so the
+    viz team can observe what the viewer does with face-level
+    colors. Plausible outcomes:
+
+      - Same broken behavior (uniform tint = first face's color)
+      - Per-face rendering works (would be the surprising win)
+      - Parser ignores the face-level color properties entirely
+        and falls back to default fill
+    """
+    verts_mm, faces = _subdivision_icosphere(subdivisions, radius_mm)
+    # One RGB per face, derived from the face centroid's longitude.
+    face_colors: list = []
+    for (i0, i1, i2) in faces:
+        cx = (verts_mm[i0][0] + verts_mm[i1][0] + verts_mm[i2][0]) / 3.0
+        cy = (verts_mm[i0][1] + verts_mm[i1][1] + verts_mm[i2][1]) / 3.0
+        hue = (math.atan2(cy, cx) + math.pi) / (2 * math.pi)
+        r, g, b = colorsys.hsv_to_rgb(hue, 1.0, 1.0)
+        face_colors.append((int(r * 255), int(g * 255), int(b * 255)))
+
+    header = [
+        "ply",
+        "format ascii 1.0",
+        f"element vertex {len(verts_mm)}",
+        "property float x",
+        "property float y",
+        "property float z",
+        f"element face {len(faces)}",
+        "property list uchar int vertex_indices",
+        "property uchar red",
+        "property uchar green",
+        "property uchar blue",
+        "end_header",
+    ]
+    lines = list(header)
+    for (x, y, z) in verts_mm:
+        lines.append(f"{x / 1000.0:.6f} {y / 1000.0:.6f} {z / 1000.0:.6f}")
+    for (i0, i1, i2), (r, g, b) in zip(faces, face_colors):
+        lines.append(f"3 {i0} {i1} {i2} {r} {g} {b}")
+    path = OUT / "colorful_sphere_faces.ply"
+    path.write_bytes(("\n".join(lines) + "\n").encode("ascii"))
+    return path
+
+
+def write_uv_sphere_ply(
+    subdivisions: int = 3,
+    radius_mm: float = 90.0,
+) -> Path:
+    """Icosphere with per-vertex texture coordinates (``property
+    float s/t``) and a ``comment TextureFile uv_sphere.png`` header.
+    No vertex colors, no per-face colors — just position + UV.
+
+    Companion to ``colorful_sphere.ply``. The Viam 3D scene viewer
+    is **not known** to support textured meshes — ``commonpb.Mesh``
+    has no texture-bytes field and the visualization library has no
+    texture API surface — but PLY format supports UV coords
+    natively, so the question this asset answers is: what does the
+    viewer do when it receives a PLY whose header declares UV
+    properties?
+
+    Plausible outcomes:
+
+      - Parse succeeds, UVs ignored, mesh renders as default-fill
+        gray (most likely — the proto has nowhere to deliver the
+        texture even if the parser noticed)
+      - Parser chokes on the unexpected vertex properties and the
+        mesh is dropped silently
+      - Viewer derives vertex colors from UV (s,t → R,G channels,
+        creative but unlikely)
+
+    The asset deliberately ships **without** a corresponding image
+    file — the comment names ``uv_sphere.png`` but no file is
+    shipped. The wire format has no slot for the texture bytes
+    regardless, so even if a file were committed it couldn't reach
+    the viewer.
+    """
+    verts_mm, faces = _subdivision_icosphere(subdivisions, radius_mm)
+
+    # Per-vertex UV from spherical coords: s = longitude / 2π + 0.5;
+    # t = (latitude / π) + 0.5. Both in [0, 1].
+    uvs: list = []
+    for (x, y, z) in verts_mm:
+        r = math.sqrt(x * x + y * y + z * z) or 1.0
+        nz = z / r
+        s = (math.atan2(y, x) + math.pi) / (2 * math.pi)
+        t = (math.asin(max(-1.0, min(1.0, nz))) + math.pi / 2) / math.pi
+        uvs.append((s, t))
+
+    header = [
+        "ply",
+        "format ascii 1.0",
+        "comment TextureFile uv_sphere.png",
+        f"element vertex {len(verts_mm)}",
+        "property float x",
+        "property float y",
+        "property float z",
+        "property float s",
+        "property float t",
+        f"element face {len(faces)}",
+        "property list uchar int vertex_indices",
+        "end_header",
+    ]
+    lines = list(header)
+    for (x, y, z), (s, t) in zip(verts_mm, uvs):
+        lines.append(
+            f"{x / 1000.0:.6f} {y / 1000.0:.6f} {z / 1000.0:.6f} "
+            f"{s:.6f} {t:.6f}"
+        )
+    for (i0, i1, i2) in faces:
+        lines.append(f"3 {i0} {i1} {i2}")
+    path = OUT / "uv_sphere.ply"
+    path.write_bytes(("\n".join(lines) + "\n").encode("ascii"))
+    return path
+
+
 def write_colorful_sphere_pcd(
     n_points: int = 8000,
     radius_mm: float = 90.0,
@@ -788,6 +916,8 @@ if __name__ == "__main__":
         write_torus_ply(),
         write_teapot_ply(),
         write_colorful_sphere_ply(),
+        write_colorful_sphere_faces_ply(),
+        write_uv_sphere_ply(),
         write_colorful_sphere_pcd(),
         write_bunny_stl(),
         write_helix_pcd(),
