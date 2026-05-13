@@ -34,10 +34,26 @@ from typing import Any, List, Mapping
 # Label sizing — must match scripts/generate_assets.py.
 ITEM_LABEL_HEIGHT_MM = 25.0
 ROW_LABEL_HEIGHT_MM = 70.0
-# Vertical distance from an item's pose to its label.
-ITEM_LABEL_Z_OFFSET_MM = 250.0
-# Vertical distance from a row's nominal Y to its row-label Z height.
-ROW_LABEL_Z_OFFSET_MM = 700.0
+# Vertical distance from an item's pose to its label. Negative so
+# labels sit BELOW the items they describe (less visual collision
+# with animated geometry that may swing upward).
+ITEM_LABEL_Z_OFFSET_MM = -180.0
+# Row labels sit inline with their row's items (same Z plane).
+ROW_LABEL_Z_OFFSET_MM = 0.0
+
+# Item-label color palette — dark, varied. Cycled by deterministic
+# hash of the label text so the same label always gets the same
+# color across reconfigure cycles.
+ITEM_LABEL_COLORS = (
+    {"r": 50,  "g": 50,  "b": 50},   # near-black
+    {"r": 90,  "g": 30,  "b": 90},   # dark plum
+    {"r": 30,  "g": 70,  "b": 50},   # dark teal-green
+    {"r": 110, "g": 60,  "b": 30},   # dark sienna
+    {"r": 30,  "g": 50,  "b": 100},  # dark navy
+)
+# Row labels stay one consistent color so the row-name pattern is
+# visually distinct from the item-label cycle.
+ROW_LABEL_COLOR = {"r": 30, "g": 30, "b": 80}
 
 
 PRESET_NAMES = (
@@ -96,7 +112,7 @@ def _label_for(
     height_mm: float = ITEM_LABEL_HEIGHT_MM,
     z_offset_mm: float = ITEM_LABEL_Z_OFFSET_MM,
 ) -> Mapping[str, Any]:
-    """Build a label-mesh item floating above ``item``."""
+    """Build a label-mesh item floating below ``item``."""
     target_label = item["label"]
     base_pose = item.get("pose") or {}
     pose = {
@@ -105,13 +121,19 @@ def _label_for(
         "z": float(base_pose.get("z", 0.0)) + z_offset_mm,
         "ox": 0, "oy": 0, "oz": 1, "theta": 0,
     }
+    # Deterministic per-label color so the same item always gets
+    # the same swatch. sum-of-ords gives stable distribution
+    # without needing the full hash module.
+    color = ITEM_LABEL_COLORS[
+        sum(ord(c) for c in target_label) % len(ITEM_LABEL_COLORS)
+    ]
     return {
         "type": "mesh",
         "label": f"label_{target_label}",
         "pose": pose,
         "mesh_path": f"assets/{_label_asset_filename(target_label, height_mm)}",
-        "color": {"r": 220, "g": 220, "b": 220},
-        "opacity": 0.9,
+        "color": dict(color),
+        "opacity": 1.0,
         "animation": {"mode": "none"},
     }
 
@@ -132,13 +154,15 @@ def _row_label(
     x: float = -2000.0,
     z: float = ROW_LABEL_Z_OFFSET_MM,
 ) -> Mapping[str, Any]:
-    """Build a large text-label-mesh item naming a row in ``all``."""
+    """Build a large text-label-mesh item naming a row in ``all``.
+    Positioned inline with the row's items (same Z plane) at ``x``
+    (typically just to the left of the leftmost item in the row)."""
     return {
         "type": "mesh",
         "label": f"label_row_{row_name}",
         "pose": _identity_pose(x=x, y=y, z=z),
         "mesh_path": f"assets/{_label_asset_filename(row_name, ROW_LABEL_HEIGHT_MM)}",
-        "color": {"r": 255, "g": 255, "b": 255},
+        "color": dict(ROW_LABEL_COLOR),
         "opacity": 1.0,
         "animation": {"mode": "none"},
     }
@@ -962,14 +986,18 @@ def all_preset() -> List[Mapping[str, Any]]:
     # Arm row gets the wide gap.
     items.extend(_offset_base_items_y(_with_item_labels(frame_composition()), 2 * row + arm_gap))
 
-    # Row-name labels at the left edge of each row. Big enough to read
-    # across the whole scene. X is well to the left of every row so
-    # they don't collide with any items.
+    # Row-name labels at the left edge of each row, inline with the
+    # row's items (same Z plane). Sit at x = -2200 so they extend to
+    # roughly x ∈ [-2600, -1800] for the wider names, just to the
+    # left of every row's leftmost item without overlap.
     row_label_x = -2200.0
     items.append(_row_label("trajectory_preview", y=-2 * row, x=row_label_x))
     items.append(_row_label("orientation_vectors", y=-row, x=row_label_x))
     items.append(_row_label("primitives", y=0.0, x=row_label_x))
     items.append(_row_label("lifecycle_demo", y=row, x=row_label_x))
+    # force_vector_demo and geometry_morph share the same row Y
+    # (2 * row); split their labels by ±70 mm in Y so the names
+    # don't overlap.
     items.append(_row_label("force_vector_demo", y=2 * row - 70.0, x=row_label_x))
     items.append(_row_label("geometry_morph", y=2 * row + 70.0, x=row_label_x))
     items.append(_row_label("frame_composition", y=2 * row + arm_gap, x=row_label_x))

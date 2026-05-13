@@ -991,14 +991,22 @@ def text_to_ply(text: str, height_mm: float, depth_mm: float = LABEL_DEPTH_MM) -
         raise ValueError(f"text {text!r} has zero-height bounding box")
     mesh.apply_scale((height_mm / y_span) / MM_PER_M)
 
-    # Rotate -90° around X so the text reads in the XZ plane (vertical
-    # plaque) with the front face pointing +Y. Vertical text is
-    # readable from most orbit-camera positions; flat-on-ground is
-    # only readable from directly above. The sign matters: +90°
-    # would point the front face at -Y, requiring the user to orbit
-    # 180° to read.
-    rot = trimesh.transformations.rotation_matrix(-math.pi / 2, [1, 0, 0])
-    mesh.apply_transform(rot)
+    # Goal: text upright (text-Y aligned with world-Z) AND front face
+    # pointing +Y so the default Viam viewer camera reads it
+    # straight on.
+    #
+    # Going from "text in XY plane, +Y up, extruded +Z" to "text in
+    # XZ plane, +Z up, front face at +Y" has determinant -1 (it
+    # mixes X/Y/Z with a swap), so a SINGLE rotation can't do it
+    # without flipping handedness. Compose two rotations:
+    #   1) +90° around X      → text upright, front face at -Y
+    #   2) 180° around Z      → reflects to front face at +Y, but
+    #                           reverses world-X reading direction
+    # Because the camera at +Y looking back at -Y sees world-X
+    # mirrored on screen, the world-X reversal cancels out — text
+    # reads left-to-right from the default camera angle.
+    mesh.apply_transform(trimesh.transformations.rotation_matrix(math.pi / 2, [1, 0, 0]))
+    mesh.apply_transform(trimesh.transformations.rotation_matrix(math.pi, [0, 0, 1]))
 
     # Center on (X, Z); rest Y on 0 so the host item's pose lifts the
     # whole plaque to the desired world position.
