@@ -42,7 +42,13 @@ The bug is in the discoverability: a module author reading the proto definition 
 - `rdk/spatialmath/mesh.go` ToProtobuf comment: *"Meshes are always converted to PLY format for compatibility with the visualizer. The visualizer expects all meshes to be in PLY format."*
 - No reference module emits `content_type: "stl"` on a Transform — only `content_type: "ply"`.
 
-**Fix.** `geometries.stl_to_ply()` does a pure-Python binary STL → ASCII PLY conversion at load time. `build_mesh()` rejects any non-PLY content_type at construction so the constraint can't silently regress. README points users at `trimesh` for offline conversion of GLTF/GLB/OBJ → PLY.
+**Fix.** `geometries.stl_to_ply()` does a pure-Python binary STL → ASCII PLY conversion at load time. `build_mesh()` rejects any non-PLY content_type at construction (the `allow_non_ply=True` opt-out exists only for the playground's bug-demo) so the constraint can't silently regress. README points users at `trimesh` for offline conversion of GLTF/GLB/OBJ → PLY.
+
+**Playground demos.**
+
+- Working: [`demo_bunny`](https://github.com/viam-labs/example-visualizations-python/blob/main/src/presets.py#L135-L145) — same STL, run through `stl_to_ply` at load time; viewer receives PLY and renders.
+- Broken: [`demo_bunny_raw_stl`](https://github.com/viam-labs/example-visualizations-python/blob/main/src/presets.py#L153-L163) — `raw_stl: true` skips the conversion, ships raw STL bytes with `content_type="stl"`; viewer drops it silently (empty space immediately right of the working twin).
+- Code path: [`src/service.py` mesh dispatch](https://github.com/viam-labs/example-visualizations-python/blob/main/src/service.py#L146-L154) (where `raw_stl` is checked) and [`build_mesh` in `src/geometries.py`](https://github.com/viam-labs/example-visualizations-python/blob/main/src/geometries.py#L445-L477) (where `allow_non_ply` gates the content_type check).
 
 ### pcd-header
 
@@ -276,6 +282,16 @@ at uniform-tint and high-resolution color belongs to point clouds.
     viewer parse PLY with UV props (gray render), choke on them
     (drop silently), or derive vertex colors from UV (creative)?
 
+**Playground demos.**
+
+- Broken (per-vertex colors collapse to one): [`demo_colorful_sphere_mesh`](https://github.com/viam-labs/example-visualizations-python/blob/main/src/presets.py#L194-L202) + asset [`assets/colorful_sphere.ply`](https://github.com/viam-labs/example-visualizations-python/blob/main/assets/colorful_sphere.ply) (642 vertices, each with rainbow RGB)
+- Untested (per-face colors): [`demo_colorful_sphere_faces_mesh`](https://github.com/viam-labs/example-visualizations-python/blob/main/src/presets.py#L209-L217) + asset [`assets/colorful_sphere_faces.ply`](https://github.com/viam-labs/example-visualizations-python/blob/main/assets/colorful_sphere_faces.ply) (`property uchar r/g/b` on `element face`)
+- Untested (UV map): [`demo_uv_sphere_mesh`](https://github.com/viam-labs/example-visualizations-python/blob/main/src/presets.py#L226-L234) + asset [`assets/uv_sphere.ply`](https://github.com/viam-labs/example-visualizations-python/blob/main/assets/uv_sphere.ply) (`property float s/t` per vertex + `comment TextureFile` header)
+- Working reference (PCD per-point RGB): [`demo_colorful_sphere`](https://github.com/viam-labs/example-visualizations-python/blob/main/src/presets.py#L241-L251) + asset [`assets/colorful_sphere.pcd`](https://github.com/viam-labs/example-visualizations-python/blob/main/assets/colorful_sphere.pcd)
+- Code path: [`extract_ply_vertex_colors`](https://github.com/viam-labs/example-visualizations-python/blob/main/src/geometries.py#L50-L123) and [`build_metadata`](https://github.com/viam-labs/example-visualizations-python/blob/main/src/geometries.py#L126) (where PLY vertex colors are transcoded into `metadata.colors`)
+
+All four demos sit side-by-side in the `primitives` preset — three broken/untested mesh siblings followed immediately by the working PCD reference. Reading left to right tells the story.
+
 ### invisible-intermediate-frames-for-extra-spin-axes
 
 **Finding.** Adding a rotation that's independent of all the parents above it requires an **invisible intermediate frame** carrying its own spin animation. Our `spin` mode modulates `theta`, which rotates around the entity's local Z axis. Without an intermediate frame, every entity in the chain spins around the same axis (its inherited local Z = its parent's local Z, etc., all the way up to whatever orientation is set at the root).
@@ -330,6 +346,13 @@ The label is preserved for human readability; only the on-wire UUID rotates. ``l
 **Why this isn't elsewhere.** Modes that update via UPDATED (oscillate, spin, swing, pulse, trajectory, force_vector, breathe) don't hit the cache: those entities never emit REMOVED. Modes that DO emit REMOVED+ADDED — versioned-strategy ticks and flicker — must rotate UUIDs. The service's versioned-strategy branch already does this; the flicker branch now does too.
 
 **File for the viz team.** The renderer should treat a REMOVED UUID as eligible for re-ADD. Caching it as "ever seen → ignore" silently breaks every animation that wants to mutate scene membership over time, AND every page refresh is its own correctness fix. Workaround cost: modules have to rotate UUIDs they otherwise want to keep stable for clean ``list_uuids`` semantics.
+
+**Playground demos.** The `geometry_morph` preset has [two side-by-side 5×5 flickering sphere grids](https://github.com/viam-labs/example-visualizations-python/blob/main/src/presets.py#L1050-L1098):
+
+- Working (green grid, `rotate_uuid_on_readd=True`): re-appears every flicker cycle indefinitely.
+- Broken (red grid, `rotate_uuid_on_readd=False`): disappears once on the first REMOVED, then never re-appears until the page is refreshed. Same code path as the green grid; only difference is whether the UUID rotates on the rising edge.
+
+The contrast at a glance is the demo: half the grid keeps flickering, half stays gone. Tick code that rotates the UUID lives in [`service._tick_once`](https://github.com/viam-labs/example-visualizations-python/blob/main/src/service.py).
 
 ### scene-graph-mutation-from-animation-tick
 
