@@ -991,11 +991,13 @@ def text_to_ply(text: str, height_mm: float, depth_mm: float = LABEL_DEPTH_MM) -
         raise ValueError(f"text {text!r} has zero-height bounding box")
     mesh.apply_scale((height_mm / y_span) / MM_PER_M)
 
-    # Rotate 90° around X so the text reads in the XZ plane (vertical
-    # plaque facing ±Y) rather than the XY plane (lying flat on the
-    # ground). Vertical text is readable from most orbit-camera
-    # positions; flat-on-ground is only readable from directly above.
-    rot = trimesh.transformations.rotation_matrix(math.pi / 2, [1, 0, 0])
+    # Rotate -90° around X so the text reads in the XZ plane (vertical
+    # plaque) with the front face pointing +Y. Vertical text is
+    # readable from most orbit-camera positions; flat-on-ground is
+    # only readable from directly above. The sign matters: +90°
+    # would point the front face at -Y, requiring the user to orbit
+    # 180° to read.
+    rot = trimesh.transformations.rotation_matrix(-math.pi / 2, [1, 0, 0])
     mesh.apply_transform(rot)
 
     # Center on (X, Z); rest Y on 0 so the host item's pose lifts the
