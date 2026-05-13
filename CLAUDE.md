@@ -6,7 +6,7 @@ Operational context for future agents working on this repo. Read alongside `READ
 
 A Viam world-state-store service module that adds every supported geometry primitive (box, sphere, capsule, point, mesh PLY/STL, point cloud PCD) to the Viam 3D scene viewer. Single model:
 
-- **GitHub:** `viam-labs/example-visualizations`
+- **GitHub:** `viam-labs/example-visualizations-python`
 - **Registry:** `viam:example-visualizations` (was `shrews-testing:example-visualizations` through 0.0.6; moved at 0.0.7)
 - **Model:** `viam:example-visualizations:scene-primitives`
 - **API:** `rdk:service:world_state_store`

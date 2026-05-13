@@ -2,7 +2,7 @@
   "$schema": "https://dl.viam.dev/module.schema.json",
   "module_id": "viam:example-visualizations",
   "visibility": "public",
-  "url": "https://github.com/viam-labs/example-visualizations",
+  "url": "https://github.com/viam-labs/example-visualizations-python",
   "description": "Playground module that adds every supported geometry primitive (box, sphere, capsule, point, mesh PLY/STL, point cloud) to the Viam 3D scene viewer. Runtime DoCommands let you add/remove/update items, swap meshes, animate, snapshot the current scene back to a pasteable config, and toggle the renderer UUID strategy between stable+UPDATED (RDK fake pattern) and versioned (apriltag-tracker pattern). Default config emits one of every primitive in a row along X.",
   "models": [
     {
