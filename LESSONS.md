@@ -1,6 +1,6 @@
 # LESSONS.md — accumulated findings
 
-A running log of every non-obvious thing we've learned working on `viam:example-visualizations`. The findings here are the source material for four downstream deliverables:
+A running log of every non-obvious thing we've learned working on `viam:example-visualizations-python`. The findings here are the source material for four downstream deliverables:
 
 - **Tutorial** for new users building world-state-store modules
 - **CLAUDE.md** in this repo (already exists; this doc is its longer-form backing store)

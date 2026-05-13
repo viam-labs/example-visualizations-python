@@ -7,8 +7,8 @@ Operational context for future agents working on this repo. Read alongside `READ
 A Viam world-state-store service module that adds every supported geometry primitive (box, sphere, capsule, point, mesh PLY/STL, point cloud PCD) to the Viam 3D scene viewer. Single model:
 
 - **GitHub:** `viam-labs/example-visualizations-python`
-- **Registry:** `viam:example-visualizations` (was `shrews-testing:example-visualizations` through 0.0.6; moved at 0.0.7)
-- **Model:** `viam:example-visualizations:scene-primitives`
+- **Registry:** `viam:example-visualizations-python` (was `viam:example-visualizations` through 0.0.37; was `shrews-testing:example-visualizations` through 0.0.6)
+- **Model:** `viam:example-visualizations-python:playground`
 - **API:** `rdk:service:world_state_store`
 - **Target machine for testing:** `desktop-dell-2` (machine ID `934a26e4-7b00-455e-a8c6-abe896a003a6`, main part `d339b8d7-1c0d-4d4d-b921-5356cedf3124`)
 
@@ -61,7 +61,7 @@ Coverage focuses on:
 To deploy on `desktop-dell-2`, either:
 
 - Use the Viam app UI to bump the pinned version on the service config, or
-- Hand the user a JSON config block to paste — the `modules` array entry pins `module_id: viam:example-visualizations` to the new `version`, and the `services` array entry references `viam:example-visualizations:scene-primitives` with optional `attributes` (e.g. `preset`).
+- Hand the user a JSON config block to paste — the `modules` array entry pins `module_id: viam:example-visualizations-python` to the new `version`, and the `services` array entry references `viam:example-visualizations-python:playground` with optional `attributes` (e.g. `preset`).
 
 ## Architecture
 
@@ -109,7 +109,7 @@ These are the load-bearing facts an agent working in this repo needs to know up 
 - **`validate_config` must return `Tuple[Sequence[str], Sequence[str]]`.** Required deps, then optional deps. A bare list produces a runtime warning and treats optional deps as empty.
 - **Versioned UUIDs need a strictly-monotonic counter, not just `int(time.time() * 1000)`.** Multiple emissions in the same millisecond collide. Service uses a module-global counter as tiebreaker.
 - **`viam machines part add-resource` adds the service but NOT the module declaration.** Use `viam module reload --part-id ... --model-name ... --resource-name ...` to add both together. Or paste a config snippet containing both `modules` and `services` arrays.
-- **The viam-dev org's registry namespace is `viam`** (not `viam-dev`). Run `viam organizations list` to see org-name → namespace mapping. The module ID is `viam:example-visualizations`.
+- **The viam-dev org's registry namespace is `viam`** (not `viam-dev`). Run `viam organizations list` to see org-name → namespace mapping. The module ID is `viam:example-visualizations-python`.
 - **`viam-labs` is a GitHub org but not a Viam registry namespace** on this account. Apriltag-tracker uses the same split: GitHub at viam-labs, registry at the user's org namespace.
 - **Field-mask paths MUST be camelCase, not snake_case.** The official worldstatestore guide says snake_case, but the renderer empirically only honors the camelCase paths the RDK fake at `moving_geos_world.go` emits. 0.0.32 attempted snake_case → every UPDATED event silently dropped → zero visible animations. Reverted in 0.0.33; the camelCase constants in `animation.py::PATH_*` are now the source of truth. See `LESSONS.md::snake-case-field-mask-paths-do-not-work`.
 - **Chunked delivery for point clouds is experimental, schema unverified.** `pointcloud` items can carry `chunked: true` + `chunk_size: N`. The service splits the PCD into N-point slices, ships chunk 0 inline with a `metadata.chunks` sub-struct, and exposes the rest via the `get_entity_chunk` DoCommand. Whether the viewer actually calls `get_entity_chunk` or reads `metadata.chunks` is **not verified** — the `viamrobotics/visualization` repo (the canonical source) is not on this filesystem. The chunked sibling of the helix in `primitives` sits next to the un-chunked one specifically so any rendering gap is visible at a glance. See `LESSONS.md::chunked-delivery-schema`.

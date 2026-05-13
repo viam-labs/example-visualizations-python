@@ -1,4 +1,4 @@
-"""Animation modes for the scene-primitives playground.
+"""Animation modes for the example-visualizations-python playground.
 
 An item's `animation` block selects a mode and per-mode params. At each
 tick, ``compute_tick`` returns the per-item pose + geometry overrides

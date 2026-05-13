@@ -6,7 +6,7 @@ Viam 3D scene viewer so you can poke each one and see what its config
 knobs do.
 
 The module is a single `rdk:service:world_state_store` implementation
-called **`viam:example-visualizations:scene-primitives`**.
+called **`viam:example-visualizations-python:playground`**.
 Default config emits one of every primitive in a row along X. Runtime
 `DoCommand` verbs let you add, remove, update, animate, snapshot, and
 toggle the renderer UUID strategy without reconfiguring.
@@ -29,7 +29,7 @@ Add the service to a machine, no config attributes needed:
       "name": "scene",
       "namespace": "rdk",
       "type": "world_state_store",
-      "model": "viam:example-visualizations:scene-primitives",
+      "model": "viam:example-visualizations-python:playground",
       "attributes": {}
     }
   ]

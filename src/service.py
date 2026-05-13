@@ -1,4 +1,4 @@
-"""``scene-primitives`` — a WorldStateStore service that publishes a
+"""``playground`` — a WorldStateStore service that publishes a
 configurable set of primitives to the Viam 3D scene viewer.
 
 This is the playground entrypoint. It owns:
@@ -212,7 +212,7 @@ class SceneSprites(WorldStateStore, EasyResource):
     """
 
     MODEL: ClassVar[Model] = Model(
-        ModelFamily("viam", "example-visualizations"), "scene-primitives",
+        ModelFamily("viam", "example-visualizations-python"), "playground",
     )
 
     def __init__(self, name: str):
