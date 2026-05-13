@@ -961,9 +961,13 @@ def text_to_ply(text: str, height_mm: float, depth_mm: float = LABEL_DEPTH_MM) -
         if len(p) < 3:
             continue
         arr = np.asarray(p)
-        # Signed area: CCW > 0 (outer); CW < 0 (hole).
+        # Matplotlib's TextPath returns outer contours as CW (signed
+        # area < 0) and inner holes as CCW (signed area > 0). This is
+        # the OPPOSITE of the typical OpenGL / shapefile convention,
+        # so don't trust intuition here — check with a known
+        # one-hole glyph (`O`) if the orientation seems off.
         sa = 0.5 * np.sum(arr[:-1, 0] * arr[1:, 1] - arr[1:, 0] * arr[:-1, 1])
-        (outers if sa > 0 else holes).append(arr)
+        (outers if sa < 0 else holes).append(arr)
 
     if not outers:
         raise ValueError(f"text {text!r} produced no outer contours")
