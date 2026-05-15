@@ -28,19 +28,23 @@ duplicate didn't earn its keep.
 import colorsys
 import math
 import re
-from typing import Any, List, Mapping
+from typing import Any, List, Mapping, Tuple
 
 from src.visuals import (
     Arrow,
     Box,
+    Breathe,
     Capsule,
+    Flicker,
     ForceVector,
     Lifecycle,
     Mesh,
     Point,
     PointCloud,
     Pose,
+    Pulse,
     Sphere,
+    Trajectory,
 )
 
 
@@ -296,24 +300,20 @@ def color_wheel(count: int = 10, ring_radius_mm: float = 300.0) -> List[Mapping[
     """``count`` spheres around a circle in the XY plane, hue swept
     uniformly through the color wheel. Visually shows what
     ``metadata.color`` accepts."""
-    items = []
+    visuals = []
     for i in range(count):
         hue = i / count
         r, g, b = colorsys.hsv_to_rgb(hue, 1.0, 1.0)
         angle = 2 * math.pi * i / count
-        items.append({
-            "type": "sphere",
-            "label": f"wheel_{i:02d}",
-            "pose": _identity_pose(
-                x=ring_radius_mm * math.cos(angle),
-                y=ring_radius_mm * math.sin(angle),
-            ),
-            "radius_mm": 60,
-            "color": {"r": int(255 * r), "g": int(255 * g), "b": int(255 * b)},
-            "opacity": 1.0,
-            "animation": {"mode": "none"},
-        })
-    return items
+        visuals.append(Sphere(
+            f"wheel_{i:02d}",
+            pose=Pose.at(x=ring_radius_mm * math.cos(angle),
+                         y=ring_radius_mm * math.sin(angle)),
+            radius_mm=60,
+            color=(int(255 * r), int(255 * g), int(255 * b)),
+            opacity=1.0,
+        ))
+    return [v.to_item_dict() for v in visuals]
 
 
 def robot_arm() -> List[Mapping[str, Any]]:
@@ -895,21 +895,15 @@ def trajectory_preview() -> List[Mapping[str, Any]]:
         {"x": 1000, "y":    0, "z":    0, "theta":   0},
     ]
     waypoints = _waypoints_with_tangent_orientations(positions)
-
-    items: List[Mapping[str, Any]] = []
+    visuals: List[Any] = []
 
     # Waypoint markers — small translucent spheres with axes helpers.
     for i, wp in enumerate(waypoints):
-        items.append({
-            "type": "sphere",
-            "label": f"traj_wp_{i:02d}",
-            "pose": dict(wp),
-            "radius_mm": 18,
-            "color": {"r": 200, "g": 200, "b": 220},
-            "opacity": 0.45,
-            "show_axes_helper": True,
-            "animation": {"mode": "none"},
-        })
+        visuals.append(Sphere(
+            f"traj_wp_{i:02d}", pose=wp,
+            radius_mm=18, color=(200, 200, 220), opacity=0.45,
+            show_axes_helper=True,
+        ))
 
     # Line segments connecting adjacent waypoints — thin capsules
     # whose local +Z is aligned to the segment direction. (The wire
@@ -923,50 +917,28 @@ def trajectory_preview() -> List[Mapping[str, Any]]:
         seg_len = math.sqrt(dx * dx + dy * dy + dz * dz)
         if seg_len < 1e-6:
             continue
-        midpoint = {
-            "x": (a["x"] + b["x"]) / 2.0,
-            "y": (a["y"] + b["y"]) / 2.0,
-            "z": (a["z"] + b["z"]) / 2.0,
-        }
-        items.append({
-            "type": "capsule",
-            "label": f"traj_seg_{i:02d}",
-            "pose": {
-                **midpoint,
-                "ox": dx / seg_len,
-                "oy": dy / seg_len,
-                "oz": dz / seg_len,
-                "theta": 0,
-            },
-            "radius_mm": 5,
-            "length_mm": seg_len,
-            "color": {"r": 100, "g": 130, "b": 240},
-            "opacity": 0.95,
-            "animation": {"mode": "none"},
-        })
+        visuals.append(Capsule(
+            f"traj_seg_{i:02d}",
+            pose=Pose.at(
+                x=(a["x"] + b["x"]) / 2.0,
+                y=(a["y"] + b["y"]) / 2.0,
+                z=(a["z"] + b["z"]) / 2.0,
+                ox=dx / seg_len, oy=dy / seg_len, oz=dz / seg_len,
+            ),
+            radius_mm=5, length_mm=seg_len,
+            color=(100, 130, 240), opacity=0.95,
+        ))
 
     # The "runner" — moving frame that walks the trajectory and
     # passes through each waypoint with the interpolated rotation.
-    # Kept smaller than the original (45 → 28 mm) so it reads as a
-    # moving cursor rather than dominating the scene; opacity stays
-    # high so the bright red marker is still the focal point.
-    items.append({
-        "type": "sphere",
-        "label": "traj_runner",
-        "pose": dict(waypoints[0]),
-        "radius_mm": 28,
-        "color": {"r": 230, "g": 40, "b": 80},
-        "opacity": 0.9,
-        "show_axes_helper": True,
-        "animation": {
-            "mode": "trajectory",
-            "waypoints": [dict(wp) for wp in waypoints],
-            "duration_s": 12.0,
-            "loop": True,
-        },
-    })
-
-    return items
+    visuals.append(Sphere(
+        "traj_runner", pose=waypoints[0],
+        radius_mm=28, color=(230, 40, 80), opacity=0.9,
+        show_axes_helper=True,
+        animation=Trajectory(waypoints=[dict(wp) for wp in waypoints],
+                             duration_s=12.0, loop=True),
+    ))
+    return [v.to_item_dict() for v in visuals]
 
 
 def geometry_morph() -> List[Mapping[str, Any]]:
@@ -984,112 +956,67 @@ def geometry_morph() -> List[Mapping[str, Any]]:
     mode (per-item opacity 0 vs 1 toggling) and a phase-offset
     pattern that gives the row a coordinated rolling appearance.
     """
-    items: List[Mapping[str, Any]] = []
+    visuals: List[Any] = []
     slot_x = 0.0
 
-    # Pulsing sphere.
-    items.append({
-        "type": "sphere",
-        "label": "morph_pulse_sphere",
-        "pose": _identity_pose(x=slot_x),
-        "radius_mm": 70,
-        "color": {"r": 230, "g": 60, "b": 100},
-        "opacity": 1.0,
-        "animation": {
-            "mode": "pulse",
-            "amplitude_mm": 35,
-            "period_s": 3,
-        },
-    })
+    # Pulsing sphere — radius animates by ±35 mm.
+    visuals.append(Sphere("morph_pulse_sphere", pose=Pose.at(x=slot_x),
+                          radius_mm=70, color=(230, 60, 100), opacity=1.0,
+                          animation=Pulse(amplitude_mm=35, period_s=3)))
     slot_x += 350
 
     # Box stretching along Z only (length).
-    items.append({
-        "type": "box",
-        "label": "morph_stretch_box",
-        "pose": _identity_pose(x=slot_x),
-        "dims_mm": {"x": 100, "y": 100, "z": 150},
-        "color": {"r": 100, "g": 180, "b": 230},
-        "opacity": 1.0,
-        "animation": {
-            "mode": "pulse",
-            "axis": "z",
-            "amplitude_mm": 100,
-            "period_s": 4,
-        },
-    })
+    visuals.append(Box("morph_stretch_box", pose=Pose.at(x=slot_x),
+                       dims_mm=(100, 100, 150),
+                       color=(100, 180, 230), opacity=1.0,
+                       animation=Pulse(amplitude_mm=100, period_s=4, axis="z")))
     slot_x += 350
 
-    # Capsule breathing in opacity. Period dropped from 4 s to 1.5 s
-    # so the change is obvious at a glance — at 4 s the cycle was
-    # slow enough to read as "static, ish".
-    items.append({
-        "type": "capsule",
-        "label": "morph_breathe_capsule",
-        "pose": _identity_pose(x=slot_x),
-        "radius_mm": 45,
-        "length_mm": 240,
-        "color": {"r": 220, "g": 200, "b": 60},
-        "opacity": 0.7,
-        "animation": {
-            "mode": "breathe",
-            "amplitude": 0.55,
-            "period_s": 1.5,
-        },
-    })
+    # Capsule breathing in opacity (1.5 s so the change is obvious;
+    # at 4 s the cycle read as "static, ish").
+    visuals.append(Capsule("morph_breathe_capsule", pose=Pose.at(x=slot_x),
+                           radius_mm=45, length_mm=240,
+                           color=(220, 200, 60), opacity=0.7,
+                           animation=Breathe(amplitude=0.55, period_s=1.5)))
     slot_x += 380
 
     # Two 5×5 grids of flickering spheres side by side. Phase-offset
-    # by grid position so the wave rolls diagonally across each
-    # grid. The LEFT grid (green) uses the default
-    # rotate_uuid_on_readd=True so it actually re-appears every
-    # cycle. The RIGHT grid (red) sets rotate_uuid_on_readd=False
-    # — that re-uses the entity's original UUID for every ADDED
-    # event, exposing the viewer-side bug where REMOVED UUIDs are
-    # cached and subsequent ADDED events get dropped. The red grid
-    # is a teaching demo: it disappears once and then stays gone
+    # by grid position so the wave rolls diagonally across each grid.
+    # LEFT (green): rotate_uuid_on_readd=True → re-appears every
+    # cycle.
+    # RIGHT (red): rotate_uuid_on_readd=False → re-uses the entity's
+    # original UUID for every ADDED event, exposing the viewer-side
+    # bug where REMOVED UUIDs are cached and subsequent ADDED events
+    # get dropped. The red grid disappears once and then stays gone
     # until the page is refreshed. See LESSONS.md::renderer-caches-
     # removed-uuids-rotate-on-readd.
     grid_n = 5
     grid_spacing = 80.0
     period_s = 4.0
 
-    def _add_grid(prefix: str, origin_x: float, color: Mapping[str, int],
-                  rotate_uuid: bool) -> None:
+    def _add_grid(prefix: str, origin_x: float,
+                  color: Tuple[int, int, int], rotate_uuid: bool) -> None:
         for row_idx in range(grid_n):
             for col_idx in range(grid_n):
                 phase_offset = (row_idx + col_idx) / (2 * grid_n - 1) * period_s
-                items.append({
-                    "type": "sphere",
-                    "label": f"{prefix}_{row_idx}{col_idx}",
-                    "pose": _identity_pose(
-                        x=origin_x + col_idx * grid_spacing,
-                        y=row_idx * grid_spacing,
-                        z=0,
-                    ),
-                    "radius_mm": 22,
-                    "color": dict(color),
-                    "opacity": 1.0,
-                    "animation": {
-                        "mode": "flicker",
-                        "period_s": period_s,
-                        "duty_cycle": 0.55,
-                        "phase_offset_s": phase_offset,
-                        "rotate_uuid_on_readd": rotate_uuid,
-                    },
-                })
+                visuals.append(Sphere(
+                    f"{prefix}_{row_idx}{col_idx}",
+                    pose=Pose.at(x=origin_x + col_idx * grid_spacing,
+                                 y=row_idx * grid_spacing),
+                    radius_mm=22, color=color, opacity=1.0,
+                    animation=Flicker(period_s=period_s, duty_cycle=0.55,
+                                      phase_offset_s=phase_offset,
+                                      rotate_uuid_on_readd=rotate_uuid),
+                ))
 
-    # Working grid (green) — UUID rotates on each rising edge.
     working_origin_x = slot_x + 60
-    _add_grid("morph_grid", working_origin_x,
-              {"r": 80, "g": 200, "b": 140}, rotate_uuid=True)
-    # Broken-by-design grid (red) — UUID stable across re-adds.
-    # ~80 mm gap past the right edge of the working grid.
+    _add_grid("morph_grid", working_origin_x, (80, 200, 140),
+              rotate_uuid=True)
     broken_origin_x = working_origin_x + grid_n * grid_spacing + 80
-    _add_grid("morph_grid_broken", broken_origin_x,
-              {"r": 230, "g": 60, "b": 60}, rotate_uuid=False)
+    _add_grid("morph_grid_broken", broken_origin_x, (230, 60, 60),
+              rotate_uuid=False)
 
-    return items
+    return [v.to_item_dict() for v in visuals]
 
 
 def force_vector_demo() -> List[Mapping[str, Any]]:

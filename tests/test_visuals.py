@@ -312,8 +312,11 @@ def test_breathe_round_trip():
 
 def test_flicker_default_keeps_uuid_rotation_on():
     d = Flicker(period_s=4, duty_cycle=0.55).to_dict()
-    # rotate_uuid_on_readd default True → omitted (compact dict)
-    assert d == {"mode": "flicker", "period_s": 4.0, "duty_cycle": 0.55}
+    # rotate_uuid_on_readd default True → omitted (compact dict).
+    # phase_offset_s is always emitted because preset tests read it
+    # unconditionally.
+    assert d == {"mode": "flicker", "period_s": 4.0,
+                 "duty_cycle": 0.55, "phase_offset_s": 0.0}
 
 
 def test_flicker_rotate_false_propagates():

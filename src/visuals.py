@@ -480,9 +480,11 @@ class Flicker(Animation):
         out: MutableMapping[str, Any] = {
             "period_s": float(self.period_s),
             "duty_cycle": float(self.duty_cycle),
+            # phase_offset_s is always emitted (even when 0) so tests
+            # and callers can read it without a default-fallback —
+            # matches the dict-shape the hand-written presets used.
+            "phase_offset_s": float(self.phase_offset_s),
         }
-        if self.phase_offset_s:
-            out["phase_offset_s"] = float(self.phase_offset_s)
         if not self.rotate_uuid_on_readd:
             out["rotate_uuid_on_readd"] = False
         return out
