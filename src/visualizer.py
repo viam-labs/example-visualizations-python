@@ -1,6 +1,7 @@
 """``playground-visualizer`` — passive WSS that accepts pushed Scene events.
 
-Thin subclass of :class:`src.service.SceneSprites` (the monolith) that:
+Thin subclass of :class:`src.service.SceneSprites` (the
+``standalone-playground`` model) that:
 
   * Drops ``items`` / ``preset`` config — the visualizer is passive.
     Items arrive at runtime via the ``apply_events`` DoCommand from
@@ -10,9 +11,9 @@ Thin subclass of :class:`src.service.SceneSprites` (the monolith) that:
     so an in-process driver can hold a direct Python reference and
     skip the gRPC round-trip.
   * Otherwise reuses every geometry builder, asset reader, animation
-    tick, custom DoCommand verb, and metadata convention from the
-    monolith. Mesh / PCD loading, vertex-color transcoding, and
-    chunked-delivery setup all work identically.
+    tick, custom DoCommand verb, and metadata convention from
+    ``SceneSprites``. Mesh / PCD loading, vertex-color transcoding,
+    and chunked-delivery setup all work identically.
 
 The pairing with :class:`src.driver.PlaygroundDriver` is the canonical
 demonstration of the split. The architecture follows two principles:
@@ -24,7 +25,9 @@ demonstration of the split. The architecture follows two principles:
     :class:`viam_visuals.Scene` at tick rate and pushes the resulting
     events. The renderer never knows the driver exists.
 
-See ``README.md::three-model-architecture`` for the long version.
+See README.md's "Driver + visualizer quickstart" section for the
+user-facing how-to, and CLAUDE.md's "Three-model split" for the
+architectural rationale.
 """
 from __future__ import annotations
 

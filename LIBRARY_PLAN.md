@@ -298,54 +298,114 @@ Each step in 1–4 has a milestone: re-implement this module's `all` preset usin
 
 The library is alive and co-located in this repo at `viam_visuals/`,
 with a Go sibling at `example-visualizations-go/visuals/`. Public
-surface and behavior are stable; the next step is the WSS service
-base class.
+surface and behavior are stable; the architecture is validated by a
+deployed three-model example module on a real machine.
 
-**Shipped**
+**Shipped (delivery phases 1–4 from the plan above)**
 
-- Pose, Color primitives + normalization helpers.
-- `Visual` base + 7 typed shape classes (`Box`, `Sphere`, `Capsule`,
+- **Pose, Color primitives + normalization helpers.**
+- **`Visual` base + 7 typed shape classes** (`Box`, `Sphere`, `Capsule`,
   `Point`, `Arrow`, `Mesh`, `PointCloud`). Construction-time
-  validation; ``.to_dict()`` produces the wire-format item dict.
-- 11 typed animation specs (`Static`, `Spin`, `Swing`, `Oscillate`,
-  `Orbit`, `Pulse`, `Breathe`, `Flicker`, `Lifecycle`,
-  `ForceVector`, `Trajectory`).
-- 3 composites (`CoordinateFrame`, `Line`, `BoundingBox`) plus
-  `Arrow.from_to` factory.
-- Asset I/O internalized: PLY / STL / PCD parsers, the metadata
+  validation; `to_dict()` (Python) / `ToItem()` (Go) produces the
+  wire-format item dict.
+- **11 typed animation specs** (`Static`, `Spin`, `Swing`, `Oscillate`,
+  `Orbit`, `Pulse`, `Breathe`, `Flicker`, `Lifecycle`, `ForceVector`,
+  `Trajectory`).
+- **3 composites** (`CoordinateFrame`, `Line`, `BoundingBox`) plus
+  `Arrow.from_to` / `ArrowFromTo` factory.
+- **Asset I/O internalized**: PLY / STL / PCD parsers, the metadata
   Struct builder, the procedural arrow generator. Lives in
   `_internal/` (Python) and the top-level visuals package (Go).
-- UUID strategy helpers (`initial_uuid`, `versioned_uuid`,
+- **UUID strategy helpers** (`initial_uuid`, `versioned_uuid`,
   `VALID_STRATEGIES`).
-- All 11 playground presets rewritten using the typed surface.
-- 309 Python tests, all green.
+- **All playground presets rewritten using the typed surface.**
+- **`Scene` class with object-based mutation API** — `scene.add(v)`,
+  `bbox.pose = new; scene.update(bbox)`, `add_or_update`,
+  `remove`, `clear`. Returns `SceneEvent` records that diff against
+  the wire-format dict snapshot from the last add/update; produces
+  camelCase field-mask paths automatically. Composite expansion
+  flattens at add time.
+- **`events_to_wire` / `EventsToWire`** — serializes `SceneEvent`s
+  to the dict shape `apply_events` consumes.
+- **`SceneServiceBase`** — the inheritable WSS service from
+  plan step 4. Owns state, subscribers, broadcast, animation tick
+  loop, and the standard DoCommand verbs (list, add, remove, update,
+  clear, preset, snapshot, set_uuid_strategy, **apply_events**).
+  Subclasses implement a small hooks contract for module-specific
+  bits (geometry building, asset reading, animation tick math,
+  preset lookup, custom DoCommand verbs).
+- **`apply_events` DoCommand verb** — batched ADDED/UPDATED/REMOVED
+  matching `SceneEvent` wire shape. Optional `namespace` prefix lets
+  multiple drivers share one visualizer. Per-event error capture so
+  a single bad event doesn't abort the batch.
+- **In-process resource registry** (`viam_visuals.registry` /
+  `visuals.Register/Lookup`). When two models ship from the same
+  module binary, the downstream resource holds a direct Python/Go
+  reference to the upstream and skips the framework's gRPC stub.
+  Foundation for the driver→visualizer pair.
 
-**Not yet shipped — `SceneServiceBase`**
+**Validated in production**
 
-The plan's step 2 — the inheritable WorldStateStore service that
-makes module authors override one method (`build_scene`) and get
-all the WSS plumbing for free — is partially landed. The UUID
-strategy chunk extracted cleanly; the rest of the plumbing (state
-map, subscriber fanout, animation tick loop, DoCommand dispatcher,
-reconfigure delta broadcast) is tightly coupled to a shared
-``self._state`` and the asyncio lock that guards it. A faithful
-extraction is genuinely 600–900 LOC of careful porting plus a
-hooks contract for module-specific bits (geometry building, asset
-reading, validation extras, custom DoCommand verbs).
+The library powers the three-model architecture in
+`example-visualizations-{python,go}`:
 
-Plan for a fresh session: write `viam_visuals/service.py`
-containing the full `SceneServiceBase`, migrate `src/service.py`
-to a thin subclass in the same pass, run tests, fix specific
-failures. ~1.5–2 hours of focused work. Defer until that focus is
-available; the current library is already a meaningful product.
+- `standalone-playground` — the monolith. SceneServiceBase subclass;
+  the existing module surface, slimmed via the library.
+- `playground-visualizer` — passive WSS. SceneServiceBase subclass
+  that rejects items/preset config; registers itself in the
+  in-process registry; accepts mutations via apply_events.
+- `playground-driver` — Generic component. Looks up its visualizer
+  via the registry; owns a `Scene`; ticks via a recipe; pushes
+  events through apply_events as a direct in-process call.
 
-**Go transitional cleanup (deferred)**
+Two reference recipes (`marching_boxes`, `pulsing_spheres`) demonstrate
+the pattern: ~50 lines of domain code each, no protos / gRPC /
+field-mask bookkeeping in user code.
 
-`example-visualizations-go/aliases.go` re-exports moved types
-under their original unqualified names so existing files compile.
-The cleanup is mechanical: update each caller to qualified
-`visuals.*` names, delete `aliases.go`. Run during the same
-session as the Go SceneServiceBase port.
+**Test coverage**
+
+- Python: 377 tests across the library + module.
+- Go: 74 tests; coverage focuses on format/math + the new architecture
+  pieces (Scene round-trip, registry, applyEvents shapes, driver+visualizer
+  pipeline). Standalone-playground end-to-end streaming coverage is
+  thinner than the Python side and a known gap.
+
+**Known transitional code (deferred cleanup)**
+
+- **Go `aliases.go`** re-exports the moved types (`Pose`, `Color`,
+  `Item`, `Animation`, `BaseGeom`, etc.) under their original
+  unqualified names so the long-lived module files (`presets.go`,
+  `animation.go`, `config.go`, `service.go`) compile without churn.
+  Removal is mechanical: update each caller to `visuals.*` names,
+  delete `aliases.go`. Defer until a dedicated cleanup pass that
+  also retires the older module-level pose-math layer.
+- **Python `src/service.py` re-exports** of `DEFAULT_TICK_HZ` /
+  `DEFAULT_UUID_STRATEGY` / `DEFAULT_PARENT_FRAME` / `UUID_STRATEGIES`
+  exist for tests/external callers that imported these from
+  `src.service` before the SceneServiceBase migration. They forward
+  to the library; harmless until the library is fully extracted to
+  its own package.
+
+**Remaining library work toward 1.0**
+
+- **Drawing-API support** (plan step 6). Lines, NURBS, points-with-size.
+  Blocked on the viz team exposing the drawing API channel to
+  WSS-style services.
+- **Migration to a standalone package.** Currently co-located at
+  `viam_visuals/` (Python) and `visuals/` (Go) inside the example
+  module. The public surface is stable enough to extract — most
+  remaining work would be CI / repo-structure / docs around the
+  extraction, not API changes.
+- **Cross-module driver→visualizer (gRPC fallback)**. The current
+  registry-based pattern requires both resources in the same module
+  binary. Falling back to the framework's gRPC stub when the
+  registry lookup misses would let a separately-shipped driver push
+  to this visualizer. Sketched in code comments; unimplemented.
+- **More recipes.** `marching_boxes` and `pulsing_spheres` exercise
+  the pipeline but don't demonstrate Composites, custom geometries,
+  or the full animation surface. A `swinging_arms` recipe (CoordinateFrame
+  composites) and a `detection_overlay` recipe (BoundingBox composites
+  driven by simulated detections) would round out the demo set.
 
 ## Migration path for this module
 

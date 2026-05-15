@@ -580,6 +580,122 @@ Related: `validate_config` must return `Tuple[Sequence[str], Sequence[str]]` —
 
 **Workaround.** Pasting a clean `modules` config block (with `"name": "<short>", "module_id": "<namespace>:<short>", "version": "<semver>"`) replaces the reload-named entry with a clean registry pin pointing at a published version.
 
+### in-process-registry
+
+**Pattern.** When two Viam models ship from the same module binary, instances of both live in the same OS process. The framework's `Dependencies` injection gives the downstream resource a *gRPC client stub* even for an upstream in the same process — so every call between them pays structpb serialization + a local socket round-trip. For a driver/visualizer pair pushing events at 5–30 Hz that's measurable overhead and zero value.
+
+**Solution.** A module-local registry keyed by resource name. The upstream calls `register(self.name, self)` in `reconfigure`. The downstream calls `lookup(upstream_name)` in its own reconfigure. If found, the downstream holds a direct Python (or Go) reference and calls the upstream's `do_command` as a normal method.
+
+**Evidence.** `viam_visuals/registry.py` and `visuals/registry.go`. Used by `src/visualizer.py` (registers in reconfigure, unregisters in close) and `src/driver.py` (lookup at reconfigure; fails fast if not found). The driver's `info` DoCommand reports `visualizer_type: "PlaygroundVisualizer"` (Python) / `"*exampleviz.playgroundVisualizer"` (Go) on success — the concrete class, not the framework's gRPC stub.
+
+**Caveats.**
+- Only works in-process. A cross-module driver would need a fallback to the framework's gRPC stub.
+- The `depends_on` field in machine config must list the upstream so the framework constructs it first. Otherwise the lookup races the upstream's reconfigure and returns `None`.
+- Tests should clear the registry between test cases (module-global state) — see `tests/test_registry.py::setup_function`.
+
+### easyresource-new-no-reconfigure-for-components-too
+
+**Symptom (extension of `service-quirks`).** A Generic component (and per `apriltag-tracker`'s reference, components in general) loads and shows up in `viam machines part status` but its `reconfigure` body never runs. Background tasks don't start; lookups return nothing.
+
+**Root cause.** Despite documentation suggesting `reconfigure` fires automatically post-construction for components, `EasyResource.new` is just `cls(config.name); return self`. The framework only calls `reconfigure` automatically on *subsequent* config changes — not on initial construction. This applies to both services *and* components.
+
+**Evidence.** Found at deploy time after the v0.0.15 → v0.0.16 cycle on `example-visualizations-python`. The new `playground-driver` Generic loaded but `visualizer_count: 0`, `tick_running: false`. Logs showed no driver reconfigure entries.
+
+**Fix.** Same as services — override `new` to invoke `reconfigure` explicitly:
+
+```python
+@classmethod
+def new(cls, config, dependencies):
+    instance = cls(config.name)
+    instance.reconfigure(config, dependencies)
+    return instance
+```
+
+For the Go side: `module.ModularMain` constructors are responsible for calling `Reconfigure` in `new*` themselves. Always do it; the framework won't.
+
+### apply-events-wire-format
+
+**Pattern.** The driver→visualizer transport is a single batched DoCommand verb named `apply_events`. Payload shape:
+
+```jsonc
+{
+  "command": "apply_events",
+  "namespace": "driver1",                    // optional; prefixed onto every label
+  "events": [
+    {"kind": "added",   "label": "obj_a", "item": {full wire item dict}},
+    {"kind": "updated", "label": "obj_b", "item": {full wire item dict}, "paths": ["poseInObserverFrame.pose.x"]},
+    {"kind": "removed", "label": "obj_c"}
+  ]
+}
+```
+
+**Design decisions.**
+- **Batched, not one verb per event.** The driver computes many mutations per tick (one per visual it owns); batching is one round-trip per tick instead of N.
+- **Per-event error capture, not abort-on-first-error.** A malformed event records `errors[i]` and the batch continues. The driver re-pushes on next tick if state drifts; an all-or-nothing semantics would amplify a single bad event into 5+ tick periods of stale renderer state.
+- **Full item dict on UPDATED, not just the diff.** The visualizer needs the post-mutation item to rebuild the Transform proto. The `paths` field carries what *changed* so the renderer applies a narrow update; the item dict carries enough to rebuild the cached transform on the visualizer side.
+- **Namespace prefix for multi-driver setups.** Two drivers can push to one visualizer if they use different namespaces; labels are prefixed `<ns>/<label>` so they don't collide.
+
+**Evidence.** `viam_visuals/service.py::_apply_events` (Python) / `visuals/service.go::applyEvents` (Go). `tests/test_apply_events.py` covers happy path, mixed batches, namespacing, error cases.
+
+**Wire pairing with `Scene`.** The driver builds events by calling `scene.add(...)` / `scene.update(...)` and gets back `SceneEvent` records; serializing them to the wire is one call: `events_to_wire(events)` / `EventsToWire(events)`. The driver never builds the wire dict by hand.
+
+### go-in-process-slice-types
+
+**Symptom.** Go driver pushes events to its in-process visualizer. State on the visualizer side updates (visible via `snapshot` DoCommand). The renderer receives ADDED events on initial burst but never sees UPDATEDs animate the entities. Boxes appear at refreshed positions only on a hard page reload.
+
+**Root cause.** `DoCommand` calls between two Go resources in the same module process are direct method invocations — no gRPC. Concrete Go slice element types are preserved: `[]string` stays `[]string`, `[]map[string]any` stays itself. When the same call goes through gRPC (cross-process), structpb erases everything to `[]any`.
+
+The visualizer's `applyEvents` handler had `evt["paths"].([]any)` — that assertion *fails* against an in-process `[]string`, returning `nil`. The fallthrough `for _, p := range nil` produces an empty `paths` slice. The visualizer broadcasts UPDATEDs with empty `UpdatedFields`. The renderer interprets "UPDATED with no paths" as "nothing changed" and silently drops the event.
+
+**Evidence.** Diagnosed via diagnostic counters added to the debug snapshot — `broadcasts_total` incremented per tick (confirming the broadcast fired) but `last_broadcast.paths` was empty. The `apply_events` test suite had passed because synthetic test inputs default to `[]any` (the Go zero-value when constructing literals via `[]any{...}`).
+
+**Fix.** Coerce both shapes in the handler:
+
+```go
+func coerceStringSlice(v any) []string {
+    switch tv := v.(type) {
+    case []string:           // in-process Go→Go
+        return tv
+    case []any:              // gRPC via structpb
+        out := make([]string, 0, len(tv))
+        for _, x := range tv {
+            if s, ok := x.(string); ok { out = append(out, s) }
+        }
+        return out
+    }
+    return nil
+}
+```
+
+Same pattern for `[]map[string]any` vs `[]any`-of-maps. Both shipped in `visuals/service.go` (Go v0.0.14).
+
+**Test discipline.** When you write a Go test for a DoCommand handler, also test the case where the input is typed (not `[]any`-erased). Tests that use literal `[]any{...}` syntax simulate the gRPC path but miss the in-process path.
+
+### go-makefile-package-deps
+
+**Symptom.** Pushed a Go module fix as v0.0.12, deployed, behavior didn't change. Bumped to v0.0.13 with additional diagnostics, deployed, the diagnostics didn't show up either. Registry confirmed v0.0.13 was uploaded successfully and the machine had downloaded it.
+
+**Root cause.** The Makefile's binary target declared:
+
+```
+$(MODULE_BINARY): Makefile go.mod *.go cmd/module/*.go
+```
+
+The dep list didn't include `visuals/*.go`. All recent changes lived in the library package. `make module.tar.gz` saw no changes in the watched directories, decided the binary was up-to-date, and shipped the prior build under the new version number. Two consecutive versions had identical binary content despite the source diverging.
+
+**Evidence.** `md5sum bin/example-visualizations-go ~/.viam/packages/data/module/*0_0_13*/bin/example-visualizations-go` returned matching hashes. `strings <binary> | grep <new-symbol>` returned nothing for the v0.0.13 additions.
+
+**Fix.** Add every package directory to the binary target's dep list:
+
+```makefile
+$(MODULE_BINARY): Makefile go.mod *.go cmd/module/*.go visuals/*.go
+    go build $(GO_BUILD_FLAGS) -o $(MODULE_BINARY) cmd/module/main.go
+```
+
+For larger repos consider a recursive glob or `find . -name '*.go'`. The Python repo's `Makefile::module.tar.gz` lists each Python directory explicitly — same trap, easier to spot since the tarball file listing makes a missing dir visible.
+
+**Post-deploy verification.** After `make module.tar.gz`, md5 the local binary against the prior published binary in `~/.viam/packages/data/module/*-<old-version>-*/bin/`. Same md5 means the rebuild didn't actually happen. Two consecutive deploys with the same binary content is a sign of this bug.
+
 ## Bugs to file with the viz team
 
 1. **Stale metadata schema in RDK fake.** `rdk/services/worldstatestore/fake/moving_geos_world.go` uses the obsolete `{color: {r,g,b}, opacity: 0.5}` shape that the viewer no longer reads. Both the metadata constants (lines 25-105) and any onboarding docs that reference the fake mislead module authors. Sync the fake to emit the `viamrobotics/visualization::draw.MetadataToStruct` schema, or delete the metadata from the fake and document that metadata is opt-in.

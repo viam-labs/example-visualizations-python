@@ -5,8 +5,10 @@ typed item list subclasses :class:`SceneServiceBase`, sets ``MODEL``,
 and overrides the small set of hook methods that touch the file
 system or the module's geometry-type set. The base class owns all
 the asyncio plumbing — state map, subscriber fanout, the
-animation tick task, UUID strategy, the standard nine DoCommand
-verbs, the EasyResource.new quirk fix.
+animation tick task, UUID strategy, the 10 standard DoCommand
+verbs (including ``apply_events`` for the driver→visualizer wire
+format), and the ``EasyResource.new`` quirk fix that makes initial
+construction call ``reconfigure``.
 
 Required hooks (subclass MUST implement):
 

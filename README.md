@@ -1,15 +1,26 @@
-# example-visualizations
+# example-visualizations-python
 
 A Viam module that adds every supported geometry primitive — box,
 sphere, capsule, point, mesh (PLY/STL), and point cloud (PCD) — to the
 Viam 3D scene viewer so you can poke each one and see what its config
 knobs do.
 
-The module is a single `rdk:service:world_state_store` implementation
-called **`viam:example-visualizations-python:playground`**.
-Default config emits one of every primitive in a row along X. Runtime
-`DoCommand` verbs let you add, remove, update, animate, snapshot, and
-toggle the renderer UUID strategy without reconfiguring.
+The module ships **three models**, each demonstrating a different way
+to build a scene against the world-state-store service:
+
+| Model | API | What it does |
+| --- | --- | --- |
+| `viam:example-visualizations-python:standalone-playground` | `rdk:service:world_state_store` | The monolith. Owns the WSS contract, the scene, the animation tick, and the runtime DoCommand surface. Drop-in service backed by configurable presets. |
+| `viam:example-visualizations-python:playground-visualizer` | `rdk:service:world_state_store` | Passive WSS. Holds state and serves the renderer, but doesn't decide what to draw. Items arrive at runtime via the `apply_events` DoCommand from a paired driver. |
+| `viam:example-visualizations-python:playground-driver` | `rdk:component:generic` | Generic component that owns a `viam_visuals.Scene`, ticks at config'd Hz, and pushes scene mutations to its visualizer. Domain logic lives in *recipes* — small Python objects that seed and animate the scene. |
+
+The driver/visualizer pair demonstrates the **`viam_visuals` library
+architecture**: the WSS plumbing (state, subscribers, broadcast,
+DoCommand dispatch) lives in `viam_visuals.SceneServiceBase`, the
+typed scene-mutation API in `viam_visuals.Scene`. A module author
+writes a recipe — usually 30-60 lines of Python — and gets a live
+scene streamed to the renderer without touching protos or
+subscriber channels.
 
 ```
                                 ┌─────┐
@@ -18,7 +29,14 @@ toggle the renderer UUID strategy without reconfiguring.
         capsule    sphere         point     cube
 ```
 
-## Quickstart
+## Which model do I want?
+
+- **`standalone-playground`** — you want every supported primitive and animation in one configurable service, with runtime add/update/remove via DoCommand. This is the renderer-behavior probe; if you're learning what the viewer accepts, start here.
+- **`playground-driver` + `playground-visualizer`** — you want to write Python *code* that drives the scene (a detector publishing bounding boxes, a planner publishing trajectories, anything that ticks). The driver lets you mutate a `Scene` of typed `Visual` objects; the visualizer republishes those to the renderer. The two ship from one module binary and share a process, so they exchange events through a direct Python reference — no gRPC overhead on the hot path.
+
+You can run all three side-by-side; they don't interfere. The two patterns are independent, and either standalone-playground or the driver/visualizer pair is a complete solution on its own.
+
+## Standalone-playground quickstart
 
 Add the service to a machine, no config attributes needed:
 
@@ -29,7 +47,7 @@ Add the service to a machine, no config attributes needed:
       "name": "scene",
       "namespace": "rdk",
       "type": "world_state_store",
-      "model": "viam:example-visualizations-python:playground",
+      "model": "viam:example-visualizations-python:standalone-playground",
       "attributes": {}
     }
   ]
@@ -50,15 +68,144 @@ Open the machine's **3D scene** tab. With no `preset` attribute set, the default
 - `chunked_pcd_demo` — standalone demo for the chunked-delivery code path. Ships the helix with `chunked: true, chunk_size: 2000` — initial Transform carries only the first ~2000 points; the rest is available via the `get_entity_chunk` DoCommand. Kept out of `all` because the viewer doesn't currently call `get_entity_chunk`, so it visually reads as a truncated point cloud rather than a full spiral. Load it explicitly to test the chunked wire.
 - `all` (default) — every preset stacked along Y. Spacing is 500 mm between rows, with a 1500 mm extra gap before the arm row (the arm sweeps ~500 mm in +Y and the morph grid extends ~400 mm). Row order: trajectory (`y=-1000`) → orientation vectors (`y=-500`) → primitives (`y=0`) → lifecycle (`y=+500`) → morph + force vector (`y=+1000`) → frame composition / arm (`y=+2500`).
 
-## Config reference
+## Driver + visualizer quickstart
+
+The driver/visualizer pair is the architecture for modules whose scene
+content comes from *running code*, not from a static config. The
+visualizer is the renderer's contract; the driver owns the scene
+state and the tick rate.
+
+```jsonc
+{
+  "services": [
+    {
+      "name": "scene_visualizer",
+      "namespace": "rdk",
+      "type": "world_state_store",
+      "model": "viam:example-visualizations-python:playground-visualizer",
+      "attributes": {}
+    }
+  ],
+  "components": [
+    {
+      "name": "scene_driver",
+      "namespace": "rdk",
+      "type": "generic",
+      "model": "viam:example-visualizations-python:playground-driver",
+      "attributes": {
+        "visualizer": "scene_visualizer",
+        "recipe": "marching_boxes",
+        "tick_hz": 5
+      },
+      "depends_on": ["scene_visualizer"]
+    }
+  ]
+}
+```
+
+Enable both, open the 3D scene tab, and you should see the recipe's
+visuals animate at the driver's tick rate. The driver looks up its
+visualizer at construction time via the in-process registry, so
+mutations travel as direct Python method calls — there's no gRPC
+hop between them even though they're separate Viam resources.
+
+Available recipes (in `src/recipes.py`):
+
+- `marching_boxes` — five boxes in a row along X, each bobbing in Y on a phase-offset sine wave. Simplest end-to-end recipe; useful for confirming the pipeline works.
+- `pulsing_spheres` — three spheres pulsing their radius on phase-offset sine waves. Exercises the `physicalObject.geometryType.value.radiusMm` field-mask path, complementary to the pose-only `marching_boxes`.
+
+Driver attributes:
+
+| Key | Type | Default | Description |
+| --- | --- | --- | --- |
+| `visualizer` | string | **required** | Resource name of the paired visualizer service. The driver looks this up in the in-process registry. |
+| `recipe` | string | `"marching_boxes"` | Recipe name. See `src/recipes.py` for the registry. |
+| `tick_hz` | number (0, 30] | `5` | Driver tick rate. Each tick calls `recipe.tick(scene, t)`. |
+| `namespace` | string | `""` | Optional label prefix. Two drivers can push to one visualizer if they use different namespaces. |
+
+Driver DoCommand verbs:
+
+| `command` | Payload | Returns |
+| --- | --- | --- |
+| `info` | `{}` | `{visualizer, recipe, tick_hz, namespace, scene_size, visualizer_type, tick_running}` — `visualizer_type` is the concrete class name, useful for confirming the in-process registry path resolved. |
+| `recipes` | `{}` | `{recipes: [...]}` — names available in `src.recipes.RECIPES`. |
+
+The visualizer accepts the **`apply_events`** DoCommand verb (see the
+DoCommand reference further down), which is what the driver invokes
+on every tick. You can call it directly too — useful for testing
+the visualizer in isolation:
+
+```jsonc
+{
+  "command": "apply_events",
+  "namespace": "manual",
+  "events": [
+    {"kind": "added", "label": "obj_a",
+     "item": {"type": "box", "label": "obj_a",
+              "dims_mm": {"x": 100, "y": 100, "z": 100},
+              "pose": {"x": 0, "y": 0, "z": 100, "oz": 1}}}
+  ]
+}
+```
+
+## Writing your own recipe
+
+A recipe is two methods:
+
+```python
+from viam_visuals import Scene, SceneEvent, Box, Pose
+
+class MyRecipe:
+    name = "my_recipe"
+
+    def initial(self, scene: Scene) -> list[SceneEvent]:
+        return scene.add(
+            Box("obj_a", pose=Pose.at(x=100, z=100), dims_mm=(50, 50, 50)),
+            Box("obj_b", pose=Pose.at(x=-100, z=100), dims_mm=(50, 50, 50)),
+        )
+
+    def tick(self, scene: Scene, t: float) -> list[SceneEvent]:
+        # Mutate the visuals and call scene.update(...)
+        obj = scene.get("obj_a")
+        obj.pose = Pose.at(x=100 + 50 * math.sin(t), z=100)
+        return scene.update(obj)
+```
+
+Register it in `src/recipes.py::RECIPES` and the driver picks it up
+by name. `Scene` snapshots each visual's wire-format dict at `add`
+time and diffs against the post-mutation dict on `update`, so the
+returned `SceneEvent`s carry exactly the field-mask paths that
+changed — no manual path bookkeeping.
+
+## viam_visuals library
+
+The recipe pattern is built on a small typed library co-located in
+this repo at `viam_visuals/`. It's the Python side of the planned
+**ViamVizHelpers** library; the Go sibling lives at
+[example-visualizations-go/visuals](https://github.com/viam-labs/example-visualizations-go/tree/main/visuals).
+The public surface today:
+
+- **Shapes** — `Box`, `Sphere`, `Capsule`, `Point`, `Arrow`, `Mesh`, `PointCloud`. Construction validates dimensions; the `pose` field accepts a `Pose` (with `Pose.at(...)` and `Pose.facing_from_to(...)` helpers).
+- **Animations** — typed specs for `Spin`, `Swing`, `Oscillate`, `Orbit`, `Pulse`, `Breathe`, `Flicker`, `Lifecycle`, `ForceVector`, `Trajectory`. Pass any of these to a shape's `animation=` field, or call `Visual.animated_with(spec)` after the fact.
+- **Composites** — `CoordinateFrame`, `Line`, `BoundingBox`, plus `Arrow.from_to(start, end)`. Each expands into a list of typed `Visual` instances via `.to_visuals()`; `Scene.add(composite)` flattens automatically.
+- **`Scene`** — typed state container with object-based mutation. `scene.add(visual)`, `bbox.pose = new_pose; scene.update(bbox)`, `scene.add_or_update(...)`, `scene.remove(visual_or_label)`. Returns `SceneEvent` records that the driver serializes via `events_to_wire(events)` for the `apply_events` wire format.
+- **`SceneServiceBase`** — the inheritable WSS service. Owns state, subscribers, broadcast, the standard DoCommand verbs (`list`, `add`, `remove`, `update`, `clear`, `preset`, `snapshot`, `set_uuid_strategy`, `apply_events`), and the animation tick loop. Subclasses implement `build_geometry`, `read_asset`, `compute_tick`, `is_animated`, and optionally `load_preset` / `handle_custom_command`. Both `standalone-playground` and `playground-visualizer` subclass it.
+- **`registry`** — `register(name, instance)` / `lookup(name)`. Lets a downstream resource hold a direct Python reference to an upstream resource that lives in the same module process, skipping the framework's gRPC stub. The visualizer registers itself in `reconfigure`; the driver looks it up at construction.
+
+`viam_visuals` is the stable surface. The eventual extraction to a
+standalone package will not change the public API.
+
+## Config reference (standalone-playground)
 
 | Key             | Type          | Default          | Description |
 | --------------- | ------------- | ---------------- | ----------- |
 | `tick_hz`       | number (0,30] | `30`             | Animation tick rate. Static-only configs ignore this. |
 | `uuid_strategy` | `"stable"` \| `"versioned"` | `"stable"` | How UUIDs are managed under animation. `stable`: keep one UUID per item, emit `UPDATED` with a field-mask. `versioned`: re-issue UUIDs per tick, emit `REMOVED`+`ADDED`. See "UUID strategies" below. |
 | `parent_frame`  | string        | `"world"`        | Default parent frame for every item. Per-item `parent_frame` overrides this. |
-| `preset`        | string        | `"primitives"`   | Named scene bundle. Ignored when `items` is set. |
+| `preset`        | string        | `"all"`          | Named scene bundle. Ignored when `items` is set. |
 | `items`         | list          | `[]`             | Explicit item list. See below. |
+
+`playground-visualizer` accepts the same `tick_hz`, `uuid_strategy`, and `parent_frame`; it explicitly rejects `preset` and `items` (those belong on the driver side).
 
 ### Item schema
 
@@ -108,6 +255,9 @@ Every item carries `type`, `label`, `pose`, optional `color` /
 
 ## DoCommand reference
 
+The standard verbs are implemented on `SceneServiceBase` and
+inherited by both `standalone-playground` and `playground-visualizer`:
+
 | `command`             | Payload                                              | Returns |
 | --------------------- | ---------------------------------------------------- | ------- |
 | `list`                | `{}`                                                 | `{items: [...]}` — one summary per item |
@@ -115,11 +265,12 @@ Every item carries `type`, `label`, `pose`, optional `color` /
 | `remove`              | `{label}`                                            | `{removed: bool}` |
 | `update`              | `{label, patch: {...}}`                              | `{updated_fields: [...]}` — any field including `mesh_path` for runtime mesh swaps |
 | `clear`               | `{}`                                                 | `{removed_count}` |
-| `preset`              | `{name}`                                             | `{loaded, count}` — hard reset to the named preset |
+| `preset`              | `{name}`                                             | `{loaded, count}` — hard reset to the named preset (rejected by playground-visualizer) |
 | `snapshot`            | `{}`                                                 | `{config: {...}}` — pasteable back as machine config |
 | `set_uuid_strategy`   | `{strategy: "stable"\|"versioned"}`                  | `{strategy}` |
 | `get_entity_chunk`    | `{label \| uuid, chunk_index}`                       | `{label, chunk_index, n_chunks, total_points, pcd_b64}` — base64-encoded PCD bytes for one chunk of a chunked pointcloud. Experimental — see "What's *not* supported." |
-| _(missing/unknown)_   | —                                                    | Debug snapshot (item count, tick state, etc.) |
+| `apply_events`        | `{events: [...], namespace?: "..."}`                 | `{applied, added, updated, removed, errors}` — batched ADDED/UPDATED/REMOVED matching `viam_visuals.SceneEvent` wire shape. Optional `namespace` prefixes labels so multiple drivers can share one visualizer. |
+| _(missing/unknown)_   | —                                                    | Debug snapshot (item count, tick state, subscriber count, etc.) |
 
 Example: animate the default sphere bobbing along Y.
 
@@ -128,6 +279,20 @@ Example: animate the default sphere bobbing along Y.
   "command": "update",
   "label": "demo_sphere",
   "patch": {"animation": {"mode": "oscillate", "amplitude_mm": 200, "period_s": 3}}
+}
+```
+
+Example: push a batch of mutations to a visualizer (what the driver does on every tick).
+
+```jsonc
+{
+  "command": "apply_events",
+  "namespace": "my_driver",
+  "events": [
+    {"kind": "added",  "label": "obj_a", "item": {"type": "box", "label": "obj_a", "dims_mm": {"x":100,"y":100,"z":100}, "pose": {"oz": 1}}},
+    {"kind": "updated","label": "obj_b", "item": {"type": "sphere", "label": "obj_b", "radius_mm": 60, "pose": {"x": 200, "oz": 1}}, "paths": ["poseInObserverFrame.pose.x"]},
+    {"kind": "removed","label": "obj_c"}
+  ]
 }
 ```
 
@@ -166,6 +331,31 @@ This module defaults to `stable` (RDK fake pattern). Flip it at runtime
 via `set_uuid_strategy` or at config time via `uuid_strategy`. Seeing
 both modes side by side is half the point of the module.
 
+## In-process registry — what's actually going on
+
+The driver and visualizer both ship from the same module binary. When
+viam-server creates instances of each, both live in the same Python
+process. By default Viam would still hand the driver a gRPC client
+stub for the visualizer (since the framework can't assume same-process
+locality), meaning every `apply_events` call would round-trip through
+structpb serialization + a local socket.
+
+`viam_visuals.registry` is a module-local dict keyed by resource name.
+The visualizer calls `registry.register(self.name, self)` in
+`reconfigure`. The driver calls `registry.lookup(cfg.visualizer)` at
+construction. If found, the driver holds a direct Python reference
+and calls `visualizer.do_command(...)` as a normal async method —
+no serialization, no gRPC. Confirmed at runtime via the driver's
+`info` DoCommand, which reports `visualizer_type` (`PlaygroundVisualizer`
+on success, `WorldStateStoreClient` if the registry lookup misses
+and we'd fall back to the stub — though the current driver fails
+fast on lookup miss rather than falling back, since cross-module
+driver→visualizer isn't yet supported).
+
+This is the architectural payoff of shipping multiple models from one
+binary: the boundary between "produces visuals" and "serves the
+renderer" is clean, but the runtime cost is essentially zero.
+
 ## What's *not* supported (or only partly)
 
 - **GLTF / GLB / OBJ.** The viewer only accepts PLY and STL. Convert
@@ -188,6 +378,8 @@ both modes side by side is half the point of the module.
 - **Renderer caches REMOVED UUIDs.** The viewer drops any ADDED event that re-uses a UUID it has previously seen REMOVED, so a flicker / lifecycle / respawn-style animation must rotate the UUID on every re-add or the entity stays gone until the page is refreshed. The `flicker` and `lifecycle` animation modes default `rotate_uuid_on_readd=true` to work around this. See `LESSONS.md::renderer-caches-removed-uuids-rotate-on-readd`.
 
 - **`ox`/`oy`/`oz` field-mask updates.** Partial pose updates via `update` work for `x`/`y`/`z`/`theta`. The `trajectory` animation mode does emit `poseInObserverFrame.pose.oX/oY/oZ` paths, but whether the viewer composes them correctly mid-segment isn't fully verified — if a trajectory's orientation appears frozen, switch the item's `uuid_strategy` to `versioned` so the whole pose is re-emitted each tick.
+
+- **Cross-module driver → visualizer (gRPC fallback).** The driver currently requires its visualizer to live in the same module process (looked up via `viam_visuals.registry`). If someone wants to write a separate module whose driver pushes to this visualizer, we'd need to wire a fallback to the framework's gRPC client stub. The fallback is sketched but unimplemented in `src/driver.py`.
 
 ## Composing through the Viam reference frame system
 
@@ -241,7 +433,7 @@ Run `pytest` from the repo root — module imports assume that's the cwd.
 ## More in this repo
 
 - [`LESSONS.md`](LESSONS.md) — accumulating findings about the viewer's wire format, all with file:line evidence. Every gotcha this module hit lives here.
-- [`LIBRARY_PLAN.md`](LIBRARY_PLAN.md) — design for **ViamVizHelpers**, a planned Python library that wraps the gotchas in this module so future authors don't repeat them.
+- [`LIBRARY_PLAN.md`](LIBRARY_PLAN.md) — design for **ViamVizHelpers**, the planned Python library the `viam_visuals/` directory will eventually become.
 - [`CLAUDE.md`](CLAUDE.md) — operational context for agents (including Claude Code) working in this repo.
 
 ## References
