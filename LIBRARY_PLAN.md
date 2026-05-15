@@ -294,6 +294,59 @@ Not strict phases — just the order to build in, since each piece is usable as 
 
 Each step in 1–4 has a milestone: re-implement this module's `all` preset using the library. If the library's version is meaningfully shorter than the current `src/presets.py::all_preset`, the API is in the right shape.
 
+## Current status (2026-05-15)
+
+The library is alive and co-located in this repo at `viam_visuals/`,
+with a Go sibling at `example-visualizations-go/visuals/`. Public
+surface and behavior are stable; the next step is the WSS service
+base class.
+
+**Shipped**
+
+- Pose, Color primitives + normalization helpers.
+- `Visual` base + 7 typed shape classes (`Box`, `Sphere`, `Capsule`,
+  `Point`, `Arrow`, `Mesh`, `PointCloud`). Construction-time
+  validation; ``.to_dict()`` produces the wire-format item dict.
+- 11 typed animation specs (`Static`, `Spin`, `Swing`, `Oscillate`,
+  `Orbit`, `Pulse`, `Breathe`, `Flicker`, `Lifecycle`,
+  `ForceVector`, `Trajectory`).
+- 3 composites (`CoordinateFrame`, `Line`, `BoundingBox`) plus
+  `Arrow.from_to` factory.
+- Asset I/O internalized: PLY / STL / PCD parsers, the metadata
+  Struct builder, the procedural arrow generator. Lives in
+  `_internal/` (Python) and the top-level visuals package (Go).
+- UUID strategy helpers (`initial_uuid`, `versioned_uuid`,
+  `VALID_STRATEGIES`).
+- All 11 playground presets rewritten using the typed surface.
+- 309 Python tests, all green.
+
+**Not yet shipped — `SceneServiceBase`**
+
+The plan's step 2 — the inheritable WorldStateStore service that
+makes module authors override one method (`build_scene`) and get
+all the WSS plumbing for free — is partially landed. The UUID
+strategy chunk extracted cleanly; the rest of the plumbing (state
+map, subscriber fanout, animation tick loop, DoCommand dispatcher,
+reconfigure delta broadcast) is tightly coupled to a shared
+``self._state`` and the asyncio lock that guards it. A faithful
+extraction is genuinely 600–900 LOC of careful porting plus a
+hooks contract for module-specific bits (geometry building, asset
+reading, validation extras, custom DoCommand verbs).
+
+Plan for a fresh session: write `viam_visuals/service.py`
+containing the full `SceneServiceBase`, migrate `src/service.py`
+to a thin subclass in the same pass, run tests, fix specific
+failures. ~1.5–2 hours of focused work. Defer until that focus is
+available; the current library is already a meaningful product.
+
+**Go transitional cleanup (deferred)**
+
+`example-visualizations-go/aliases.go` re-exports moved types
+under their original unqualified names so existing files compile.
+The cleanup is mechanical: update each caller to qualified
+`visuals.*` names, delete `aliases.go`. Run during the same
+session as the Go SceneServiceBase port.
+
 ## Migration path for this module
 
 `example-visualizations` is the canonical first adopter. The phases above translate into concrete shrinkage here:
