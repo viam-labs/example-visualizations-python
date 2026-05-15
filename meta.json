@@ -10,6 +10,18 @@
       "model": "viam:example-visualizations-python:standalone-playground",
       "short_description": "Monolith playground that renders every supported geometry primitive in the 3D scene viewer.",
       "markdown_link": "README.md"
+    },
+    {
+      "api": "rdk:service:world_state_store",
+      "model": "viam:example-visualizations-python:playground-visualizer",
+      "short_description": "Passive WSS that accepts Scene mutations pushed from a driver component.",
+      "markdown_link": "README.md"
+    },
+    {
+      "api": "rdk:component:generic",
+      "model": "viam:example-visualizations-python:playground-driver",
+      "short_description": "Generic component that mutates a Scene at tick rate and pushes events to a paired visualizer.",
+      "markdown_link": "README.md"
     }
   ],
   "entrypoint": "run.sh",
