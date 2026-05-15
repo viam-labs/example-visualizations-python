@@ -39,11 +39,14 @@ from src.visuals import (
     ForceVector,
     Lifecycle,
     Mesh,
+    Oscillate,
     Point,
     PointCloud,
     Pose,
     Pulse,
     Sphere,
+    Spin,
+    Swing,
     Trajectory,
 )
 
@@ -349,142 +352,68 @@ def robot_arm() -> List[Mapping[str, Any]]:
     PALM_THICKNESS = 10.0
     FINGER_LENGTH = 70.0
     FINGER_THICKNESS = 8.0
-    items: List[Mapping[str, Any]] = []
-    # Base — stout capsule, swings on Z (a real base joint never
-    # rotates a full revolution; it sweeps through its work envelope).
-    items.append({
-        "type": "capsule",
-        "label": "arm_base",
-        "pose": _identity_pose(x=0, y=0, z=BASE_HEIGHT / 2),
-        "radius_mm": LINK_RADIUS * 1.6,
-        "length_mm": BASE_HEIGHT,
-        "color": {"r": 70, "g": 70, "b": 75},
-        "opacity": 1.0,
-        "animation": {"mode": "swing", "amplitude_deg": 75.0, "period_s": 8},
-    })
-    # Shoulder joint — sphere at top of base.
-    items.append({
-        "type": "sphere",
-        "label": "arm_shoulder",
-        "parent_frame": "arm_base",
-        # Anchor at the top of the base (capsule centered on its
-        # pose, half-height above).
-        "pose": {"x": 0, "y": 0, "z": BASE_HEIGHT / 2 + LINK_RADIUS,
-                 "ox": 0, "oy": 1, "oz": 0, "theta": 0},
-        "radius_mm": JOINT_RADIUS,
-        "color": {"r": 230, "g": 25, "b": 75},
-        "opacity": 1.0,
-        "animation": {"mode": "none"},
-    })
-    # Upper arm — capsule extending out of the shoulder along its
-    # local +Z (which, with the shoulder's OY=1 orientation, points
-    # in world +Y → makes the arm reach forward when the base is at
-    # neutral, and sweep around as the base swings).
-    items.append({
-        "type": "capsule",
-        "label": "arm_upper",
-        "parent_frame": "arm_shoulder",
-        "pose": _identity_pose(x=0, y=0, z=UPPER_LENGTH / 2),
-        "radius_mm": LINK_RADIUS,
-        "length_mm": UPPER_LENGTH,
-        "color": {"r": 100, "g": 130, "b": 200},
-        "opacity": 1.0,
-        "animation": {"mode": "none"},
-    })
-    # Elbow joint — sphere at the far end of the upper arm. Swings
-    # in a bounded RoM (real elbows don't spin all the way around).
-    items.append({
-        "type": "sphere",
-        "label": "arm_elbow",
-        "parent_frame": "arm_upper",
-        "pose": {"x": 0, "y": 0, "z": UPPER_LENGTH / 2 + LINK_RADIUS,
-                 "ox": 0, "oy": 1, "oz": 0, "theta": -60},
-        "radius_mm": JOINT_RADIUS * 0.8,
-        "color": {"r": 230, "g": 25, "b": 75},
-        "opacity": 1.0,
-        "animation": {"mode": "swing", "amplitude_deg": 50.0, "period_s": 5},
-    })
-    # Forearm — capsule from elbow outward.
-    items.append({
-        "type": "capsule",
-        "label": "arm_forearm",
-        "parent_frame": "arm_elbow",
-        "pose": _identity_pose(x=0, y=0, z=FOREARM_LENGTH / 2),
-        "radius_mm": LINK_RADIUS * 0.85,
-        "length_mm": FOREARM_LENGTH,
-        "color": {"r": 100, "g": 180, "b": 110},
-        "opacity": 1.0,
-        "animation": {"mode": "none"},
-    })
-    # Wrist joint — swings on its local Z (= the forearm direction)
-    # so the tool *rolls* about the forearm. A symmetric end-effector
-    # (a sphere, a capsule along the same axis) would hide this
-    # rotation; the 2-finger claw below makes it visible.
-    items.append({
-        "type": "sphere",
-        "label": "arm_wrist",
-        "parent_frame": "arm_forearm",
-        "pose": {"x": 0, "y": 0, "z": FOREARM_LENGTH / 2 + LINK_RADIUS * 0.6,
-                 "ox": 0, "oy": 0, "oz": 1, "theta": 0},
-        "radius_mm": JOINT_RADIUS * 0.65,
-        "color": {"r": 230, "g": 25, "b": 75},
-        "opacity": 1.0,
-        "animation": {"mode": "swing", "amplitude_deg": 90.0, "period_s": 6},
-    })
-    # Claw palm — small flat box mounted on the wrist. Anchors the
-    # two fingers; rotates with the wrist's swing.
-    items.append({
-        "type": "box",
-        "label": "claw_palm",
-        "parent_frame": "arm_wrist",
-        "pose": _identity_pose(z=JOINT_RADIUS * 0.6 + PALM_THICKNESS / 2),
-        "dims_mm": {"x": 70.0, "y": 28.0, "z": PALM_THICKNESS},
-        "color": {"r": 220, "g": 220, "b": 70},
-        "opacity": 1.0,
-        "animation": {"mode": "none"},
-    })
-    # Left finger — thin tall box offset to -X of the palm; oscillates
-    # in X to open/close. Negative amplitude on x makes "low time"
-    # = open (further from center) and "high time" = closed (closer
-    # to center); both fingers are in phase so they open and close
-    # together. (Right finger uses +amplitude → mirror motion.)
-    items.append({
-        "type": "box",
-        "label": "claw_left_finger",
-        "parent_frame": "claw_palm",
-        "pose": _identity_pose(
-            x=-22.0,
-            z=PALM_THICKNESS / 2 + FINGER_LENGTH / 2,
-        ),
-        "dims_mm": {"x": FINGER_THICKNESS, "y": FINGER_THICKNESS, "z": FINGER_LENGTH},
-        "color": {"r": 220, "g": 220, "b": 70},
-        "opacity": 1.0,
-        "animation": {
-            "mode": "oscillate",
-            "axis": "x",
-            "amplitude_mm": -10.0,
-            "period_s": 3,
-        },
-    })
-    items.append({
-        "type": "box",
-        "label": "claw_right_finger",
-        "parent_frame": "claw_palm",
-        "pose": _identity_pose(
-            x=22.0,
-            z=PALM_THICKNESS / 2 + FINGER_LENGTH / 2,
-        ),
-        "dims_mm": {"x": FINGER_THICKNESS, "y": FINGER_THICKNESS, "z": FINGER_LENGTH},
-        "color": {"r": 220, "g": 220, "b": 70},
-        "opacity": 1.0,
-        "animation": {
-            "mode": "oscillate",
-            "axis": "x",
-            "amplitude_mm": 10.0,
-            "period_s": 3,
-        },
-    })
-    return items
+    JOINT_COLOR = (230, 25, 75)
+    CLAW_COLOR = (220, 220, 70)
+
+    visuals = [
+        # Base — stout capsule, swings on Z (real bases sweep through
+        # their work envelope, never rotate continuously).
+        Capsule("arm_base", pose=Pose.at(z=BASE_HEIGHT / 2),
+                radius_mm=LINK_RADIUS * 1.6, length_mm=BASE_HEIGHT,
+                color=(70, 70, 75), opacity=1.0,
+                animation=Swing(amplitude_deg=75.0, period_s=8)),
+        # Shoulder joint — sphere at top of base. OY=1 tips the
+        # shoulder's local +Z into world +Y so the upper arm reaches
+        # forward, and sweeps as the base swings.
+        Sphere("arm_shoulder", parent_frame="arm_base",
+               pose=Pose.at(z=BASE_HEIGHT / 2 + LINK_RADIUS, ox=0, oy=1, oz=0),
+               radius_mm=JOINT_RADIUS, color=JOINT_COLOR, opacity=1.0),
+        # Upper arm extends out of the shoulder along its local +Z.
+        Capsule("arm_upper", parent_frame="arm_shoulder",
+                pose=Pose.at(z=UPPER_LENGTH / 2),
+                radius_mm=LINK_RADIUS, length_mm=UPPER_LENGTH,
+                color=(100, 130, 200), opacity=1.0),
+        # Elbow — bounded RoM (real elbows don't spin around).
+        Sphere("arm_elbow", parent_frame="arm_upper",
+               pose=Pose.at(z=UPPER_LENGTH / 2 + LINK_RADIUS,
+                            ox=0, oy=1, oz=0, theta=-60),
+               radius_mm=JOINT_RADIUS * 0.8,
+               color=JOINT_COLOR, opacity=1.0,
+               animation=Swing(amplitude_deg=50.0, period_s=5)),
+        # Forearm from elbow outward.
+        Capsule("arm_forearm", parent_frame="arm_elbow",
+                pose=Pose.at(z=FOREARM_LENGTH / 2),
+                radius_mm=LINK_RADIUS * 0.85, length_mm=FOREARM_LENGTH,
+                color=(100, 180, 110), opacity=1.0),
+        # Wrist swings on its local Z (= forearm direction) so the
+        # tool ROLLS about the forearm. The 2-finger claw below makes
+        # the roll visible — a symmetric end-effector would hide it.
+        Sphere("arm_wrist", parent_frame="arm_forearm",
+               pose=Pose.at(z=FOREARM_LENGTH / 2 + LINK_RADIUS * 0.6),
+               radius_mm=JOINT_RADIUS * 0.65,
+               color=JOINT_COLOR, opacity=1.0,
+               animation=Swing(amplitude_deg=90.0, period_s=6)),
+        # Claw palm — flat box mounted on the wrist; rotates with it.
+        Box("claw_palm", parent_frame="arm_wrist",
+            pose=Pose.at(z=JOINT_RADIUS * 0.6 + PALM_THICKNESS / 2),
+            dims_mm=(70.0, 28.0, PALM_THICKNESS),
+            color=CLAW_COLOR, opacity=1.0),
+        # Left finger — offset to -X of the palm; oscillates in X.
+        # Negative amplitude means "low time" = open (further from
+        # center); both fingers in phase so they open/close together.
+        Box("claw_left_finger", parent_frame="claw_palm",
+            pose=Pose.at(x=-22.0, z=PALM_THICKNESS / 2 + FINGER_LENGTH / 2),
+            dims_mm=(FINGER_THICKNESS, FINGER_THICKNESS, FINGER_LENGTH),
+            color=CLAW_COLOR, opacity=1.0,
+            animation=Oscillate(axis="x", amplitude_mm=-10.0, period_s=3)),
+        # Right finger — mirror motion (positive amplitude).
+        Box("claw_right_finger", parent_frame="claw_palm",
+            pose=Pose.at(x=22.0, z=PALM_THICKNESS / 2 + FINGER_LENGTH / 2),
+            dims_mm=(FINGER_THICKNESS, FINGER_THICKNESS, FINGER_LENGTH),
+            color=CLAW_COLOR, opacity=1.0,
+            animation=Oscillate(axis="x", amplitude_mm=10.0, period_s=3)),
+    ]
+    return [v.to_item_dict() for v in visuals]
 
 
 def orientation_vectors() -> List[Mapping[str, Any]]:
@@ -571,153 +500,95 @@ def reference_frame_demo() -> List[Mapping[str, Any]]:
     axis_length_mm = 200.0
     axis_radius_mm = 12.0
     half = axis_length_mm / 2.0
-    return [
+
+    visuals = [
         # Anchor. Spinning this frame propagates to its children.
         # show_axes_helper=True tells the viewer to draw its built-in
         # RGB XYZ triad at this entity's origin — a free axes gizmo
-        # alongside the explicit colored capsules below, useful for
-        # visually confirming the renderer composes through the chain.
-        {
-            "type": "sphere",
-            "label": "spinning_frame",
-            "pose": _identity_pose(),
-            "radius_mm": 12,
-            "color": {"r": 255, "g": 255, "b": 255},
-            "opacity": 0.6,
-            "show_axes_helper": True,
-            "animation": {"mode": "spin", "period_s": 6},
-        },
-        # +X axis (red).
-        {
-            "type": "capsule",
-            "label": "spinning_frame_axis_x",
-            "parent_frame": "spinning_frame",
-            "pose": {"x": half, "y": 0, "z": 0,
-                     "ox": 1, "oy": 0, "oz": 0, "theta": 0},
-            "radius_mm": axis_radius_mm,
-            "length_mm": axis_length_mm,
-            "color": {"r": 230, "g": 25, "b": 75},
-            "opacity": 1.0,
-            "animation": {"mode": "none"},
-        },
-        # +Y axis (green).
-        {
-            "type": "capsule",
-            "label": "spinning_frame_axis_y",
-            "parent_frame": "spinning_frame",
-            "pose": {"x": 0, "y": half, "z": 0,
-                     "ox": 0, "oy": 1, "oz": 0, "theta": 0},
-            "radius_mm": axis_radius_mm,
-            "length_mm": axis_length_mm,
-            "color": {"r": 60, "g": 180, "b": 75},
-            "opacity": 1.0,
-            "animation": {"mode": "none"},
-        },
-        # +Z axis (blue) — capsule's default orientation extends up.
-        {
-            "type": "capsule",
-            "label": "spinning_frame_axis_z",
-            "parent_frame": "spinning_frame",
-            "pose": {"x": 0, "y": 0, "z": half,
-                     "ox": 0, "oy": 0, "oz": 1, "theta": 0},
-            "radius_mm": axis_radius_mm,
-            "length_mm": axis_length_mm,
-            "color": {"r": 0, "g": 130, "b": 200},
-            "opacity": 1.0,
-            "animation": {"mode": "none"},
-        },
-        # The attached mesh — orbits with the frame AND spins on its
-        # own axis at a different rate, so the composition is visible.
-        # Position offset chosen to keep clear of the axes triad
-        # (200 mm out) and the orbiting color wheel (220 mm hub
-        # radius).
-        {
-            "type": "mesh",
-            "label": "spinning_frame_attached_mesh",
-            "parent_frame": "spinning_frame",
-            "pose": {"x": 700, "y": 0, "z": 0,
-                     "ox": 0, "oy": 0, "oz": 1, "theta": 0},
-            "mesh_path": "assets/icosahedron.ply",
-            "color": {"r": 240, "g": 200, "b": 50},
-            "opacity": 1.0,
-            "animation": {"mode": "spin", "period_s": 2},
-        },
-        # Wheel hub — invisible intermediate parent for the orbiting
-        # color wheel. Identity orientation (OZ=1) puts the wheel
-        # ring in the hub's local XY plane, and the spin animation
-        # rotates around the hub's local Z — i.e., the ring's natural
-        # perpendicular. So the visible motion is the circle rotating
-        # around its own axis, not around some external axis.
+        # alongside the explicit colored capsules below.
+        Sphere("spinning_frame", pose=Pose.identity(),
+               radius_mm=12, color=(255, 255, 255), opacity=0.6,
+               show_axes_helper=True, animation=Spin(period_s=6)),
+        # RGB axis triad — three capsules, parented to the anchor so
+        # they orbit with it. Each axis's orientation vector points
+        # along the world axis it represents.
+        Capsule("spinning_frame_axis_x", parent_frame="spinning_frame",
+                pose=Pose.at(x=half, ox=1, oy=0, oz=0),
+                radius_mm=axis_radius_mm, length_mm=axis_length_mm,
+                color=(230, 25, 75), opacity=1.0),
+        Capsule("spinning_frame_axis_y", parent_frame="spinning_frame",
+                pose=Pose.at(y=half, ox=0, oy=1, oz=0),
+                radius_mm=axis_radius_mm, length_mm=axis_length_mm,
+                color=(60, 180, 75), opacity=1.0),
+        Capsule("spinning_frame_axis_z", parent_frame="spinning_frame",
+                pose=Pose.at(z=half),
+                radius_mm=axis_radius_mm, length_mm=axis_length_mm,
+                color=(0, 130, 200), opacity=1.0),
+        # Mesh — orbits with the frame AND spins on its own axis at a
+        # different rate, so the chained composition is visible.
+        # Offset 700 mm out to keep clear of the axes triad and the
+        # 220 mm hub-radius color wheel.
+        Mesh("spinning_frame_attached_mesh", parent_frame="spinning_frame",
+             pose=Pose.at(x=700),
+             mesh_path="assets/icosahedron.ply",
+             color=(240, 200, 50), opacity=1.0,
+             animation=Spin(period_s=2)),
+        # Wheel hub — invisible intermediate parent. Identity
+        # orientation puts the ring in the hub's local XY plane; the
+        # hub spins on its local Z so the ring rotates around its
+        # own perpendicular axis.
         #
-        # The hub stays parented to the mesh so the wheel still
-        # orbits the mesh (and inherits the mesh + anchor rotations);
-        # the hub adds its OWN spin on top, distinguishing the
-        # wheel's motion from inherited parent motion.
+        # Parented to the mesh → orbits with mesh + anchor; the hub
+        # adds its own spin on top.
         #
-        # Tiny radius + opacity 0 keeps the hub invisible. (We don't
-        # use `invisible: true` because we haven't verified the
-        # viewer keeps an invisible parent's frame in the composition
-        # tree.)
-        {
-            "type": "sphere",
-            "label": "spinning_frame_wheel_hub",
-            "parent_frame": "spinning_frame_attached_mesh",
-            "pose": {"x": 0, "y": 0, "z": 0,
-                     "ox": 0, "oy": 0, "oz": 1, "theta": 0},
-            "radius_mm": 4,
-            "color": {"r": 255, "g": 255, "b": 255},
-            "opacity": 0.0,
-            "animation": {"mode": "spin", "period_s": 10},
-        },
-        # Color wheel — children of wheel_hub, ring in hub's local
-        # XY plane. As wheel_hub's theta animates, the spheres rotate
-        # around the hub's local Z — the perpendicular to their ring
-        # plane. The wheel's rotation axis IS the wheel's own axis.
-        *_color_wheel_children(
-            "spinning_frame_wheel_hub",
-            count=10,
-            ring_radius_mm=220.0,
-            sphere_radius_mm=24.0,
-        ),
+        # Tiny radius + opacity 0 keeps the hub invisible. We avoid
+        # ``invisible: True`` because we haven't verified the viewer
+        # keeps an invisible parent's frame in the composition tree.
+        Sphere("spinning_frame_wheel_hub",
+               parent_frame="spinning_frame_attached_mesh",
+               pose=Pose.identity(),
+               radius_mm=4, color=(255, 255, 255), opacity=0.0,
+               animation=Spin(period_s=10)),
     ]
+    # Color wheel children — 10 hue-swept spheres orbiting the hub.
+    visuals.extend(_color_wheel_visuals(
+        "spinning_frame_wheel_hub", count=10,
+        ring_radius_mm=220.0, sphere_radius_mm=24.0,
+    ))
+    return [v.to_item_dict() for v in visuals]
 
 
-def _color_wheel_children(
+def _color_wheel_visuals(
     parent_label: str,
     count: int = 10,
     ring_radius_mm: float = 300.0,
     sphere_radius_mm: float = 30.0,
     z_mm: float = 0.0,
-) -> List[Mapping[str, Any]]:
-    """Generate ``count`` small hue-swept spheres in a ring parented to
-    ``parent_label``. Sphere positions are in the parent's local XY
-    plane; if the parent spins around its Z, the ring orbits with it
-    via the frame-composition chain.
+) -> List[Sphere]:
+    """``count`` small hue-swept Sphere visuals in a ring parented to
+    ``parent_label``. Positions are in the parent's local XY plane;
+    if the parent spins around its Z, the ring orbits with it via the
+    frame-composition chain.
 
     Labels follow ``<parent_label>_wheel_NN`` so duplicates don't
     collide if multiple wheels share a scene.
     """
-    items: List[Mapping[str, Any]] = []
+    out: List[Sphere] = []
     for i in range(count):
         hue = i / count
         r, g, b = colorsys.hsv_to_rgb(hue, 1.0, 1.0)
         angle = 2 * math.pi * i / count
-        items.append({
-            "type": "sphere",
-            "label": f"{parent_label}_wheel_{i:02d}",
-            "parent_frame": parent_label,
-            "pose": {
-                "x": ring_radius_mm * math.cos(angle),
-                "y": ring_radius_mm * math.sin(angle),
-                "z": z_mm,
-                "ox": 0, "oy": 0, "oz": 1, "theta": 0,
-            },
-            "radius_mm": sphere_radius_mm,
-            "color": {"r": int(255 * r), "g": int(255 * g), "b": int(255 * b)},
-            "opacity": 1.0,
-            "animation": {"mode": "none"},
-        })
-    return items
+        out.append(Sphere(
+            f"{parent_label}_wheel_{i:02d}",
+            parent_frame=parent_label,
+            pose=Pose.at(x=ring_radius_mm * math.cos(angle),
+                         y=ring_radius_mm * math.sin(angle),
+                         z=z_mm),
+            radius_mm=sphere_radius_mm,
+            color=(int(255 * r), int(255 * g), int(255 * b)),
+            opacity=1.0,
+        ))
+    return out
 
 
 def _offset_base_items(
