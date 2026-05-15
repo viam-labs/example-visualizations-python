@@ -62,6 +62,7 @@ from .shapes import (
     Visual,
     to_dicts,
 )
+from .uuid_strategy import VALID_STRATEGIES, initial_uuid, versioned_uuid
 
 
 __all__ = [
@@ -101,4 +102,8 @@ __all__ = [
     "CoordinateFrame",
     "Line",
     "BoundingBox",
+    # UUID strategy
+    "VALID_STRATEGIES",
+    "initial_uuid",
+    "versioned_uuid",
 ]

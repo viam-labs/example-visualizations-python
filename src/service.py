@@ -60,6 +60,12 @@ from viam.resource.types import Model, ModelFamily
 from viam.services.worldstatestore import WorldStateStore
 from viam.utils import ValueTypes, dict_to_struct, struct_to_dict
 
+from viam_visuals import (
+    VALID_STRATEGIES as _LIB_VALID_STRATEGIES,
+    initial_uuid as _lib_initial_uuid,
+    versioned_uuid as _lib_versioned_uuid,
+)
+
 from . import animation as anim_mod
 from . import geometries
 from . import presets as presets_mod
@@ -1084,20 +1090,8 @@ def _resolve_asset_path(p: str) -> Path:
 
 # ---------- UUID strategies ----------
 
-# Monotonic counter ensures versioned UUIDs are strictly unique even
-# when allocated within the same millisecond. The label prefix +
-# timestamp is still the readable identifier; the counter is the
-# tiebreaker.
-_VERSIONED_COUNTER = 0
-
-
-def _initial_uuid(label: str, strategy: str) -> bytes:
-    if strategy == "versioned":
-        return _versioned_uuid(label)
-    return label.encode()
-
-
-def _versioned_uuid(label: str) -> bytes:
-    global _VERSIONED_COUNTER
-    _VERSIONED_COUNTER += 1
-    return f"{label}_{int(time.time() * 1000)}_{_VERSIONED_COUNTER}".encode()
+# UUID generation moved to viam_visuals.uuid_strategy. These thin
+# aliases keep existing call sites working while the rest of the
+# service-layer extraction lands.
+_initial_uuid = _lib_initial_uuid
+_versioned_uuid = _lib_versioned_uuid
