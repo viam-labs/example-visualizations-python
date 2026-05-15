@@ -62,6 +62,7 @@ from .shapes import (
     Visual,
     to_dicts,
 )
+from .service import SceneServiceBase
 from .uuid_strategy import VALID_STRATEGIES, initial_uuid, versioned_uuid
 
 
@@ -106,4 +107,6 @@ __all__ = [
     "VALID_STRATEGIES",
     "initial_uuid",
     "versioned_uuid",
+    # Service base
+    "SceneServiceBase",
 ]

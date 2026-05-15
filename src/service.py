@@ -1,288 +1,147 @@
 """``playground`` — a WorldStateStore service that publishes a
 configurable set of primitives to the Viam 3D scene viewer.
 
-This is the playground entrypoint. It owns:
+Thin subclass over :class:`viam_visuals.SceneServiceBase`. The
+library owns the state map, subscriber fanout, animation tick task,
+UUID strategy, EasyResource.new quirk, and the standard nine
+DoCommand verbs. This module just plugs in:
 
-  - the item list (config-driven or DoCommand-managed at runtime)
-  - per-item base pose + base geometry (kept separate from the
-    animated tick state so animations can compose)
-  - the cached `Transform` proto for each item (what subscribers see)
-  - the subscriber list + per-subscriber asyncio.Queue
-  - the per-cycle animation task
-
-Two UUID strategies are supported, selectable at runtime:
-
-  - ``stable``: every item keeps its UUID for life. Animation pushes
-    ``UPDATED`` events with field-mask paths matching the conventions
-    in rdk/services/worldstatestore/fake/moving_geos_world.go.
-  - ``versioned``: every animation tick re-emits the item with a
-    fresh timestamp-suffixed UUID. Pushes ``REMOVED`` for the prior
-    version then ``ADDED`` for the new version, matching the
-    apriltag-tracker pattern. Use this if the viewer is dropping
-    UPDATED events for stable UUIDs.
-
-The strategy can be flipped at runtime via the
-``set_uuid_strategy`` DoCommand, which makes the renderer's behavior
-itself a teaching surface."""
-import asyncio
-import time
+  * the playground's :class:`MODEL`
+  * geometry building for the module's primitive types (including
+    the ``arrow`` sugar primitive and the ``raw_stl`` bug-demo knob)
+  * asset reading from the installed module directory
+  * the per-mode animation tick (delegated to :mod:`src.animation`)
+  * preset lookup (delegated to :mod:`src.presets`)
+  * extra item-level validation
+  * the playground-specific ``get_entity_chunk`` DoCommand verb
+"""
 from pathlib import Path
-from typing import (
-    Any,
-    AsyncGenerator,
-    ClassVar,
-    Dict,
-    List,
-    Mapping,
-    Optional,
-    Sequence,
-    Tuple,
-)
+from typing import Any, List, Mapping, Optional, Sequence, Tuple
 
-from google.protobuf.field_mask_pb2 import FieldMask
-from typing_extensions import Self
-from viam.logging import getLogger
 from viam.proto.app.robot import ComponentConfig
-from viam.proto.common import (
-    Geometry,
-    Pose,
-    PoseInFrame,
-    ResourceName,
-    Transform,
-)
-from viam.proto.service.worldstatestore import (
-    StreamTransformChangesResponse,
-    TransformChangeType,
-)
-from viam.resource.base import ResourceBase
+from viam.proto.common import Geometry
 from viam.resource.easy_resource import EasyResource
 from viam.resource.types import Model, ModelFamily
-from viam.services.worldstatestore import WorldStateStore
-from viam.utils import ValueTypes, dict_to_struct, struct_to_dict
+from viam.utils import ValueTypes, struct_to_dict
 
-from viam_visuals import (
-    VALID_STRATEGIES as _LIB_VALID_STRATEGIES,
-    initial_uuid as _lib_initial_uuid,
-    versioned_uuid as _lib_versioned_uuid,
-)
+from viam_visuals import SceneServiceBase, VALID_STRATEGIES
+from viam_visuals._internal.pcd import build_pcd_chunk
 
 from . import animation as anim_mod
 from . import geometries
 from . import presets as presets_mod
 
 
-LOGGER = getLogger(__name__)
-
-
-# ---------- config defaults / attribute names ----------
-
-ATTR_TICK_HZ = "tick_hz"
-ATTR_UUID_STRATEGY = "uuid_strategy"
-ATTR_PARENT_FRAME = "parent_frame"
-ATTR_PRESET = "preset"
-ATTR_ITEMS = "items"
-
-DEFAULT_TICK_HZ = 30.0
-DEFAULT_UUID_STRATEGY = "stable"
-DEFAULT_PARENT_FRAME = "world"
-DEFAULT_PRESET = "all"
-UUID_STRATEGIES = ("stable", "versioned")
-
-
-# ---------- module directory (for asset path resolution) ----------
-
+# Module directory — the parent of src/.
 MODULE_DIR = Path(__file__).resolve().parent.parent
 
 
-# ---------- pure helpers ----------
+ATTR_PRESET = "preset"
+ATTR_ITEMS = "items"
 
-def _base_geom_for_item(item: Mapping[str, Any]) -> Dict[str, Any]:
-    """Extract the shape-specific dim/radius/length fields the animator
-    needs. The returned dict is what compute_tick treats as immutable
-    base_geom — never mutated, always copied before modification."""
-    t = item["type"]
-    if t == "box":
-        return {"dims_mm": dict(item["dims_mm"])}
-    if t == "sphere":
-        return {"radius_mm": float(item["radius_mm"])}
-    if t == "capsule":
-        return {
-            "radius_mm": float(item["radius_mm"]),
-            "length_mm": float(item["length_mm"]),
-        }
-    if t == "arrow":
-        return {
-            "radius_mm": float(item["radius_mm"]),
-            "length_mm": float(item["length_mm"]),
-        }
-    # point / mesh / pointcloud have no scalable base.
-    return {}
+# Re-exports kept for tests / external callers that imported these
+# constants from src.service before the SceneServiceBase migration.
+DEFAULT_TICK_HZ = SceneServiceBase.DEFAULT_TICK_HZ
+DEFAULT_UUID_STRATEGY = SceneServiceBase.DEFAULT_UUID_STRATEGY
+DEFAULT_PARENT_FRAME = SceneServiceBase.DEFAULT_PARENT_FRAME
+UUID_STRATEGIES = VALID_STRATEGIES
 
 
-DEFAULT_CHUNK_SIZE_POINTS = 1000
-
-
-def _build_geometry(item: Mapping[str, Any], override_geom: Mapping[str, Any]) -> Geometry:
-    """Build a Geometry proto for an item, honoring per-tick geometry
-    overrides (only meaningful for `pulse` mode). Mesh / pointcloud
-    bytes are read from disk at this point — repeated reads are cheap
-    because the static items only build once."""
-    t = item["type"]
-    label = item["label"]
-    if t == "box":
-        return geometries.build_box(override_geom.get("dims_mm", item["dims_mm"]), label)
-    if t == "sphere":
-        return geometries.build_sphere(
-            override_geom.get("radius_mm", item["radius_mm"]), label
-        )
-    if t == "capsule":
-        return geometries.build_capsule(
-            override_geom.get("radius_mm", item["radius_mm"]),
-            override_geom.get("length_mm", item["length_mm"]),
-            label,
-        )
-    if t == "point":
-        return geometries.build_point(label)
-    if t == "arrow":
-        return geometries.build_arrow(
-            override_geom.get("length_mm", item["length_mm"]),
-            override_geom.get("radius_mm", item["radius_mm"]),
-            label,
-        )
-    if t == "mesh":
-        path = item["mesh_path"]
-        raw = geometries.read_asset(path, MODULE_DIR)
-        # raw_stl: bug-demo for the viz team — ship the STL bytes
-        # straight through with content_type="stl" so the viewer's
-        # silent-drop is observable. See LESSONS.md::mesh-formats.
-        if item.get("raw_stl"):
-            return geometries.build_mesh(raw, "stl", label, allow_non_ply=True)
-        ply_bytes = geometries.load_mesh_bytes_as_ply(raw, path)
-        # build_mesh requires content_type="ply"; STL got converted above.
-        return geometries.build_mesh(ply_bytes, "ply", label)
-    if t == "pointcloud":
-        # Chunked items use a pre-built first-chunk blob passed in via
-        # override_geom["pcd_bytes"]; non-chunked items just load the
-        # full PCD from disk.
-        if "pcd_bytes" in override_geom:
-            return geometries.build_pointcloud(override_geom["pcd_bytes"], label)
-        return geometries.build_pointcloud(
-            geometries.read_asset(item["pointcloud_path"], MODULE_DIR), label
-        )
-    raise ValueError(f"unknown type {t!r}")
-
-
-def _build_transform(
-    item: Mapping[str, Any],
-    pose: Mapping[str, float],
-    geom: Geometry,
-    uuid: bytes,
-    parent_frame: str,
-    chunks: Optional[Mapping[str, Any]] = None,
-) -> Transform:
-    # If the user didn't set a uniform `color` AND the mesh has
-    # per-vertex colors embedded in the PLY, transcode those into
-    # metadata.colors so the viewer renders them. The viewer ignores
-    # PLY's own embedded vertex colors; metadata.colors is its only
-    # per-vertex color channel.
-    vertex_colors = None
-    user_color = item.get("color")
-    if user_color is None and geom.HasField("mesh"):
-        vertex_colors = geometries.extract_ply_vertex_colors(geom.mesh.mesh)
-    metadata = geometries.build_metadata(
-        user_color,
-        item.get("opacity"),
-        show_axes_helper=bool(item.get("show_axes_helper", False)),
-        invisible=bool(item.get("invisible", False)),
-        vertex_colors=vertex_colors,
-        chunks=chunks,
-    )
-    return Transform(
-        uuid=uuid,
-        reference_frame=item["label"],
-        pose_in_observer_frame=PoseInFrame(
-            reference_frame=item.get("parent_frame", parent_frame),
-            pose=geometries.build_pose(pose),
-        ),
-        physical_object=geom,
-        metadata=metadata,
-    )
-
-
-# ---------- the service ----------
-
-class SceneSprites(WorldStateStore, EasyResource):
+class SceneSprites(SceneServiceBase, EasyResource):
     """Playground WorldStateStore — publishes every supported geometry
-    primitive to the Viam 3D scene viewer.
+    primitive to the Viam 3D scene viewer."""
 
-    Items can be supplied via config (top-level ``items`` list or
-    ``preset`` name) or managed at runtime via DoCommand. Animations
-    are computed in a background asyncio task at the configured
-    ``tick_hz`` and pushed to subscribers either as UPDATED events
-    (stable UUID mode) or REMOVED+ADDED (versioned mode).
-    """
-
-    MODEL: ClassVar[Model] = Model(
+    MODEL = Model(
         ModelFamily("viam", "example-visualizations-python"), "playground",
     )
-
-    def __init__(self, name: str):
-        super().__init__(name)
-        # Lock guards _state, _subscribers, _items.
-        self._lock = asyncio.Lock()
-        # label -> {item dict, base_pose, base_geom, uuid (bytes),
-        # transform (Transform), start_t (float monotonic seconds)}
-        self._state: Dict[str, Dict[str, Any]] = {}
-        # Active subscribers.
-        self._subscribers: List[asyncio.Queue] = []
-        # Animation tick task.
-        self._tick_task: Optional[asyncio.Task] = None
-        # Config-driven state.
-        self.tick_hz: float = DEFAULT_TICK_HZ
-        self.uuid_strategy: str = DEFAULT_UUID_STRATEGY
-        self.parent_frame: str = DEFAULT_PARENT_FRAME
-        # Monotonic clock origin for animation t=0.
-        self._animation_t0: float = 0.0
+    DEFAULT_PRESET = "all"
 
     # ------------------------------------------------------------------
-    # Lifecycle
+    # Required hooks
     # ------------------------------------------------------------------
 
-    @classmethod
-    def new(
-        cls, config: ComponentConfig, dependencies: Mapping[ResourceName, ResourceBase]
-    ) -> Self:
-        # EasyResource.new doesn't call reconfigure() for service models,
-        # so we do it explicitly. Without this the service starts with
-        # no items and the tick task never launches.
-        instance = super().new(config, dependencies)
-        instance.reconfigure(config, dependencies)
-        return instance
+    def build_geometry(
+        self, item: Mapping[str, Any], override_geom: Mapping[str, Any]
+    ) -> Geometry:
+        t = item["type"]
+        label = item["label"]
+        if t == "box":
+            return geometries.build_box(
+                override_geom.get("dims_mm", item["dims_mm"]), label
+            )
+        if t == "sphere":
+            return geometries.build_sphere(
+                override_geom.get("radius_mm", item["radius_mm"]), label
+            )
+        if t == "capsule":
+            return geometries.build_capsule(
+                override_geom.get("radius_mm", item["radius_mm"]),
+                override_geom.get("length_mm", item["length_mm"]),
+                label,
+            )
+        if t == "point":
+            return geometries.build_point(label)
+        if t == "arrow":
+            return geometries.build_arrow(
+                override_geom.get("length_mm", item["length_mm"]),
+                override_geom.get("radius_mm", item["radius_mm"]),
+                label,
+            )
+        if t == "mesh":
+            path = item["mesh_path"]
+            raw = self.read_asset(path)
+            # raw_stl bug-demo: ship STL bytes with content_type="stl"
+            # to surface the viewer's silent-drop behavior.
+            if item.get("raw_stl"):
+                return geometries.build_mesh(raw, "stl", label, allow_non_ply=True)
+            ply_bytes = geometries.load_mesh_bytes_as_ply(raw, path)
+            return geometries.build_mesh(ply_bytes, "ply", label)
+        if t == "pointcloud":
+            if "pcd_bytes" in override_geom:
+                return geometries.build_pointcloud(override_geom["pcd_bytes"], label)
+            return geometries.build_pointcloud(
+                self.read_asset(item["pointcloud_path"]), label
+            )
+        raise ValueError(f"unknown type {t!r}")
+
+    def read_asset(self, asset_path: str) -> bytes:
+        return geometries.read_asset(asset_path, MODULE_DIR)
+
+    def compute_tick(self, item, base_pose, base_geom, t):
+        return anim_mod.compute_tick(item, base_pose, base_geom, t)
+
+    def is_animated(self, item: Mapping[str, Any]) -> bool:
+        return anim_mod.is_animated(item)
+
+    # ------------------------------------------------------------------
+    # Optional hooks
+    # ------------------------------------------------------------------
+
+    def load_preset(self, name: str) -> Sequence[Mapping[str, Any]]:
+        return presets_mod.load(name)
+
+    def preset_names(self) -> Sequence[str]:
+        return presets_mod.PRESET_NAMES
+
+    def validate_item_extra(self, item: Mapping[str, Any], index: int) -> None:
+        """Module-specific item validation. Mirrors the original
+        _validate_item — catches schema typos before the geometry
+        builder hits them."""
+        _validate_item(item, index)
 
     @classmethod
     def validate_config(
         cls, config: ComponentConfig
     ) -> Tuple[Sequence[str], Sequence[str]]:
+        """Extends the library's standard validation with the
+        playground's preset + items list checks."""
+        super().validate_config(config)
         attrs = struct_to_dict(config.attributes)
-        # tick_hz: optional, 1..30.
-        if ATTR_TICK_HZ in attrs:
-            hz = float(attrs[ATTR_TICK_HZ])
-            if hz <= 0 or hz > 30:
-                raise Exception(f"{ATTR_TICK_HZ} must be in (0, 30]")
-        # uuid_strategy: optional, must be in UUID_STRATEGIES.
-        if ATTR_UUID_STRATEGY in attrs:
-            s = str(attrs[ATTR_UUID_STRATEGY])
-            if s not in UUID_STRATEGIES:
-                raise Exception(
-                    f"{ATTR_UUID_STRATEGY} must be one of {UUID_STRATEGIES}, got {s!r}"
-                )
-        # preset: optional, must be a known name.
         preset = attrs.get(ATTR_PRESET)
         if preset is not None and str(preset) not in presets_mod.PRESET_NAMES:
             raise Exception(
                 f"{ATTR_PRESET} must be one of {presets_mod.PRESET_NAMES}, got {preset!r}"
             )
-        # items: optional; if present, each item must validate.
         items = attrs.get(ATTR_ITEMS)
         if items is not None:
             if not isinstance(items, list):
@@ -296,685 +155,65 @@ class SceneSprites(WorldStateStore, EasyResource):
                 if label in seen_labels:
                     raise Exception(f"items[{i}] duplicate label {label!r}")
                 seen_labels.add(label)
-        # No required deps; no optional deps.
         return [], []
 
-    def reconfigure(
-        self,
-        config: ComponentConfig,
-        dependencies: Mapping[ResourceName, ResourceBase],
-    ):
-        attrs = struct_to_dict(config.attributes)
-        self.tick_hz = float(attrs.get(ATTR_TICK_HZ, DEFAULT_TICK_HZ))
-        self.uuid_strategy = str(attrs.get(ATTR_UUID_STRATEGY, DEFAULT_UUID_STRATEGY))
-        self.parent_frame = str(attrs.get(ATTR_PARENT_FRAME, DEFAULT_PARENT_FRAME))
-
-        # Pick the source of items: explicit items > preset > default preset.
-        raw_items = attrs.get(ATTR_ITEMS)
-        if raw_items:
-            items = [dict(it) for it in raw_items]
-        else:
-            preset_name = str(attrs.get(ATTR_PRESET, DEFAULT_PRESET))
-            items = [dict(it) for it in presets_mod.load(preset_name)]
-
-        # Cancel any prior tick task.
-        if self._tick_task is not None:
-            self._tick_task.cancel()
-            self._tick_task = None
-
-        # Rebuild state from scratch, pushing REMOVED/ADDED to current
-        # subscribers so they see the new world. We don't try to diff
-        # against the previous state — a reconfigure is a coarse signal
-        # and a hard reset is easier to reason about.
-        prior_transforms = [s["transform"] for s in self._state.values()]
-        self._state = {}
-        for it in items:
-            self._install_item(it)
-
-        for t in prior_transforms:
-            self._broadcast(StreamTransformChangesResponse(
-                change_type=TransformChangeType.TRANSFORM_CHANGE_TYPE_REMOVED,
-                transform=t,
-            ))
-        for s in self._state.values():
-            self._broadcast(StreamTransformChangesResponse(
-                change_type=TransformChangeType.TRANSFORM_CHANGE_TYPE_ADDED,
-                transform=s["transform"],
-            ))
-
-        # Reset animation clock and (re)start the tick task if any
-        # items are animated. Static-only configs save the tick cycle.
-        self._animation_t0 = time.monotonic()
-        if any(anim_mod.is_animated(s["item"]) for s in self._state.values()):
-            self._tick_task = asyncio.create_task(self._tick_loop())
-        LOGGER.info(
-            f"reconfigure: tick_hz={self.tick_hz} uuid_strategy={self.uuid_strategy} "
-            f"parent_frame={self.parent_frame} items={len(self._state)}"
-        )
-
-    async def close(self):
-        if self._tick_task is not None:
-            self._tick_task.cancel()
-            try:
-                await self._tick_task
-            except asyncio.CancelledError:
-                pass
-
-    # ------------------------------------------------------------------
-    # Item lifecycle helpers (sync — caller holds lock or is in
-    # reconfigure where the loop isn't yet running).
-    # ------------------------------------------------------------------
-
-    def _install_item(self, item: Mapping[str, Any]) -> None:
-        """Bring an item into _state and build its initial Transform."""
-        label = item["label"]
-        if label in self._state:
-            raise Exception(f"duplicate item label {label!r}")
-        base_pose = dict(item.get("pose") or {})
-        # Ensure all pose fields are filled in for downstream animation
-        # math, which reads keys directly.
-        for k, default in (("x", 0.0), ("y", 0.0), ("z", 0.0),
-                           ("ox", 0.0), ("oy", 0.0), ("oz", 1.0),
-                           ("theta", 0.0)):
-            base_pose.setdefault(k, default)
-        base_geom = _base_geom_for_item(item)
-        uuid = _initial_uuid(label, self.uuid_strategy)
-        # Chunked-delivery setup: for `pointcloud` items with
-        # `chunked: true`, parse the full PCD on the way in, stash the
-        # body for later get_entity_chunk requests, and build the
-        # initial Transform with only the first chunk inline. The
-        # metadata.chunks struct tells the viewer there are more
-        # chunks to fetch.
-        chunks_info = None
-        chunked_state = None
-        if item.get("type") == "pointcloud" and item.get("chunked"):
-            full_pcd = geometries.read_asset(item["pointcloud_path"], MODULE_DIR)
-            header_bytes, body_bytes, stride, total_points = (
-                geometries.parse_pcd_binary(full_pcd)
-            )
-            chunk_size_points = int(item.get("chunk_size", DEFAULT_CHUNK_SIZE_POINTS))
-            if chunk_size_points <= 0:
-                chunk_size_points = DEFAULT_CHUNK_SIZE_POINTS
-            n_chunks = (total_points + chunk_size_points - 1) // chunk_size_points
-            first_chunk_pcd = geometries.build_pcd_chunk(
-                header_bytes, body_bytes, stride,
-                chunk_index=0, chunk_size_points=chunk_size_points,
-            )
-            base_geom = dict(base_geom)
-            base_geom["pcd_bytes"] = first_chunk_pcd
-            chunks_info = {
-                # Schema notes: see LESSONS.md::chunked-delivery-schema.
-                # Field names are best-effort; viewer behavior on these
-                # is unverified.
-                "chunk_size": float(chunk_size_points),
-                "total": float(n_chunks),
-                "total_points": float(total_points),
-                "stride": float(stride),
-            }
-            chunked_state = {
-                "header_bytes": header_bytes,
-                "body_bytes": body_bytes,
-                "stride": stride,
-                "total_points": total_points,
-                "chunk_size_points": chunk_size_points,
-                "n_chunks": n_chunks,
-            }
-        geom_proto = _build_geometry(item, base_geom)
-        tf = _build_transform(
-            item, base_pose, geom_proto, uuid, self.parent_frame,
-            chunks=chunks_info,
-        )
-        self._state[label] = {
-            "item": dict(item),
-            "base_pose": base_pose,
-            "base_geom": base_geom,
-            "uuid": uuid,
-            "transform": tf,
-            "chunks_info": chunks_info,
-            "chunked_state": chunked_state,
-            # visible_to_viewer tracks whether the entity is currently
-            # in the viewer's scene from the renderer's perspective.
-            # True by default — the flicker animation flips this to
-            # False between phases and emits REMOVED/ADDED on
-            # transitions. list_uuids, get_transform, and the stream
-            # initial burst all filter by this flag so a "removed"
-            # flicker item really looks gone to subscribers.
-            "visible_to_viewer": True,
-        }
-
-    def _remove_item(self, label: str) -> Optional[Transform]:
-        s = self._state.pop(label, None)
-        if s is None:
-            return None
-        return s["transform"]
-
-    # ------------------------------------------------------------------
-    # Animation tick
-    # ------------------------------------------------------------------
-
-    async def _tick_loop(self) -> None:
-        period = 1.0 / max(0.01, self.tick_hz)
-        try:
-            while True:
-                try:
-                    await self._tick_once()
-                except asyncio.CancelledError:
-                    raise
-                except Exception as e:
-                    LOGGER.warning(f"tick failed: {type(e).__name__}: {e}")
-                await asyncio.sleep(period)
-        except asyncio.CancelledError:
-            return
-
-    async def _tick_once(self) -> None:
-        t = time.monotonic() - self._animation_t0
-        async with self._lock:
-            for label, s in list(self._state.items()):
-                item = s["item"]
-                if not anim_mod.is_animated(item):
-                    continue
-                pose, geom, paths, meta_override = anim_mod.compute_tick(
-                    item, s["base_pose"], s["base_geom"], t,
-                )
-                # Special path: animations that mutate scene-graph
-                # membership (currently `flicker` and `lifecycle`).
-                # The override carries `_in_scene` — True if the
-                # entity should be in the viewer's scene this tick,
-                # False if it should be removed. We emit REMOVED /
-                # ADDED on transition edges. While the entity stays
-                # in the scene, we fall through to the normal UPDATED
-                # path so other overrides (color/opacity for
-                # lifecycle, paths for any other animation chained on
-                # top) still flow through.
-                if meta_override and "_in_scene" in meta_override:
-                    want_in_scene = bool(meta_override["_in_scene"])
-                    was_in_scene = s.get("visible_to_viewer", True)
-                    if want_in_scene and not was_in_scene:
-                        # Rising edge: bring the entity back into the
-                        # scene. By DEFAULT we issue a fresh UUID on
-                        # re-add, working around the renderer's cache
-                        # that drops ADDED events for previously-
-                        # REMOVED UUIDs (apriltag-tracker hit the
-                        # same bug — see LESSONS.md::renderer-caches-
-                        # removed-uuids-rotate-on-readd).
-                        #
-                        # Items can opt out via
-                        # ``animation.rotate_uuid_on_readd: false``,
-                        # which keeps the original UUID across cycles
-                        # — useful as a TEACHING DEMO to show what
-                        # the renderer bug looks like (the entity
-                        # never re-appears until the page is
-                        # refreshed). The default is True for any
-                        # production use.
-                        anim_cfg = item.get("animation") or {}
-                        if anim_cfg.get("rotate_uuid_on_readd", True):
-                            new_uuid = _versioned_uuid(label)
-                            s["uuid"] = new_uuid
-                        emit_uuid = s["uuid"]
-                        # Build the rising-edge transform with the
-                        # current meta_override applied (so e.g. the
-                        # lifecycle entity comes back blue, not the
-                        # static color).
-                        item_for_add = item
-                        if "color" in meta_override or "opacity" in meta_override:
-                            item_for_add = dict(item)
-                            if "color" in meta_override:
-                                c = meta_override["color"]
-                                item_for_add["color"] = {"r": c[0], "g": c[1], "b": c[2]}
-                            if "opacity" in meta_override:
-                                item_for_add["opacity"] = float(meta_override["opacity"])
-                        geom_proto = _build_geometry(item, geom)
-                        new_tf = _build_transform(
-                            item_for_add, pose, geom_proto,
-                            emit_uuid, self.parent_frame,
-                        )
-                        s["transform"] = new_tf
-                        s["visible_to_viewer"] = True
-                        self._broadcast(StreamTransformChangesResponse(
-                            change_type=TransformChangeType.TRANSFORM_CHANGE_TYPE_ADDED,
-                            transform=new_tf,
-                        ))
-                        continue
-                    if not want_in_scene and was_in_scene:
-                        # Falling edge: REMOVED.
-                        s["visible_to_viewer"] = False
-                        self._broadcast(StreamTransformChangesResponse(
-                            change_type=TransformChangeType.TRANSFORM_CHANGE_TYPE_REMOVED,
-                            transform=s["transform"],
-                        ))
-                        continue
-                    if not want_in_scene and not was_in_scene:
-                        # Both off — nothing to emit.
-                        continue
-                    # Both on — fall through to the UPDATED path so
-                    # color/opacity/pose overrides still flow.
-                if not paths:
-                    # Animation mode had no effect for this type
-                    # (e.g. pulse on a point) — skip.
-                    continue
-                geom_proto = _build_geometry(item, geom)
-                # When the animation supplies metadata overrides for
-                # this tick (force_vector cycles hue; breathe/flicker
-                # modulate opacity), pass a synthetic item dict with
-                # the override fields applied so the metadata reflects
-                # them.
-                item_for_tf = item
-                if meta_override:
-                    item_for_tf = dict(item)
-                    if "color" in meta_override:
-                        c = meta_override["color"]
-                        item_for_tf["color"] = {"r": c[0], "g": c[1], "b": c[2]}
-                    if "opacity" in meta_override:
-                        item_for_tf["opacity"] = float(meta_override["opacity"])
-                if self.uuid_strategy == "stable":
-                    new_tf = _build_transform(
-                        item_for_tf, pose, geom_proto,
-                        s["uuid"], self.parent_frame,
-                    )
-                    s["transform"] = new_tf
-                    self._broadcast(StreamTransformChangesResponse(
-                        change_type=TransformChangeType.TRANSFORM_CHANGE_TYPE_UPDATED,
-                        transform=new_tf,
-                        updated_fields=FieldMask(paths=list(paths)),
-                    ))
-                else:  # versioned
-                    old_tf = s["transform"]
-                    new_uuid = _versioned_uuid(label)
-                    new_tf = _build_transform(
-                        item_for_tf, pose, geom_proto,
-                        new_uuid, self.parent_frame,
-                    )
-                    s["uuid"] = new_uuid
-                    s["transform"] = new_tf
-                    self._broadcast(StreamTransformChangesResponse(
-                        change_type=TransformChangeType.TRANSFORM_CHANGE_TYPE_REMOVED,
-                        transform=old_tf,
-                    ))
-                    self._broadcast(StreamTransformChangesResponse(
-                        change_type=TransformChangeType.TRANSFORM_CHANGE_TYPE_ADDED,
-                        transform=new_tf,
-                    ))
-
-    # ------------------------------------------------------------------
-    # Subscriber fanout
-    # ------------------------------------------------------------------
-
-    def _broadcast(self, msg: StreamTransformChangesResponse) -> None:
-        for q in list(self._subscribers):
-            try:
-                q.put_nowait(msg)
-            except asyncio.QueueFull:
-                LOGGER.warning("subscriber queue full; dropping event")
-
-    # ------------------------------------------------------------------
-    # WorldStateStore service API
-    # ------------------------------------------------------------------
-
-    async def list_uuids(
-        self,
-        *,
-        extra: Optional[Mapping[str, Any]] = None,
-        timeout: Optional[float] = None,
-    ) -> List[bytes]:
-        async with self._lock:
-            # Filter out items that the flicker animation has
-            # temporarily removed from the scene. They're still in
-            # self._state (we need them to keep ticking), but to the
-            # viewer they don't exist right now.
-            return [
-                s["uuid"]
-                for s in self._state.values()
-                if s.get("visible_to_viewer", True)
-            ]
-
-    async def get_transform(
-        self,
-        uuid: bytes,
-        *,
-        extra: Optional[Mapping[str, Any]] = None,
-        timeout: Optional[float] = None,
-    ) -> Transform:
-        async with self._lock:
-            for s in self._state.values():
-                if s["uuid"] == uuid:
-                    if not s.get("visible_to_viewer", True):
-                        # Flicker has this entity in its "off" phase.
-                        raise Exception(
-                            f"uuid {uuid!r} is currently not in the scene "
-                            "(flicker animation has it temporarily removed)"
-                        )
-                    return s["transform"]
-        raise Exception(f"unknown uuid {uuid!r}")
-
-    async def stream_transform_changes(
-        self,
-        *,
-        extra: Optional[Mapping[str, Any]] = None,
-        timeout: Optional[float] = None,
-    ) -> AsyncGenerator[StreamTransformChangesResponse, None]:
-        q: asyncio.Queue = asyncio.Queue(maxsize=256)
-        async with self._lock:
-            self._subscribers.append(q)
-            # Burst the current world to the new subscriber. Skip
-            # items the flicker animation has currently removed —
-            # they're not in the viewer's scene right now, so a fresh
-            # subscriber shouldn't see them as ADDED only to be
-            # REMOVED again moments later.
-            for s in self._state.values():
-                if not s.get("visible_to_viewer", True):
-                    continue
-                q.put_nowait(StreamTransformChangesResponse(
-                    change_type=TransformChangeType.TRANSFORM_CHANGE_TYPE_ADDED,
-                    transform=s["transform"],
-                ))
-        try:
-            while True:
-                yield await q.get()
-        finally:
-            async with self._lock:
-                if q in self._subscribers:
-                    self._subscribers.remove(q)
-
-    # ------------------------------------------------------------------
-    # DoCommand — the playground surface
-    # ------------------------------------------------------------------
-
-    async def do_command(
-        self,
-        command: Mapping[str, ValueTypes],
-        *,
-        timeout: Optional[float] = None,
-        **kwargs,
-    ) -> Mapping[str, ValueTypes]:
+    async def handle_custom_command(
+        self, command: Mapping[str, ValueTypes]
+    ) -> Optional[Mapping[str, ValueTypes]]:
+        """Handles the playground-specific ``get_entity_chunk`` verb.
+        Returns ``None`` for anything else so the base falls through
+        to its debug-snapshot reply."""
         cmd = command.get("command") if command else None
+        if cmd != "get_entity_chunk":
+            return None
 
-        if cmd == "list":
-            async with self._lock:
-                return {"items": [self._item_summary(label) for label in self._state]}
-
-        if cmd == "add":
-            new_item = command.get("item")
-            if not isinstance(new_item, Mapping):
-                raise Exception("add requires an 'item' dict")
-            _validate_item(new_item, 0)
-            async with self._lock:
-                if new_item["label"] in self._state:
-                    raise Exception(f"item {new_item['label']!r} already exists")
-                self._install_item(new_item)
-                tf = self._state[new_item["label"]]["transform"]
-                self._broadcast(StreamTransformChangesResponse(
-                    change_type=TransformChangeType.TRANSFORM_CHANGE_TYPE_ADDED,
-                    transform=tf,
-                ))
-                # Restart the tick task if this is the first animated
-                # item — otherwise its animation would never fire.
-                self._maybe_restart_tick()
-                return {"label": new_item["label"], "uuid": tf.uuid.decode()}
-
-        if cmd == "remove":
-            label = command.get("label")
-            if not label:
-                raise Exception("remove requires a 'label'")
-            async with self._lock:
-                tf = self._remove_item(str(label))
-                if tf is None:
-                    return {"removed": False}
-                self._broadcast(StreamTransformChangesResponse(
-                    change_type=TransformChangeType.TRANSFORM_CHANGE_TYPE_REMOVED,
-                    transform=tf,
-                ))
-                return {"removed": True}
-
-        if cmd == "update":
-            label = command.get("label")
-            patch = command.get("patch")
-            if not label or not isinstance(patch, Mapping):
-                raise Exception("update requires 'label' and 'patch'")
-            async with self._lock:
-                s = self._state.get(str(label))
-                if s is None:
-                    raise Exception(f"unknown label {label!r}")
-                updated_fields = self._apply_patch(s, patch)
-                # Rebuild transform (mesh_path may have changed,
-                # geometry may have changed, etc.). For simplicity we
-                # always rebuild on update — the playground rate is
-                # human-interactive, not animation-frequent.
-                geom_proto = _build_geometry(s["item"], s["base_geom"])
-                new_tf = _build_transform(
-                    s["item"], s["base_pose"], geom_proto, s["uuid"], self.parent_frame,
-                )
-                s["transform"] = new_tf
-                self._broadcast(StreamTransformChangesResponse(
-                    change_type=TransformChangeType.TRANSFORM_CHANGE_TYPE_UPDATED,
-                    transform=new_tf,
-                    updated_fields=FieldMask(paths=updated_fields),
-                ))
-                # If we just turned animation on, the tick task may
-                # need to start.
-                self._maybe_restart_tick()
-                return {"updated_fields": updated_fields}
-
-        if cmd == "clear":
-            async with self._lock:
-                count = len(self._state)
-                for tf in [s["transform"] for s in self._state.values()]:
-                    self._broadcast(StreamTransformChangesResponse(
-                        change_type=TransformChangeType.TRANSFORM_CHANGE_TYPE_REMOVED,
-                        transform=tf,
-                    ))
-                self._state = {}
-                return {"removed_count": count}
-
-        if cmd == "preset":
-            name = command.get("name")
-            if not name:
-                raise Exception("preset requires a 'name'")
-            items = presets_mod.load(str(name))
-            async with self._lock:
-                prior = [s["transform"] for s in self._state.values()]
-                self._state = {}
-                for it in items:
-                    self._install_item(dict(it))
-                for tf in prior:
-                    self._broadcast(StreamTransformChangesResponse(
-                        change_type=TransformChangeType.TRANSFORM_CHANGE_TYPE_REMOVED,
-                        transform=tf,
-                    ))
+        # Returns one chunk of a chunked-delivery entity. Verb name
+        # matches the visualization library's e2e fixture. See
+        # LESSONS.md::chunked-delivery-schema. Whether the viewer
+        # actually issues this verb is unverified.
+        label_in = command.get("label")
+        uuid_in = command.get("uuid")
+        chunk_index = int(command.get("chunk_index", 0))
+        async with self._lock:
+            target = None
+            if label_in:
+                target = self._state.get(str(label_in))
+            elif uuid_in:
+                uuid_bytes = str(uuid_in).encode()
                 for s in self._state.values():
-                    self._broadcast(StreamTransformChangesResponse(
-                        change_type=TransformChangeType.TRANSFORM_CHANGE_TYPE_ADDED,
-                        transform=s["transform"],
-                    ))
-                self._maybe_restart_tick()
-                return {"loaded": str(name), "count": len(self._state)}
-
-        if cmd == "snapshot":
-            async with self._lock:
-                return {"config": {
-                    "tick_hz": self.tick_hz,
-                    "uuid_strategy": self.uuid_strategy,
-                    "parent_frame": self.parent_frame,
-                    "items": [
-                        dict(s["item"]) for s in self._state.values()
-                    ],
-                }}
-
-        if cmd == "get_entity_chunk":
-            # Returns one chunk of a chunked-delivery entity. Inputs:
-            # either `uuid` (bytes-as-string) or `label`, plus
-            # `chunk_index` (int). Returns:
-            #   {label, chunk_index, n_chunks, pcd_b64}
-            # where pcd_b64 is the base64-encoded standalone PCD
-            # blob for that chunk (valid as a self-contained file).
-            # Verb name matches what the visualization library's e2e
-            # fixture uses for chunk fetch — see LESSONS.md::chunked-
-            # delivery-schema. Whether the viewer actually issues
-            # this DoCommand is unverified.
-            label_in = command.get("label")
-            uuid_in = command.get("uuid")
-            chunk_index = int(command.get("chunk_index", 0))
-            async with self._lock:
-                target = None
-                if label_in:
-                    target = self._state.get(str(label_in))
-                elif uuid_in:
-                    uuid_bytes = str(uuid_in).encode()
-                    for s in self._state.values():
-                        if s["uuid"] == uuid_bytes:
-                            target = s
-                            break
-                if target is None:
-                    raise Exception(
-                        "get_entity_chunk requires a valid 'label' or 'uuid'"
-                    )
-                cstate = target.get("chunked_state")
-                if cstate is None:
-                    raise Exception(
-                        f"entity {target['item']['label']!r} is not chunked"
-                    )
-                chunk_pcd = geometries.build_pcd_chunk(
-                    cstate["header_bytes"],
-                    cstate["body_bytes"],
-                    cstate["stride"],
-                    chunk_index=chunk_index,
-                    chunk_size_points=cstate["chunk_size_points"],
-                )
-                import base64
-                return {
-                    "label": target["item"]["label"],
-                    "chunk_index": chunk_index,
-                    "n_chunks": cstate["n_chunks"],
-                    "total_points": cstate["total_points"],
-                    "pcd_b64": base64.b64encode(chunk_pcd).decode("ascii"),
-                }
-
-        if cmd == "set_uuid_strategy":
-            strategy = command.get("strategy")
-            if strategy not in UUID_STRATEGIES:
+                    if s["uuid"] == uuid_bytes:
+                        target = s
+                        break
+            if target is None:
                 raise Exception(
-                    f"strategy must be one of {UUID_STRATEGIES}, got {strategy!r}"
+                    "get_entity_chunk requires a valid 'label' or 'uuid'"
                 )
-            async with self._lock:
-                self.uuid_strategy = str(strategy)
-                return {"strategy": self.uuid_strategy}
-
-        # Default: return a debug snapshot for unrecognized / missing
-        # commands. Mirrors apriltag-tracker.
-        return self._debug_snapshot()
-
-    # ------------------------------------------------------------------
-    # do_command helpers
-    # ------------------------------------------------------------------
-
-    def _item_summary(self, label: str) -> Mapping[str, Any]:
-        s = self._state[label]
-        return {
-            "label": label,
-            "type": s["item"]["type"],
-            "uuid": s["uuid"].decode(),
-            "pose": dict(s["base_pose"]),
-            "animation_mode": (s["item"].get("animation") or {}).get("mode", "none"),
-            "color": s["item"].get("color"),
-            "opacity": s["item"].get("opacity"),
-        }
-
-    def _apply_patch(self, s: Dict[str, Any], patch: Mapping[str, Any]) -> List[str]:
-        """Apply an item patch, mutating ``s`` (the state row) in place.
-        Returns the field-mask paths describing what changed, so the
-        UPDATED event carries them."""
-        updated_fields: List[str] = []
-        item = s["item"]
-        if "color" in patch:
-            item["color"] = dict(patch["color"]) if patch["color"] is not None else None
-            updated_fields.append("metadata.color")
-        if "opacity" in patch:
-            item["opacity"] = (
-                float(patch["opacity"]) if patch["opacity"] is not None else None
+            cstate = target.get("chunked_state")
+            if cstate is None:
+                raise Exception(
+                    f"entity {target['item']['label']!r} is not chunked"
+                )
+            chunk_pcd = build_pcd_chunk(
+                cstate["header_bytes"],
+                cstate["body_bytes"],
+                cstate["stride"],
+                chunk_index=chunk_index,
+                chunk_size_points=cstate["chunk_size_points"],
             )
-            updated_fields.append("metadata.opacity")
-        if "pose" in patch:
-            new_pose = dict(s["base_pose"])
-            new_pose.update(patch["pose"])
-            s["base_pose"] = new_pose
-            for k in patch["pose"]:
-                fm = _POSE_KEY_TO_PATH.get(k)
-                if fm is not None:
-                    updated_fields.append(fm)
-        if "dims_mm" in patch and item["type"] == "box":
-            item["dims_mm"] = dict(patch["dims_mm"])
-            s["base_geom"] = _base_geom_for_item(item)
-            updated_fields.extend([
-                anim_mod.PATH_BOX_DIMS_X,
-                anim_mod.PATH_BOX_DIMS_Y,
-                anim_mod.PATH_BOX_DIMS_Z,
-            ])
-        if "radius_mm" in patch and item["type"] in ("sphere", "capsule"):
-            item["radius_mm"] = float(patch["radius_mm"])
-            s["base_geom"] = _base_geom_for_item(item)
-            updated_fields.append(anim_mod.PATH_SPHERE_RADIUS)
-        if "length_mm" in patch and item["type"] == "capsule":
-            item["length_mm"] = float(patch["length_mm"])
-            s["base_geom"] = _base_geom_for_item(item)
-            updated_fields.append(anim_mod.PATH_CAPSULE_LENGTH)
-        if "mesh_path" in patch and item["type"] == "mesh":
-            item["mesh_path"] = str(patch["mesh_path"])
-            # Whole-geometry replacement — the renderer rebuilds the mesh.
-            updated_fields.append("physicalObject.mesh")
-        if "pointcloud_path" in patch and item["type"] == "pointcloud":
-            item["pointcloud_path"] = str(patch["pointcloud_path"])
-            updated_fields.append("physicalObject.pointcloud")
-        if "animation" in patch:
-            item["animation"] = dict(patch["animation"])
-            # Animation changes don't directly modify the transform; the
-            # next tick will. No field-mask path needed.
-        return updated_fields
-
-    def _maybe_restart_tick(self) -> None:
-        """Start the tick task if any animated items exist and no task
-        is currently running. Idempotent — safe to call after any
-        add/update/preset."""
-        has_animated = any(
-            anim_mod.is_animated(s["item"]) for s in self._state.values()
-        )
-        if has_animated and (self._tick_task is None or self._tick_task.done()):
-            self._animation_t0 = time.monotonic()
-            try:
-                self._tick_task = asyncio.create_task(self._tick_loop())
-            except RuntimeError:
-                # No running event loop (e.g. in unit tests calling
-                # do_command synchronously). The tick is best-effort
-                # in that environment; the test exercises tick_once
-                # directly.
-                self._tick_task = None
-
-    def _debug_snapshot(self) -> Mapping[str, ValueTypes]:
-        return {
-            "tick_hz": self.tick_hz,
-            "uuid_strategy": self.uuid_strategy,
-            "parent_frame": self.parent_frame,
-            "item_count": len(self._state),
-            "subscriber_count": len(self._subscribers),
-            "tick_running": (
-                self._tick_task is not None and not self._tick_task.done()
-            ),
-            "animation_t0": self._animation_t0,
-        }
-
-
-# ---------- field-mask map for pose patches ----------
-
-_POSE_KEY_TO_PATH = {
-    "x": anim_mod.PATH_X,
-    "y": anim_mod.PATH_Y,
-    "z": anim_mod.PATH_Z,
-    "theta": anim_mod.PATH_THETA,
-    # ox/oy/oz aren't covered by the RDK fake's path conventions; we
-    # could synthesize "poseInObserverFrame.pose.oX" but it isn't
-    # confirmed to work. Whole-pose updates are safe via reconfigure.
-}
+            import base64
+            return {
+                "label": target["item"]["label"],
+                "chunk_index": chunk_index,
+                "n_chunks": cstate["n_chunks"],
+                "total_points": cstate["total_points"],
+                "pcd_b64": base64.b64encode(chunk_pcd).decode("ascii"),
+            }
 
 
 # ---------- per-item validation ----------
+#
+# Lives at module scope so validate_config (a classmethod) and the
+# instance-level validate_item_extra can both call it.
 
 def _validate_item(item: Mapping[str, Any], index: int) -> None:
     """Validate one item dict. Raises with index-prefixed messages so
@@ -1018,7 +257,7 @@ def _validate_item(item: Mapping[str, Any], index: int) -> None:
         op = float(item["opacity"])
         if not 0.0 <= op <= 1.0:
             raise Exception(f"{where} opacity must be in [0, 1]")
-    # Shape-specific.
+    # Shape-specific checks.
     if t == "box":
         dims = item.get("dims_mm")
         if not dims:
@@ -1046,12 +285,11 @@ def _validate_item(item: Mapping[str, Any], index: int) -> None:
             if float(item[k]) <= 0:
                 raise Exception(f"{where} arrow {k} must be > 0")
     elif t == "point":
-        pass  # No shape config.
+        pass
     elif t == "mesh":
         path = item.get("mesh_path")
         if not path:
             raise Exception(f"{where} mesh requires 'mesh_path'")
-        # Reject uppercase content type — the renderer is case-sensitive.
         fmt = geometries.infer_mesh_content_type(str(path))
         resolved = _resolve_asset_path(str(path))
         if not resolved.exists():
@@ -1086,12 +324,3 @@ def _resolve_asset_path(p: str) -> Path:
     if not path.is_absolute():
         path = MODULE_DIR / path
     return path
-
-
-# ---------- UUID strategies ----------
-
-# UUID generation moved to viam_visuals.uuid_strategy. These thin
-# aliases keep existing call sites working while the rest of the
-# service-layer extraction lands.
-_initial_uuid = _lib_initial_uuid
-_versioned_uuid = _lib_versioned_uuid
