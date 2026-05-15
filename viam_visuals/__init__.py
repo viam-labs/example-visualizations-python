@@ -62,6 +62,8 @@ from .shapes import (
     Visual,
     to_dicts,
 )
+from . import registry
+from .scene import ADDED, REMOVED, UPDATED, Scene, SceneEntry, SceneEvent
 from .service import SceneServiceBase
 from .uuid_strategy import VALID_STRATEGIES, initial_uuid, versioned_uuid
 
@@ -109,4 +111,13 @@ __all__ = [
     "versioned_uuid",
     # Service base
     "SceneServiceBase",
+    # Scene (mutation API)
+    "Scene",
+    "SceneEntry",
+    "SceneEvent",
+    "ADDED",
+    "UPDATED",
+    "REMOVED",
+    # In-process registry
+    "registry",
 ]
