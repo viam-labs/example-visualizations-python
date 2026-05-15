@@ -41,7 +41,7 @@ from viam_visuals import Scene, events_to_wire, registry
 from .recipes import RECIPES, Recipe
 
 
-DEFAULT_TICK_HZ = 5.0
+DEFAULT_TICK_HZ = 30.0
 MAX_TICK_HZ = 30.0
 DEFAULT_RECIPE = "marching_boxes"
 
@@ -128,6 +128,13 @@ class PlaygroundDriver(Generic, EasyResource):
         if prev_task is not None and not prev_task.done():
             prev_task.cancel()
 
+        # Capture the prior scene so the async setup task can push
+        # REMOVED events for its labels before installing the new
+        # scene. Without this, switching recipes leaves the prior
+        # recipe's labels visible in the renderer alongside the new
+        # ones.
+        prev_scene = getattr(self, "_scene", None)
+
         # Build fresh Scene from the recipe.
         self._scene = Scene()
         initial_events = self._recipe.initial(self._scene)
@@ -137,11 +144,19 @@ class PlaygroundDriver(Generic, EasyResource):
         # stays sync. There's a running event loop here because the
         # framework's add_resource / reconfigure_resource are async.
         self._tick_task = asyncio.create_task(
-            self._startup_then_tick(initial_events)
+            self._cleanup_then_startup(prev_scene, initial_events)
         )
 
-    async def _startup_then_tick(self, initial_events):
-        """Push the initial scene, then enter the tick loop."""
+    async def _cleanup_then_startup(self, prev_scene, initial_events):
+        """Push REMOVED for the prior scene's labels, then push the
+        new initial events, then enter the tick loop."""
+        if prev_scene is not None and len(prev_scene) > 0:
+            try:
+                await self._send_events(list(prev_scene.clear()))
+            except Exception as e:
+                logger = getattr(self, "logger", None)
+                if logger is not None:
+                    logger.warn(f"failed to clear prior scene: {e}")
         try:
             await self._send_events(initial_events)
         except Exception as e:

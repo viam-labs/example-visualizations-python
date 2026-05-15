@@ -197,3 +197,33 @@ async def test_driver_close_clears_visualizer_state():
     await d.close()
     # After close, our labels should be gone (other namespaces untouched).
     assert not any(l.startswith("cleanup_test/") for l in vis._state)
+
+
+# ---- reconfigure clears prior scene ----------------------------------
+
+async def test_driver_reconfigure_clears_prior_recipe_labels():
+    """Switching recipes via reconfigure should REMOVE the prior
+    recipe's labels from the visualizer. Without this, both
+    recipes' visuals stack up in the renderer."""
+    vis = await _make_visualizer()
+    d = await _make_driver(recipe="marching_boxes")
+    # MarchingBoxes installs 5 march_* labels.
+    assert any(l.startswith("march_") for l in vis._state)
+    assert not any(l.startswith("pulse_") for l in vis._state)
+
+    # Reconfigure to a different recipe.
+    d.reconfigure(_config({
+        "visualizer": "vis",
+        "recipe": "pulsing_spheres",
+        "tick_hz": 20.0,
+    }, name="drv"), {})
+    await asyncio.sleep(0.05)
+
+    # Prior recipe's labels should be gone; new recipe's labels present.
+    assert not any(l.startswith("march_") for l in vis._state), (
+        f"march_* labels still present after recipe switch: {list(vis._state)}"
+    )
+    assert any(l.startswith("pulse_") for l in vis._state), (
+        f"pulse_* labels missing after recipe switch: {list(vis._state)}"
+    )
+    await d.close()
