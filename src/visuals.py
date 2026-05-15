@@ -29,7 +29,7 @@ See LIBRARY_PLAN.md for the full design.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Mapping, MutableMapping, Optional, Sequence, Tuple, Union
+from typing import Any, List, Mapping, MutableMapping, Optional, Sequence, Tuple, Union
 
 
 # ---- Pose ----------------------------------------------------------------
@@ -126,7 +126,11 @@ class Visual:
     opacity: Optional[float] = None
     show_axes_helper: bool = False
     invisible: bool = False
-    animation: Optional[Mapping[str, Any]] = None
+    # AnimationLike — Animation instance or dict, both accepted. Typed
+    # as Any here because Animation is defined later in this module
+    # (forward reference); validation happens at to_item_dict via
+    # ``_normalize_animation``.
+    animation: Any = None
 
     # Subclasses set this to the dict-schema "type" string.
     _TYPE: str = field(default="", repr=False, init=False)
@@ -174,8 +178,10 @@ class Visual:
             out["invisible"] = True
         # Animation defaults to {"mode": "none"} when nothing was set,
         # matching the existing hand-written preset convention. Static
-        # items still need this field for shape consistency.
-        out["animation"] = dict(self.animation) if self.animation else {"mode": "none"}
+        # items still need this field for shape consistency. Accepts
+        # either an Animation instance or a raw dict.
+        anim = _normalize_animation(self.animation)
+        out["animation"] = anim if anim is not None else {"mode": "none"}
         return out
 
 
@@ -315,3 +321,261 @@ def to_item_dicts(*visuals: Visual) -> Sequence[Mapping[str, Any]]:
     Convenience for presets that build visuals positionally and then
     flush to the dict format the service consumes."""
     return [v.to_item_dict() for v in visuals]
+
+
+# ---- Animation classes ---------------------------------------------------
+#
+# Each Animation subclass produces a dict matching the existing schema
+# in src/animation.py — the service / compute_tick path is unchanged.
+# Visual.animation accepts either an Animation instance or a raw dict
+# (so callers can opt in incrementally).
+
+@dataclass
+class Animation:
+    """Base class for typed animations. Subclasses set ``_MODE`` and
+    override ``_fields`` to contribute their mode-specific keys."""
+
+    _MODE: str = field(default="", repr=False, init=False)
+
+    def _fields(self) -> Mapping[str, Any]:
+        return {}
+
+    def to_dict(self) -> Mapping[str, Any]:
+        if not self._MODE:
+            raise ValueError(f"{type(self).__name__} forgot to set _MODE")
+        out: MutableMapping[str, Any] = {"mode": self._MODE}
+        out.update(self._fields())
+        return out
+
+
+@dataclass
+class Static(Animation):
+    """No animation — the entity is emitted once on add and never
+    updates again. Equivalent to {"mode": "none"}."""
+    _MODE: str = field(default="none", repr=False, init=False)
+
+
+@dataclass
+class Spin(Animation):
+    """Continuous rotation around the entity's local Z axis.
+    ``period_s`` is the time for one full revolution."""
+    period_s: float = 6.0
+    _MODE: str = field(default="spin", repr=False, init=False)
+
+    def _fields(self) -> Mapping[str, Any]:
+        return {"period_s": float(self.period_s)}
+
+
+@dataclass
+class Swing(Animation):
+    """Bounded swing around a fixed axis — like a pendulum.
+    Amplitude is in degrees."""
+    amplitude_deg: float = 45.0
+    period_s: float = 4.0
+    phase_offset_s: float = 0.0
+    _MODE: str = field(default="swing", repr=False, init=False)
+
+    def _fields(self) -> Mapping[str, Any]:
+        out: MutableMapping[str, Any] = {
+            "amplitude_deg": float(self.amplitude_deg),
+            "period_s": float(self.period_s),
+        }
+        if self.phase_offset_s:
+            out["phase_offset_s"] = float(self.phase_offset_s)
+        return out
+
+
+@dataclass
+class Oscillate(Animation):
+    """Translate back and forth along a world-axis (``"x"``, ``"y"``,
+    or ``"z"``). Amplitude is in mm."""
+    axis: str = "y"
+    amplitude_mm: float = 100.0
+    period_s: float = 3.0
+    phase_offset_s: float = 0.0
+    _MODE: str = field(default="oscillate", repr=False, init=False)
+
+    def __post_init__(self) -> None:
+        if self.axis not in ("x", "y", "z"):
+            raise ValueError(f"Oscillate.axis must be x|y|z; got {self.axis!r}")
+
+    def _fields(self) -> Mapping[str, Any]:
+        out: MutableMapping[str, Any] = {
+            "axis": self.axis,
+            "amplitude_mm": float(self.amplitude_mm),
+            "period_s": float(self.period_s),
+        }
+        if self.phase_offset_s:
+            out["phase_offset_s"] = float(self.phase_offset_s)
+        return out
+
+
+@dataclass
+class Orbit(Animation):
+    """Circular translation in the XY plane around the entity's
+    initial pose. ``radius_mm`` is the orbit radius."""
+    radius_mm: float = 100.0
+    period_s: float = 4.0
+    _MODE: str = field(default="orbit", repr=False, init=False)
+
+    def _fields(self) -> Mapping[str, Any]:
+        return {
+            "radius_mm": float(self.radius_mm),
+            "period_s": float(self.period_s),
+        }
+
+
+@dataclass
+class Pulse(Animation):
+    """Scale a primitive's size by ±``amplitude_mm`` around its base
+    over each period. For a Sphere or Capsule, modulates radius;
+    for a Box, modulates ``dims_mm`` along ``axis`` (``"x"``,
+    ``"y"``, or ``"z"``)."""
+    amplitude_mm: float = 50.0
+    period_s: float = 2.0
+    axis: Optional[str] = None
+    _MODE: str = field(default="pulse", repr=False, init=False)
+
+    def _fields(self) -> Mapping[str, Any]:
+        out: MutableMapping[str, Any] = {
+            "amplitude_mm": float(self.amplitude_mm),
+            "period_s": float(self.period_s),
+        }
+        if self.axis is not None:
+            out["axis"] = self.axis
+        return out
+
+
+@dataclass
+class Breathe(Animation):
+    """Smooth opacity oscillation. ``amplitude`` is the swing
+    around the entity's base opacity (so amplitude=0.5 with
+    base opacity 1.0 swings between 0.5 and 1.0, clipped at the
+    [0,1] bounds)."""
+    amplitude: float = 0.5
+    period_s: float = 3.0
+    _MODE: str = field(default="breathe", repr=False, init=False)
+
+    def _fields(self) -> Mapping[str, Any]:
+        return {
+            "amplitude": float(self.amplitude),
+            "period_s": float(self.period_s),
+        }
+
+
+@dataclass
+class Flicker(Animation):
+    """Entity blinks in and out of the scene. ``duty_cycle`` in [0,1]
+    is the fraction of each period the entity is visible.
+    ``rotate_uuid_on_readd`` defaults to True — leave it on unless
+    you're specifically demonstrating the renderer's REMOVED-UUID
+    cache bug (see LESSONS.md)."""
+    period_s: float = 1.0
+    duty_cycle: float = 0.5
+    phase_offset_s: float = 0.0
+    rotate_uuid_on_readd: bool = True
+    _MODE: str = field(default="flicker", repr=False, init=False)
+
+    def _fields(self) -> Mapping[str, Any]:
+        out: MutableMapping[str, Any] = {
+            "period_s": float(self.period_s),
+            "duty_cycle": float(self.duty_cycle),
+        }
+        if self.phase_offset_s:
+            out["phase_offset_s"] = float(self.phase_offset_s)
+        if not self.rotate_uuid_on_readd:
+            out["rotate_uuid_on_readd"] = False
+        return out
+
+
+@dataclass
+class Lifecycle(Animation):
+    """Cycle through the worldstatestore lifecycle color convention:
+    blue / 50% opacity (appearing) → orange / 100% (alive) →
+    red / 50% (disappearing) → REMOVED (gone)."""
+    appear_s: float = 1.0
+    alive_s: float = 2.0
+    disappear_s: float = 1.0
+    gone_s: float = 2.0
+    phase_offset_s: float = 0.0
+    _MODE: str = field(default="lifecycle", repr=False, init=False)
+
+    def _fields(self) -> Mapping[str, Any]:
+        out: MutableMapping[str, Any] = {
+            "appear_s": float(self.appear_s),
+            "alive_s": float(self.alive_s),
+            "disappear_s": float(self.disappear_s),
+            "gone_s": float(self.gone_s),
+        }
+        if self.phase_offset_s:
+            out["phase_offset_s"] = float(self.phase_offset_s)
+        return out
+
+
+@dataclass
+class ForceVector(Animation):
+    """Drive an Arrow's length, radius, orientation (precessing
+    around world Z at a fixed tilt), and color simultaneously.
+    Useful for previewing force / wrench visualizations."""
+    period_s: float = 5.0
+    length_amplitude_mm: float = 80.0
+    radius_amplitude_mm: float = 5.0
+    tilt_deg: float = 45.0
+    precession_speed: float = 1.0
+    color_speed: float = 0.7
+    _MODE: str = field(default="force_vector", repr=False, init=False)
+
+    def _fields(self) -> Mapping[str, Any]:
+        return {
+            "period_s": float(self.period_s),
+            "length_amplitude_mm": float(self.length_amplitude_mm),
+            "radius_amplitude_mm": float(self.radius_amplitude_mm),
+            "tilt_deg": float(self.tilt_deg),
+            "precession_speed": float(self.precession_speed),
+            "color_speed": float(self.color_speed),
+        }
+
+
+@dataclass
+class Trajectory(Animation):
+    """Walk through a sequence of pose waypoints over ``duration_s``,
+    optionally looping back at the end. Position and orientation
+    are interpolated linearly between adjacent waypoints.
+    ``waypoints`` is a list of pose dicts (same shape as
+    Pose.to_dict()) or Pose instances."""
+    waypoints: List[Any] = field(default_factory=list)
+    duration_s: float = 12.0
+    loop: bool = True
+    _MODE: str = field(default="trajectory", repr=False, init=False)
+
+    def __post_init__(self) -> None:
+        if len(self.waypoints) < 2:
+            raise ValueError(
+                f"Trajectory needs at least 2 waypoints; got {len(self.waypoints)}"
+            )
+
+    def _fields(self) -> Mapping[str, Any]:
+        wps: List[Mapping[str, float]] = []
+        for wp in self.waypoints:
+            wps.append(dict(_normalize_pose(wp)))
+        return {
+            "waypoints": wps,
+            "duration_s": float(self.duration_s),
+            "loop": bool(self.loop),
+        }
+
+
+# Type alias for the union of accepted animation specs.
+AnimationLike = Union[None, Animation, Mapping[str, Any]]
+
+
+def _normalize_animation(a: AnimationLike) -> Optional[Mapping[str, Any]]:
+    if a is None:
+        return None
+    if isinstance(a, Animation):
+        return a.to_dict()
+    if isinstance(a, Mapping):
+        return dict(a)
+    raise TypeError(
+        f"animation must be None | Animation | dict; got {type(a).__name__}"
+    )

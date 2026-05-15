@@ -240,3 +240,124 @@ def test_pose_as_dict_accepted():
     # Missing keys fill from identity.
     assert d["pose"] == {"x": 100.0, "y": 50.0, "z": 0.0,
                          "ox": 0.0, "oy": 0.0, "oz": 1.0, "theta": 0.0}
+
+
+# ---------- Animation classes -------------------------------------------
+
+from src.visuals import (  # noqa: E402 — grouped with other animation imports
+    Breathe,
+    Flicker,
+    ForceVector,
+    Lifecycle,
+    Orbit,
+    Oscillate,
+    Pulse,
+    Spin,
+    Static,
+    Swing,
+    Trajectory,
+)
+
+
+def test_static_emits_none_mode():
+    assert Static().to_dict() == {"mode": "none"}
+
+
+def test_spin_emits_period():
+    assert Spin(period_s=6).to_dict() == {"mode": "spin", "period_s": 6.0}
+
+
+def test_swing_emits_amplitude_and_period():
+    assert Swing(amplitude_deg=75, period_s=8).to_dict() == {
+        "mode": "swing", "amplitude_deg": 75.0, "period_s": 8.0,
+    }
+
+
+def test_swing_phase_offset_omitted_when_zero():
+    d = Swing(amplitude_deg=10, period_s=2).to_dict()
+    assert "phase_offset_s" not in d
+
+
+def test_oscillate_rejects_bad_axis():
+    with pytest.raises(ValueError):
+        Oscillate(axis="w")
+
+
+def test_oscillate_round_trip():
+    d = Oscillate(axis="x", amplitude_mm=-10.0, period_s=3).to_dict()
+    assert d == {"mode": "oscillate", "axis": "x",
+                 "amplitude_mm": -10.0, "period_s": 3.0}
+
+
+def test_orbit_round_trip():
+    d = Orbit(radius_mm=100, period_s=4).to_dict()
+    assert d == {"mode": "orbit", "radius_mm": 100.0, "period_s": 4.0}
+
+
+def test_pulse_no_axis():
+    d = Pulse(amplitude_mm=35, period_s=3).to_dict()
+    assert d == {"mode": "pulse", "amplitude_mm": 35.0, "period_s": 3.0}
+
+
+def test_pulse_with_axis():
+    d = Pulse(amplitude_mm=100, period_s=4, axis="z").to_dict()
+    assert d == {"mode": "pulse", "amplitude_mm": 100.0,
+                 "period_s": 4.0, "axis": "z"}
+
+
+def test_breathe_round_trip():
+    d = Breathe(amplitude=0.55, period_s=1.5).to_dict()
+    assert d == {"mode": "breathe", "amplitude": 0.55, "period_s": 1.5}
+
+
+def test_flicker_default_keeps_uuid_rotation_on():
+    d = Flicker(period_s=4, duty_cycle=0.55).to_dict()
+    # rotate_uuid_on_readd default True → omitted (compact dict)
+    assert d == {"mode": "flicker", "period_s": 4.0, "duty_cycle": 0.55}
+
+
+def test_flicker_rotate_false_propagates():
+    d = Flicker(period_s=4, duty_cycle=0.5, rotate_uuid_on_readd=False).to_dict()
+    assert d["rotate_uuid_on_readd"] is False
+
+
+def test_lifecycle_round_trip():
+    d = Lifecycle(appear_s=1.0, alive_s=2.0, disappear_s=1.0,
+                  gone_s=2.0, phase_offset_s=1.5).to_dict()
+    assert d == {"mode": "lifecycle", "appear_s": 1.0, "alive_s": 2.0,
+                 "disappear_s": 1.0, "gone_s": 2.0, "phase_offset_s": 1.5}
+
+
+def test_force_vector_round_trip():
+    d = ForceVector(period_s=5.0, length_amplitude_mm=80,
+                    radius_amplitude_mm=5, tilt_deg=45,
+                    precession_speed=1.0, color_speed=0.7).to_dict()
+    assert d["mode"] == "force_vector"
+    assert d["tilt_deg"] == 45.0
+
+
+def test_trajectory_needs_at_least_two_waypoints():
+    with pytest.raises(ValueError):
+        Trajectory(waypoints=[{"x": 0}])
+
+
+def test_trajectory_normalizes_pose_dicts():
+    t = Trajectory(waypoints=[{"x": 0}, {"x": 100}], duration_s=4.0)
+    d = t.to_dict()
+    assert d["duration_s"] == 4.0
+    assert d["loop"] is True
+    assert len(d["waypoints"]) == 2
+    # Missing keys filled from identity.
+    assert d["waypoints"][0]["oz"] == 1.0
+
+
+def test_visual_accepts_animation_instance():
+    s = Sphere("x", radius_mm=10, animation=Spin(period_s=3))
+    d = s.to_item_dict()
+    assert d["animation"] == {"mode": "spin", "period_s": 3.0}
+
+
+def test_visual_accepts_animation_dict_passthrough():
+    s = Sphere("x", radius_mm=10, animation={"mode": "spin", "period_s": 3})
+    d = s.to_item_dict()
+    assert d["animation"] == {"mode": "spin", "period_s": 3}

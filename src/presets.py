@@ -30,7 +30,18 @@ import math
 import re
 from typing import Any, List, Mapping
 
-from src.visuals import Arrow, Box, Capsule, Mesh, Point, Pose, PointCloud, Sphere
+from src.visuals import (
+    Arrow,
+    Box,
+    Capsule,
+    ForceVector,
+    Lifecycle,
+    Mesh,
+    Point,
+    PointCloud,
+    Pose,
+    Sphere,
+)
 
 
 # Label sizing — must match scripts/generate_assets.py.
@@ -490,75 +501,35 @@ def orientation_vectors() -> List[Mapping[str, Any]]:
     identity (world) frame. The arrow primitive is great for
     direction; full XYZ helpers are right for orientation.
     """
-    base_pose = lambda ox, oy, oz, theta, x: {
-        "x": x, "y": 0, "z": 0,
-        "ox": ox, "oy": oy, "oz": oz, "theta": theta,
-    }
     sp = PRIMITIVE_ROW_SPACING_MM
-    # The host sphere is a small partly-transparent marker so the
-    # axes triad reads as the primary visual — the sphere just gives
-    # the helper something to attach to. Color cycles per item so the
-    # user can tell the frames apart from a distance.
     HOST_RADIUS_MM = 18.0
-    items = []
-    items.append({
-        "type": "sphere",
-        "label": "frame_+Z",
-        "pose": base_pose(0, 0, 1, 0, -2 * sp),
-        "radius_mm": HOST_RADIUS_MM,
-        "color": {"r": 220, "g": 220, "b": 220},
-        "opacity": 0.35,
-        "show_axes_helper": True,
-        "animation": {"mode": "none"},
-    })
-    items.append({
-        "type": "sphere",
-        "label": "frame_+X",
-        "pose": base_pose(1, 0, 0, 0, -sp),
-        "radius_mm": HOST_RADIUS_MM,
-        "color": {"r": 220, "g": 220, "b": 220},
-        "opacity": 0.35,
-        "show_axes_helper": True,
-        "animation": {"mode": "none"},
-    })
-    items.append({
-        "type": "sphere",
-        "label": "frame_+Y",
-        "pose": base_pose(0, 1, 0, 0, 0),
-        "radius_mm": HOST_RADIUS_MM,
-        "color": {"r": 220, "g": 220, "b": 220},
-        "opacity": 0.35,
-        "show_axes_helper": True,
-        "animation": {"mode": "none"},
-    })
-    # 45° in XY plane — local +Z lies between world +X and +Y.
+    HOST_COLOR = (220, 220, 220)
+    HOST_OPACITY = 0.35
+
+    def _frame(label: str, x: float, ox: float, oy: float, oz: float,
+               theta: float = 0.0) -> Sphere:
+        return Sphere(label,
+                      pose=Pose.at(x=x, ox=ox, oy=oy, oz=oz, theta=theta),
+                      radius_mm=HOST_RADIUS_MM,
+                      color=HOST_COLOR,
+                      opacity=HOST_OPACITY,
+                      show_axes_helper=True)
+
     s = 1.0 / math.sqrt(2.0)
-    items.append({
-        "type": "sphere",
-        "label": "frame_+XY",
-        "pose": base_pose(s, s, 0, 0, sp),
-        "radius_mm": HOST_RADIUS_MM,
-        "color": {"r": 220, "g": 220, "b": 220},
-        "opacity": 0.35,
-        "show_axes_helper": True,
-        "animation": {"mode": "none"},
-    })
-    # +Z axis with theta=45 — same orientation vector as frame_+Z, but
-    # rotated 45° about it. The axes-helper triad should visibly
-    # rotate around the Z axis: the +X and +Y arrows of the helper
-    # both tilt 45° in the XY plane. Useful for teaching that theta
-    # is a spin about the orientation vector, not a tilt of it.
-    items.append({
-        "type": "sphere",
-        "label": "frame_+Z_theta45",
-        "pose": base_pose(0, 0, 1, 45, 2 * sp),
-        "radius_mm": HOST_RADIUS_MM,
-        "color": {"r": 220, "g": 220, "b": 220},
-        "opacity": 0.35,
-        "show_axes_helper": True,
-        "animation": {"mode": "none"},
-    })
-    return items
+    visuals = [
+        _frame("frame_+Z", x=-2 * sp, ox=0, oy=0, oz=1),
+        _frame("frame_+X", x=-sp,    ox=1, oy=0, oz=0),
+        _frame("frame_+Y", x=0,       ox=0, oy=1, oz=0),
+        # 45° in XY plane — local +Z lies between world +X and +Y.
+        _frame("frame_+XY", x=sp,     ox=s, oy=s, oz=0),
+        # +Z axis with theta=45 — same orientation vector as frame_+Z
+        # but rotated 45° about it. The axes-helper triad should
+        # visibly rotate around Z: the +X and +Y arrows of the helper
+        # both tilt 45° in the XY plane. Teaches that theta is a spin
+        # about the orientation vector, not a tilt of it.
+        _frame("frame_+Z_theta45", x=2 * sp, ox=0, oy=0, oz=1, theta=45),
+    ]
+    return [v.to_item_dict() for v in visuals]
 
 
 def reference_frame_demo() -> List[Mapping[str, Any]]:
@@ -1138,24 +1109,17 @@ def force_vector_demo() -> List[Mapping[str, Any]]:
     motion-planning UIs. Standalone preset; placed alongside the
     arm, spinning frame, and trajectory in the ``all`` row layout.
     """
-    return [{
-        "type": "arrow",
-        "label": "force_vector",
-        "pose": _identity_pose(),
-        "length_mm": 220,
-        "radius_mm": 10,
-        "color": {"r": 230, "g": 60, "b": 100},
-        "opacity": 1.0,
-        "animation": {
-            "mode": "force_vector",
-            "period_s": 5.0,
-            "length_amplitude_mm": 80,
-            "radius_amplitude_mm": 5,
-            "tilt_deg": 45,
-            "precession_speed": 1.0,
-            "color_speed": 0.7,
-        },
-    }]
+    return [
+        Arrow("force_vector", pose=Pose.identity(),
+              length_mm=220, radius_mm=10,
+              color=(230, 60, 100), opacity=1.0,
+              animation=ForceVector(period_s=5.0,
+                                    length_amplitude_mm=80,
+                                    radius_amplitude_mm=5,
+                                    tilt_deg=45,
+                                    precession_speed=1.0,
+                                    color_speed=0.7)).to_item_dict()
+    ]
 
 
 def lifecycle_demo() -> List[Mapping[str, Any]]:
@@ -1177,32 +1141,26 @@ def lifecycle_demo() -> List[Mapping[str, Any]]:
     disappear_s = 1.0
     gone_s = 2.0
     period_s = appear_s + alive_s + disappear_s + gone_s
-    items: List[Mapping[str, Any]] = []
+    visuals = []
     for i in range(count):
         # Phase offset spaced so the row reads as a "wave" of
         # appear → alive → disappear → gone moving left to right.
         offset_s = (i / count) * period_s
-        items.append({
-            "type": "box",
-            "label": f"lifecycle_{i:02d}",
-            "pose": _identity_pose(x=(i - (count - 1) / 2) * sp),
-            "dims_mm": {"x": 120, "y": 120, "z": 120},
-            # `color` and `opacity` are overridden by the animation
-            # every tick. The static values here are placeholders so
-            # the validate_config / metadata builder has something to
-            # work with at install time.
-            "color": {"r": 128, "g": 128, "b": 128},
-            "opacity": 1.0,
-            "animation": {
-                "mode": "lifecycle",
-                "appear_s": appear_s,
-                "alive_s": alive_s,
-                "disappear_s": disappear_s,
-                "gone_s": gone_s,
-                "phase_offset_s": offset_s,
-            },
-        })
-    return items
+        visuals.append(Box(
+            f"lifecycle_{i:02d}",
+            pose=Pose.at(x=(i - (count - 1) / 2) * sp),
+            dims_mm=(120, 120, 120),
+            # color/opacity are overridden by the lifecycle animation
+            # every tick; the static values are placeholders so
+            # validate_config + metadata builder have something at
+            # install time.
+            color=(128, 128, 128),
+            opacity=1.0,
+            animation=Lifecycle(appear_s=appear_s, alive_s=alive_s,
+                                disappear_s=disappear_s, gone_s=gone_s,
+                                phase_offset_s=offset_s),
+        ))
+    return [v.to_item_dict() for v in visuals]
 
 
 def chunked_pcd_demo() -> List[Mapping[str, Any]]:
@@ -1220,16 +1178,11 @@ def chunked_pcd_demo() -> List[Mapping[str, Any]]:
     chunked-delivery wire (or call `get_entity_chunk` yourself via
     DoCommand to inspect the chunk bytes).
     """
-    return [{
-        "type": "pointcloud",
-        "label": "chunked_helix",
-        "pose": _identity_pose(),
-        "pointcloud_path": "assets/helix.pcd",
-        "opacity": 1.0,
-        "chunked": True,
-        "chunk_size": 2000,
-        "animation": {"mode": "none"},
-    }]
+    return [
+        PointCloud("chunked_helix", pose=Pose.identity(),
+                   pointcloud_path="assets/helix.pcd",
+                   opacity=1.0, chunked=True, chunk_size=2000).to_item_dict()
+    ]
 
 
 def _waypoints_with_tangent_orientations(
