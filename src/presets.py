@@ -35,9 +35,11 @@ from viam_visuals import (
     Box,
     Breathe,
     Capsule,
+    CoordinateFrame,
     Flicker,
     ForceVector,
     Lifecycle,
+    Line,
     Mesh,
     Oscillate,
     Point,
@@ -497,33 +499,17 @@ def reference_frame_demo() -> List[Mapping[str, Any]]:
     moves coherently. If it doesn't, the wheel ring or hub renders
     in world space and the demo looks broken at a specific level.
     """
-    axis_length_mm = 200.0
-    axis_radius_mm = 12.0
-    half = axis_length_mm / 2.0
-
-    visuals = [
-        # Anchor. Spinning this frame propagates to its children.
-        # show_axes_helper=True tells the viewer to draw its built-in
-        # RGB XYZ triad at this entity's origin — a free axes gizmo
-        # alongside the explicit colored capsules below.
-        Sphere("spinning_frame", pose=Pose.identity(),
-               radius_mm=12, color=(255, 255, 255), opacity=0.6,
-               show_axes_helper=True, animation=Spin(period_s=6)),
-        # RGB axis triad — three capsules, parented to the anchor so
-        # they orbit with it. Each axis's orientation vector points
-        # along the world axis it represents.
-        Capsule("spinning_frame_axis_x", parent_frame="spinning_frame",
-                pose=Pose.at(x=half, ox=1, oy=0, oz=0),
-                radius_mm=axis_radius_mm, length_mm=axis_length_mm,
-                color=(230, 25, 75), opacity=1.0),
-        Capsule("spinning_frame_axis_y", parent_frame="spinning_frame",
-                pose=Pose.at(y=half, ox=0, oy=1, oz=0),
-                radius_mm=axis_radius_mm, length_mm=axis_length_mm,
-                color=(60, 180, 75), opacity=1.0),
-        Capsule("spinning_frame_axis_z", parent_frame="spinning_frame",
-                pose=Pose.at(z=half),
-                radius_mm=axis_radius_mm, length_mm=axis_length_mm,
-                color=(0, 130, 200), opacity=1.0),
+    visuals: List[Any] = []
+    # Anchor + RGB axes triad — single composite. The anchor spins;
+    # the axes inherit motion through the parent-frame chain.
+    # show_axes_helper=True draws the viewer's built-in XYZ helper at
+    # the anchor's origin alongside the explicit colored capsules.
+    visuals.extend(CoordinateFrame(
+        "spinning_frame", pose=Pose.identity(),
+        size_mm=200.0, axis_radius_mm=12.0, anchor_radius_mm=12.0,
+        show_axes_helper=True, animation=Spin(period_s=6),
+    ))
+    visuals.extend([
         # Mesh — orbits with the frame AND spins on its own axis at a
         # different rate, so the chained composition is visible.
         # Offset 700 mm out to keep clear of the axes triad and the
@@ -549,7 +535,7 @@ def reference_frame_demo() -> List[Mapping[str, Any]]:
                pose=Pose.identity(),
                radius_mm=4, color=(255, 255, 255), opacity=0.0,
                animation=Spin(period_s=10)),
-    ]
+    ])
     # Color wheel children — 10 hue-swept spheres orbiting the hub.
     visuals.extend(_color_wheel_visuals(
         "spinning_frame_wheel_hub", count=10,
@@ -776,29 +762,12 @@ def trajectory_preview() -> List[Mapping[str, Any]]:
             show_axes_helper=True,
         ))
 
-    # Line segments connecting adjacent waypoints — thin capsules
-    # whose local +Z is aligned to the segment direction. (The wire
-    # format has no first-class line; we synthesize from capsules.)
-    for i in range(len(waypoints) - 1):
-        a = waypoints[i]
-        b = waypoints[i + 1]
-        dx = b["x"] - a["x"]
-        dy = b["y"] - a["y"]
-        dz = b["z"] - a["z"]
-        seg_len = math.sqrt(dx * dx + dy * dy + dz * dz)
-        if seg_len < 1e-6:
-            continue
-        visuals.append(Capsule(
-            f"traj_seg_{i:02d}",
-            pose=Pose.at(
-                x=(a["x"] + b["x"]) / 2.0,
-                y=(a["y"] + b["y"]) / 2.0,
-                z=(a["z"] + b["z"]) / 2.0,
-                ox=dx / seg_len, oy=dy / seg_len, oz=dz / seg_len,
-            ),
-            radius_mm=5, length_mm=seg_len,
-            color=(100, 130, 240), opacity=0.95,
-        ))
+    # Polyline connecting the waypoints — composite expands into a
+    # capsule chain (label format: "traj_seg_NN").
+    visuals.extend(Line(
+        "traj", points=waypoints, width_mm=10,
+        color=(100, 130, 240), opacity=0.95,
+    ))
 
     # The "runner" — moving frame that walks the trajectory and
     # passes through each waypoint with the interpolated rotation.

@@ -21,7 +21,7 @@ from typing import Any, Mapping, MutableMapping, Optional, Sequence, Tuple
 
 from .animations import AnimationLike, normalize_animation
 from .color import ColorLike, normalize_color
-from .pose import PoseLike, normalize_pose
+from .pose import Pose, PoseLike, normalize_pose
 
 
 __all__ = [
@@ -180,6 +180,9 @@ class Arrow(Visual):
     """Procedural arrow mesh — cylindrical shaft + conical tip along
     the entity's local +Z. ``length_mm`` is the total tip-to-tail
     length; ``radius_mm`` is the shaft radius.
+
+    See :meth:`Arrow.from_to` for the common "draw an arrow from
+    pose A to pose B" pattern.
     """
 
     length_mm: float = 0.0
@@ -195,6 +198,51 @@ class Arrow(Visual):
     def _shape_fields(self) -> Mapping[str, Any]:
         return {"length_mm": float(self.length_mm),
                 "radius_mm": float(self.radius_mm)}
+
+    @classmethod
+    def from_to(
+        cls,
+        label: str,
+        start: "Pose",
+        end: "Pose",
+        radius_mm: float,
+        color: Any = None,
+        opacity: Optional[float] = None,
+        parent_frame: Optional[str] = None,
+        animation: Any = None,
+    ) -> "Arrow":
+        """Build an Arrow pointing from ``start`` to ``end``.
+
+        The arrow's pose origin sits at ``start``; its orientation
+        vector points toward ``end``; its length equals the distance
+        between them. Useful for "draw a force vector at this hand
+        pose" / "show motion plan from A to B" without computing the
+        orientation yourself.
+
+        Raises ``ValueError`` if start and end coincide.
+        """
+        import math as _math
+        dx = end.x - start.x
+        dy = end.y - start.y
+        dz = end.z - start.z
+        length_mm = _math.sqrt(dx * dx + dy * dy + dz * dz)
+        if length_mm < 1e-6:
+            raise ValueError(
+                f"Arrow.from_to needs distinct points; |end-start|={length_mm}"
+            )
+        return cls(
+            label=label,
+            length_mm=length_mm,
+            radius_mm=radius_mm,
+            pose=Pose.at(
+                x=start.x, y=start.y, z=start.z,
+                ox=dx / length_mm, oy=dy / length_mm, oz=dz / length_mm,
+            ),
+            color=color,
+            opacity=opacity,
+            parent_frame=parent_frame,
+            animation=animation,
+        )
 
 
 @dataclass

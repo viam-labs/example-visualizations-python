@@ -49,6 +49,7 @@ from .animations import (
     normalize_animation,
 )
 from .color import ColorLike, normalize_color
+from .composites import BoundingBox, Composite, CoordinateFrame, Line
 from .pose import Pose, PoseLike, normalize_pose
 from .shapes import (
     Arrow,
@@ -95,4 +96,9 @@ __all__ = [
     "Lifecycle",
     "ForceVector",
     "Trajectory",
+    # Composites
+    "Composite",
+    "CoordinateFrame",
+    "Line",
+    "BoundingBox",
 ]

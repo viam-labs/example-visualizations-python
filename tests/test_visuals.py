@@ -364,3 +364,99 @@ def test_visual_accepts_animation_dict_passthrough():
     s = Sphere("x", radius_mm=10, animation={"mode": "spin", "period_s": 3})
     d = s.to_dict()
     assert d["animation"] == {"mode": "spin", "period_s": 3}
+
+
+# ---------- Composites --------------------------------------------------
+
+from viam_visuals import (  # noqa: E402
+    BoundingBox,
+    Composite,
+    CoordinateFrame,
+    Line,
+)
+
+
+def test_coordinate_frame_expands_to_anchor_plus_3_axes():
+    frame = CoordinateFrame("tcp", size_mm=120)
+    items = frame.to_visuals()
+    labels = [v.label for v in items]
+    assert labels == ["tcp", "tcp_axis_x", "tcp_axis_y", "tcp_axis_z"]
+    # All three axes parent to the anchor.
+    for v in items[1:]:
+        assert v.parent_frame == "tcp"
+
+
+def test_coordinate_frame_animation_attaches_to_anchor():
+    frame = CoordinateFrame("tcp", animation=Spin(period_s=2))
+    items = frame.to_visuals()
+    # Anchor gets the animation.
+    assert items[0].animation.to_dict() == {"mode": "spin", "period_s": 2.0}
+    # Axes are static (the chain composition propagates spin).
+    for axis in items[1:]:
+        assert axis.animation is None
+
+
+def test_coordinate_frame_iterable():
+    frame = CoordinateFrame("tcp")
+    via_iter = list(frame)
+    via_method = frame.to_visuals()
+    assert [v.label for v in via_iter] == [v.label for v in via_method]
+
+
+def test_line_emits_n_minus_1_segments():
+    pts = [Pose.at(x=0), Pose.at(x=100), Pose.at(x=200, y=50)]
+    line = Line("path", points=pts, width_mm=4, color=(0, 0, 255))
+    items = line.to_visuals()
+    assert len(items) == 2
+    assert items[0].label == "path_seg_00"
+    assert items[1].label == "path_seg_01"
+
+
+def test_line_skips_coincident_points():
+    pts = [Pose.at(x=0), Pose.at(x=0), Pose.at(x=100)]
+    line = Line("path", points=pts, width_mm=4)
+    items = line.to_visuals()
+    # Only one real segment (0→100); the 0→0 coincident pair is skipped.
+    assert len(items) == 1
+
+
+def test_line_rejects_too_few_points():
+    with pytest.raises(ValueError):
+        Line("path", points=[Pose.at(x=0)])
+
+
+def test_bounding_box_solid_returns_one_box():
+    bb = BoundingBox("obj", dims_mm=(100, 200, 50), wireframe=False)
+    items = bb.to_visuals()
+    assert len(items) == 1
+    assert isinstance(items[0], Box)
+
+
+def test_bounding_box_wireframe_returns_12_capsules():
+    bb = BoundingBox("obj", dims_mm=(100, 200, 50), wireframe=True)
+    items = bb.to_visuals()
+    assert len(items) == 12
+    # 4 edges along each of x/y/z axes — length_mm matches the
+    # box's dim on that axis.
+    x_edges = [v for v in items if v.length_mm == 100]
+    y_edges = [v for v in items if v.length_mm == 200]
+    z_edges = [v for v in items if v.length_mm == 50]
+    assert len(x_edges) == 4
+    assert len(y_edges) == 4
+    assert len(z_edges) == 4
+
+
+def test_arrow_from_to_computes_length_and_orientation():
+    a = Arrow.from_to("force", Pose.at(x=0, y=0, z=0),
+                      Pose.at(x=3, y=4, z=0), radius_mm=5)
+    # Length = 5, orientation = (3/5, 4/5, 0).
+    assert a.length_mm == 5.0
+    d = a.to_dict()
+    assert d["pose"]["ox"] == 0.6
+    assert d["pose"]["oy"] == 0.8
+    assert d["pose"]["oz"] == 0.0
+
+
+def test_arrow_from_to_rejects_coincident_points():
+    with pytest.raises(ValueError):
+        Arrow.from_to("x", Pose.at(x=10), Pose.at(x=10), radius_mm=5)
