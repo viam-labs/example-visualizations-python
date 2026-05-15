@@ -30,7 +30,7 @@ import math
 import re
 from typing import Any, List, Mapping, Tuple
 
-from src.visuals import (
+from viam_visuals import (
     Arrow,
     Box,
     Breathe,
@@ -211,7 +211,7 @@ def primitives() -> List[Mapping[str, Any]]:
 
     This preset is the canonical OO-API example: each item is a
     typed visual class instead of a hand-built dict. The output
-    dicts (after ``.to_item_dict()``) are byte-equivalent to what
+    dicts (after ``.to_dict()``) are byte-equivalent to what
     a hand-written dict literal would produce, so the service /
     tests don't need any changes. See ``src/visuals.py`` for the
     class surface and ``LIBRARY_PLAN.md`` for the design context."""
@@ -296,7 +296,7 @@ def primitives() -> List[Mapping[str, Any]]:
                    pointcloud_path="assets/helix.pcd",
                    opacity=1.0, chunked=True, chunk_size=2000),
     ]
-    return [v.to_item_dict() for v in visuals]
+    return [v.to_dict() for v in visuals]
 
 
 def color_wheel(count: int = 10, ring_radius_mm: float = 300.0) -> List[Mapping[str, Any]]:
@@ -316,7 +316,7 @@ def color_wheel(count: int = 10, ring_radius_mm: float = 300.0) -> List[Mapping[
             color=(int(255 * r), int(255 * g), int(255 * b)),
             opacity=1.0,
         ))
-    return [v.to_item_dict() for v in visuals]
+    return [v.to_dict() for v in visuals]
 
 
 def robot_arm() -> List[Mapping[str, Any]]:
@@ -413,7 +413,7 @@ def robot_arm() -> List[Mapping[str, Any]]:
             color=CLAW_COLOR, opacity=1.0,
             animation=Oscillate(axis="x", amplitude_mm=10.0, period_s=3)),
     ]
-    return [v.to_item_dict() for v in visuals]
+    return [v.to_dict() for v in visuals]
 
 
 def orientation_vectors() -> List[Mapping[str, Any]]:
@@ -458,7 +458,7 @@ def orientation_vectors() -> List[Mapping[str, Any]]:
         # about the orientation vector, not a tilt of it.
         _frame("frame_+Z_theta45", x=2 * sp, ox=0, oy=0, oz=1, theta=45),
     ]
-    return [v.to_item_dict() for v in visuals]
+    return [v.to_dict() for v in visuals]
 
 
 def reference_frame_demo() -> List[Mapping[str, Any]]:
@@ -555,7 +555,7 @@ def reference_frame_demo() -> List[Mapping[str, Any]]:
         "spinning_frame_wheel_hub", count=10,
         ring_radius_mm=220.0, sphere_radius_mm=24.0,
     ))
-    return [v.to_item_dict() for v in visuals]
+    return [v.to_dict() for v in visuals]
 
 
 def _color_wheel_visuals(
@@ -809,7 +809,7 @@ def trajectory_preview() -> List[Mapping[str, Any]]:
         animation=Trajectory(waypoints=[dict(wp) for wp in waypoints],
                              duration_s=12.0, loop=True),
     ))
-    return [v.to_item_dict() for v in visuals]
+    return [v.to_dict() for v in visuals]
 
 
 def geometry_morph() -> List[Mapping[str, Any]]:
@@ -887,7 +887,7 @@ def geometry_morph() -> List[Mapping[str, Any]]:
     _add_grid("morph_grid_broken", broken_origin_x, (230, 60, 60),
               rotate_uuid=False)
 
-    return [v.to_item_dict() for v in visuals]
+    return [v.to_dict() for v in visuals]
 
 
 def force_vector_demo() -> List[Mapping[str, Any]]:
@@ -916,7 +916,7 @@ def force_vector_demo() -> List[Mapping[str, Any]]:
                                     radius_amplitude_mm=5,
                                     tilt_deg=45,
                                     precession_speed=1.0,
-                                    color_speed=0.7)).to_item_dict()
+                                    color_speed=0.7)).to_dict()
     ]
 
 
@@ -958,7 +958,7 @@ def lifecycle_demo() -> List[Mapping[str, Any]]:
                                 disappear_s=disappear_s, gone_s=gone_s,
                                 phase_offset_s=offset_s),
         ))
-    return [v.to_item_dict() for v in visuals]
+    return [v.to_dict() for v in visuals]
 
 
 def chunked_pcd_demo() -> List[Mapping[str, Any]]:
@@ -979,7 +979,7 @@ def chunked_pcd_demo() -> List[Mapping[str, Any]]:
     return [
         PointCloud("chunked_helix", pose=Pose.identity(),
                    pointcloud_path="assets/helix.pcd",
-                   opacity=1.0, chunked=True, chunk_size=2000).to_item_dict()
+                   opacity=1.0, chunked=True, chunk_size=2000).to_dict()
     ]
 
 

@@ -1,12 +1,12 @@
-"""Tests for ``src/visuals.py`` — the OO API.
+"""Tests for the ``viam_visuals`` library — the OO API.
 
-Covers the contract that ``Visual.to_item_dict()`` produces dicts
+Covers the contract that ``Visual.to_dict()`` produces dicts
 the service layer accepts unchanged, plus construction-time
 validation rejects bad params before they reach the wire."""
 
 import pytest
 
-from src.visuals import (
+from viam_visuals import (
     Arrow,
     Box,
     Capsule,
@@ -47,7 +47,7 @@ def test_pose_dataclass_full_constructor():
 def test_box_dict_matches_hand_written_shape():
     b = Box("demo_box", pose=Pose.at(x=-1600),
             dims_mm=(150, 150, 150), color=(230, 25, 75), opacity=1.0)
-    d = b.to_item_dict()
+    d = b.to_dict()
     # Field-by-field — order doesn't matter for dict equality.
     assert d["type"] == "box"
     assert d["label"] == "demo_box"
@@ -75,7 +75,7 @@ def test_box_rejects_wrong_dims_arity():
 
 def test_sphere_dict_matches():
     s = Sphere("demo_sphere", radius_mm=90, color=(60, 180, 75), opacity=1.0)
-    d = s.to_item_dict()
+    d = s.to_dict()
     assert d["type"] == "sphere"
     assert d["radius_mm"] == 90.0
     assert d["color"] == {"r": 60, "g": 180, "b": 75}
@@ -91,7 +91,7 @@ def test_sphere_rejects_non_positive_radius():
 def test_capsule_dict_matches():
     c = Capsule("demo_capsule", radius_mm=50, length_mm=200,
                 color=(0, 130, 200), opacity=1.0)
-    d = c.to_item_dict()
+    d = c.to_dict()
     assert d["type"] == "capsule"
     assert d["radius_mm"] == 50.0
     assert d["length_mm"] == 200.0
@@ -108,7 +108,7 @@ def test_capsule_rejects_non_positive_dims():
 
 def test_point_dict_has_no_shape_fields():
     p = Point("demo_point", color=(255, 225, 25), opacity=1.0)
-    d = p.to_item_dict()
+    d = p.to_dict()
     assert d["type"] == "point"
     assert "radius_mm" not in d
     assert "dims_mm" not in d
@@ -119,7 +119,7 @@ def test_point_dict_has_no_shape_fields():
 def test_arrow_dict_matches():
     a = Arrow("demo_arrow", length_mm=220, radius_mm=12,
               color=(145, 30, 180), opacity=1.0)
-    d = a.to_item_dict()
+    d = a.to_dict()
     assert d["type"] == "arrow"
     assert d["length_mm"] == 220.0
     assert d["radius_mm"] == 12.0
@@ -137,7 +137,7 @@ def test_arrow_rejects_non_positive_dims():
 def test_mesh_basic():
     m = Mesh("demo_bunny", mesh_path="assets/bunny.stl",
              color=(245, 130, 49), opacity=1.0)
-    d = m.to_item_dict()
+    d = m.to_dict()
     assert d["type"] == "mesh"
     assert d["mesh_path"] == "assets/bunny.stl"
     assert "raw_stl" not in d
@@ -146,7 +146,7 @@ def test_mesh_basic():
 def test_mesh_raw_stl_flag_propagates():
     m = Mesh("demo_bunny_raw_stl", mesh_path="assets/bunny.stl",
             raw_stl=True, color=(245, 130, 49), opacity=1.0)
-    d = m.to_item_dict()
+    d = m.to_dict()
     assert d["raw_stl"] is True
 
 
@@ -160,7 +160,7 @@ def test_mesh_requires_path():
 def test_pointcloud_basic():
     pc = PointCloud("demo_pointcloud", pointcloud_path="assets/helix.pcd",
                     opacity=1.0)
-    d = pc.to_item_dict()
+    d = pc.to_dict()
     assert d["type"] == "pointcloud"
     assert d["pointcloud_path"] == "assets/helix.pcd"
     assert "chunked" not in d
@@ -171,7 +171,7 @@ def test_pointcloud_basic():
 def test_pointcloud_chunked_flags_propagate():
     pc = PointCloud("demo_chunked", pointcloud_path="assets/helix.pcd",
                     chunked=True, chunk_size=2000, opacity=1.0)
-    d = pc.to_item_dict()
+    d = pc.to_dict()
     assert d["chunked"] is True
     assert d["chunk_size"] == 2000
 
@@ -186,57 +186,57 @@ def test_pointcloud_rejects_bad_chunk_size():
 def test_opacity_out_of_range_rejected():
     b = Box("x", dims_mm=(1, 1, 1), opacity=1.5)
     with pytest.raises(ValueError):
-        b.to_item_dict()
+        b.to_dict()
 
 
 def test_color_tuple_or_dict_both_accepted():
     b1 = Box("a", dims_mm=(1, 1, 1), color=(230, 25, 75))
     b2 = Box("b", dims_mm=(1, 1, 1), color={"r": 230, "g": 25, "b": 75})
-    assert b1.to_item_dict()["color"] == b2.to_item_dict()["color"]
+    assert b1.to_dict()["color"] == b2.to_dict()["color"]
 
 
 def test_animation_passthrough_when_set():
     s = Sphere("x", radius_mm=10,
                animation={"mode": "spin", "rpm": 15})
-    d = s.to_item_dict()
+    d = s.to_dict()
     assert d["animation"] == {"mode": "spin", "rpm": 15}
 
 
 def test_animation_defaults_to_none_mode_when_unset():
     s = Sphere("x", radius_mm=10)
-    d = s.to_item_dict()
+    d = s.to_dict()
     assert d["animation"] == {"mode": "none"}
 
 
 def test_parent_frame_propagates_when_set():
     s = Sphere("x", radius_mm=10, parent_frame="anchor")
-    d = s.to_item_dict()
+    d = s.to_dict()
     assert d["parent_frame"] == "anchor"
 
 
 def test_show_axes_helper_propagates():
     s = Sphere("x", radius_mm=10, show_axes_helper=True)
-    d = s.to_item_dict()
+    d = s.to_dict()
     assert d["show_axes_helper"] is True
 
 
 def test_invisible_propagates():
     s = Sphere("x", radius_mm=10, invisible=True)
-    d = s.to_item_dict()
+    d = s.to_dict()
     assert d["invisible"] is True
 
 
 def test_label_required():
     s = Sphere("", radius_mm=10)
     with pytest.raises(ValueError):
-        s.to_item_dict()
+        s.to_dict()
 
 
 # ---------- Pose accepts dict for back-compat ---------------------------
 
 def test_pose_as_dict_accepted():
     s = Sphere("x", radius_mm=10, pose={"x": 100, "y": 50})
-    d = s.to_item_dict()
+    d = s.to_dict()
     # Missing keys fill from identity.
     assert d["pose"] == {"x": 100.0, "y": 50.0, "z": 0.0,
                          "ox": 0.0, "oy": 0.0, "oz": 1.0, "theta": 0.0}
@@ -244,7 +244,7 @@ def test_pose_as_dict_accepted():
 
 # ---------- Animation classes -------------------------------------------
 
-from src.visuals import (  # noqa: E402 — grouped with other animation imports
+from viam_visuals import (  # noqa: E402 — grouped with other animation imports
     Breathe,
     Flicker,
     ForceVector,
@@ -356,11 +356,11 @@ def test_trajectory_normalizes_pose_dicts():
 
 def test_visual_accepts_animation_instance():
     s = Sphere("x", radius_mm=10, animation=Spin(period_s=3))
-    d = s.to_item_dict()
+    d = s.to_dict()
     assert d["animation"] == {"mode": "spin", "period_s": 3.0}
 
 
 def test_visual_accepts_animation_dict_passthrough():
     s = Sphere("x", radius_mm=10, animation={"mode": "spin", "period_s": 3})
-    d = s.to_item_dict()
+    d = s.to_dict()
     assert d["animation"] == {"mode": "spin", "period_s": 3}

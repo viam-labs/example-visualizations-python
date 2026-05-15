@@ -1,6 +1,6 @@
 VERSION := $(shell cat VERSION)
 
-module.tar.gz: run.sh requirements.txt meta.json src/*.py assets/*
+module.tar.gz: run.sh requirements.txt meta.json src/*.py viam_visuals/*.py viam_visuals/_internal/*.py assets/*
 	tar czf $@ $^
 
 .PHONY: test
