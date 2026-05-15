@@ -14,19 +14,23 @@ import pytest
 from src.recipes import (
     RECIPES,
     AllPrimitives,
+    CoordinateFramesArm,
     DetectionsOverlay,
+    LifecycleGarden,
     MarchingBoxes,
     PulsingSpheres,
+    TrajectoryRunner,
 )
 from viam_visuals import Scene
 
 
 # ---- registry ---------------------------------------------------------
 
-def test_recipes_registry_contains_all_four():
+def test_recipes_registry_contains_all_seven():
     assert set(RECIPES) == {
         "marching_boxes", "pulsing_spheres",
         "all_primitives", "detections_overlay",
+        "coordinate_frames_arm", "trajectory_runner", "lifecycle_garden",
     }
 
 
@@ -158,6 +162,206 @@ def test_detections_overlay_orbit_circles_origin():
 
 
 # ---- driver round-trip with the new recipes --------------------------
+
+# ---- coordinate_frames_arm -------------------------------------------
+
+def test_coordinate_frames_arm_initial_installs_frames_and_arm():
+    scene = Scene()
+    events = CoordinateFramesArm().initial(scene)
+    # 3 frames × 4 visuals (anchor + 3 axes) + 5 arm parts = 17.
+    assert len(events) == 17
+    labels = scene.labels()
+    # Frame anchors and their axes.
+    for i in range(3):
+        assert f"frame_{i}" in labels
+        assert f"frame_{i}_axis_x" in labels
+        assert f"frame_{i}_axis_y" in labels
+        assert f"frame_{i}_axis_z" in labels
+    # Arm parts.
+    for part in ["arm_shoulder", "arm_upper", "arm_elbow", "arm_forearm", "arm_wrist"]:
+        assert part in labels
+
+
+def test_coordinate_frames_arm_chained_parent_frames():
+    """Each arm link's parent_frame should reference the previous link,
+    forming a chain: shoulder → upper → elbow → forearm → wrist. The
+    chain is what makes joint angles propagate to downstream links."""
+    scene = Scene()
+    CoordinateFramesArm().initial(scene)
+    chain = [
+        ("arm_upper",   "arm_shoulder"),
+        ("arm_elbow",   "arm_upper"),
+        ("arm_forearm", "arm_elbow"),
+        ("arm_wrist",   "arm_forearm"),
+    ]
+    for child, expected_parent in chain:
+        v = scene.get(child)
+        assert v is not None, f"{child!r} missing from scene"
+        # The composite expansion preserves parent_frame on each visual.
+        assert v.parent_frame == expected_parent, (
+            f"{child!r}.parent_frame = {v.parent_frame!r}; "
+            f"expected {expected_parent!r}"
+        )
+
+
+def test_coordinate_frames_arm_tick_drives_anchors_and_joints():
+    scene = Scene()
+    CoordinateFramesArm().initial(scene)
+    events = CoordinateFramesArm().tick(scene, 0.5)
+    # 3 frame anchors + 3 arm joints = 6 UPDATED.
+    assert len(events) == 6
+    assert all(e.kind == "updated" for e in events)
+    # Frame axes (children) should not produce events — only the
+    # anchor moves; the axes follow via parent_frame chain.
+    axis_paths = {e.label for e in events if e.label.endswith("_axis_x")}
+    assert axis_paths == set()
+
+
+def test_coordinate_frames_arm_no_event_when_t_unchanged():
+    scene = Scene()
+    CoordinateFramesArm().initial(scene)
+    CoordinateFramesArm().tick(scene, 0.5)  # commits new poses
+    # Second tick at the same t produces no UPDATEDs (state matches).
+    assert CoordinateFramesArm().tick(scene, 0.5) == []
+
+
+# ---- trajectory_runner -----------------------------------------------
+
+def test_trajectory_runner_initial_installs_static_path_and_runner():
+    scene = Scene()
+    events = TrajectoryRunner().initial(scene)
+    # 5 waypoints + 4 line segments + 1 runner = 10.
+    assert len(events) == 10
+    for i in range(5):
+        assert f"wp_{i}" in scene.labels()
+    assert "trajectory_runner" in scene.labels()
+    # 4 segments connecting 5 waypoints.
+    assert sum(1 for l in scene.labels() if l.startswith("trajectory_seg_")) == 4
+
+
+def test_trajectory_runner_starts_at_first_waypoint_at_t_zero():
+    scene = Scene()
+    TrajectoryRunner().initial(scene)
+    TrajectoryRunner().tick(scene, 0.0)
+    runner = scene.get("trajectory_runner")
+    wp0 = TrajectoryRunner.WAYPOINTS[0]
+    assert runner is not None
+    assert abs(runner.pose.x - wp0.x) < 1e-6
+    assert abs(runner.pose.y - wp0.y) < 1e-6
+    assert abs(runner.pose.z - wp0.z) < 1e-6
+
+
+def test_trajectory_runner_only_runner_moves_during_tick():
+    """Waypoints and line segments are static; only the runner gets
+    an UPDATED event each tick."""
+    scene = Scene()
+    TrajectoryRunner().initial(scene)
+    events = TrajectoryRunner().tick(scene, 1.0)
+    assert len(events) == 1
+    assert events[0].label == "trajectory_runner"
+
+
+def test_trajectory_runner_midpoint_lerps_between_waypoints():
+    """At halfway through segment 0, the runner should sit at the
+    midpoint of waypoint 0 and waypoint 1."""
+    scene = Scene()
+    TrajectoryRunner().initial(scene)
+    # n_segs = N_WAYPOINTS (because LOOP=True). Segment 0 spans
+    # t=0 .. LAP_PERIOD_S/n_segs. Midpoint t = LAP_PERIOD_S/n_segs/2.
+    n_segs = len(TrajectoryRunner.WAYPOINTS)  # LOOP=True
+    t_mid = (TrajectoryRunner.LAP_PERIOD_S / n_segs) / 2.0
+    TrajectoryRunner().tick(scene, t_mid)
+    runner = scene.get("trajectory_runner")
+    wp0 = TrajectoryRunner.WAYPOINTS[0]
+    wp1 = TrajectoryRunner.WAYPOINTS[1]
+    mid_x = (wp0.x + wp1.x) / 2
+    mid_y = (wp0.y + wp1.y) / 2
+    mid_z = (wp0.z + wp1.z) / 2
+    assert abs(runner.pose.x - mid_x) < 1.0
+    assert abs(runner.pose.y - mid_y) < 1.0
+    assert abs(runner.pose.z - mid_z) < 1.0
+
+
+# ---- lifecycle_garden ------------------------------------------------
+
+def test_lifecycle_garden_initial_is_empty():
+    scene = Scene()
+    assert LifecycleGarden().initial(scene) == []
+    assert len(scene) == 0
+
+
+def test_lifecycle_garden_tick_at_t_zero_installs_alive_plots():
+    """At t=0 with evenly-staggered phase offsets, ~4 of 5 plots are
+    in non-gone phases — each appears with a fresh version label."""
+    recipe = LifecycleGarden()
+    scene = Scene()
+    events = recipe.tick(scene, 0.0)
+    # Phase offsets: 0, CYCLE/5, 2*CYCLE/5, 3*CYCLE/5, 4*CYCLE/5.
+    # With CYCLE_S = 4.0, gone phase is the last 0.8s of cycle. At
+    # t=0, plot 0's local_t=0 (appear), plot 1=0.8 (start of alive),
+    # plot 2=1.6 (start of disappear maybe), plot 3=2.4, plot 4=3.2.
+    # At least most plots should produce ADDED events.
+    add_events = [e for e in events if e.kind == "added"]
+    assert len(add_events) >= 3, f"expected several plots to add, got {events!r}"
+
+
+def test_lifecycle_garden_label_versions_bump_across_cycles():
+    """When a plot completes its gone phase and re-enters appear,
+    the new label uses a higher version number than the prior."""
+    recipe = LifecycleGarden()
+    scene = Scene()
+    # Tick in appear phase (plot 0: local_t=0.1 → appear, ADD v1).
+    recipe.tick(scene, 0.1)
+    versions_after_first = list(recipe._version)
+    # Tick during plot 0's gone phase (local_t in [3.2, 4.0)) so it's
+    # REMOVED, then tick after the wrap (back into appear) so it's
+    # re-ADDED with a fresh version.
+    gone_t = LifecycleGarden.APPEAR_S + LifecycleGarden.ALIVE_S + LifecycleGarden.DISAPPEAR_S + 0.1
+    recipe.tick(scene, gone_t)
+    recipe.tick(scene, LifecycleGarden.CYCLE_S + 0.1)
+    versions_after_second = list(recipe._version)
+    # Plot 0 should have incremented.
+    assert versions_after_second[0] > versions_after_first[0]
+
+
+def test_lifecycle_garden_re_add_uses_fresh_label():
+    """The label for the re-added plot should differ from the one
+    that was REMOVEd. The renderer's REMOVED-UUID cache would drop
+    the new entity if labels matched."""
+    recipe = LifecycleGarden()
+    scene = Scene()
+    # ADD plot 0 v1 in appear phase.
+    recipe.tick(scene, 0.1)
+    first_labels = {l for l in scene.labels() if l.startswith("garden_0_v")}
+    # Walk through the gone phase explicitly so the recipe REMOVEs.
+    gone_t = LifecycleGarden.APPEAR_S + LifecycleGarden.ALIVE_S + LifecycleGarden.DISAPPEAR_S + 0.1
+    recipe.tick(scene, gone_t)
+    # Now back into appear — recipe ADDs with fresh version.
+    recipe.tick(scene, LifecycleGarden.CYCLE_S + 0.1)
+    new_labels = {l for l in scene.labels() if l.startswith("garden_0_v")}
+    # New labels shouldn't include the previously-removed ones.
+    assert not (first_labels & new_labels), (
+        f"reused stale labels {first_labels & new_labels}"
+    )
+
+
+def test_lifecycle_garden_color_changes_through_phases():
+    """A plot in the appear phase is blue, alive is orange, disappear
+    is red. The color attribute on the scene's Box changes as the
+    recipe ticks through phases."""
+    recipe = LifecycleGarden()
+    scene = Scene()
+    # Plot 0 starts at appear (local_t=0 with no phase offset).
+    recipe.tick(scene, 0.0)
+    plot0 = next(scene.get(l) for l in scene.labels() if l.startswith("garden_0_v"))
+    assert plot0.color == recipe.COLOR_APPEAR
+    # Step into alive phase.
+    recipe.tick(scene, LifecycleGarden.APPEAR_S + 0.1)
+    plot0 = next(scene.get(l) for l in scene.labels() if l.startswith("garden_0_v"))
+    assert plot0.color == recipe.COLOR_ALIVE
+
+
+# ---- driver round-trip ------------------------------------------------
 
 @pytest.mark.parametrize("recipe_name", ["all_primitives", "detections_overlay"])
 def test_recipe_drives_visualizer_through_apply_events(recipe_name):

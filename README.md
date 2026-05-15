@@ -115,6 +115,9 @@ Available recipes (in `src/recipes.py`):
 - `pulsing_spheres` — three spheres pulsing their radius on phase-offset sine waves. Exercises the `physicalObject.geometryType.value.radiusMm` field-mask path, complementary to the pose-only `marching_boxes`.
 - `all_primitives` — one of every supported shape (box, sphere, capsule, point, arrow, mesh, pointcloud) in a row, static. Driver-side equivalent of the standalone-playground `primitives` preset. The mesh and pointcloud items reference assets in the module's installed directory — the visualizer resolves them at install time.
 - `detections_overlay` — four translucent bounding boxes drifting on circular paths. The canonical driver-shaped use case: a perception module producing detections per tick. Demonstrates `Scene.add_or_update(composite)` — the first tick fires ADDED, subsequent ticks fire UPDATED with pose paths.
+- `coordinate_frames_arm` — three spinning coordinate-frame triads + an articulated 5-link arm. Demonstrates composite expansion (`CoordinateFrame` → anchor sphere + 3 axis capsules) and chained `parent_frame` propagation (each arm link parents to the prior link's label). Joint angles are driver-computed.
+- `trajectory_runner` — a "runner" sphere walking through 5 waypoints with linear interpolation, plus the static path drawn as a `Line` composite (capsule chain). Mirrors the standalone-playground's `trajectory_preview` preset; the canonical template for previewing planned motion in the renderer.
+- `lifecycle_garden` — 5 plots cycling through appear → alive → disappear → gone phases at staggered offsets. Demonstrates scene-graph mutation from the driver: each cycle calls `scene.add()` with a fresh version label (so the renderer's REMOVED-UUID cache doesn't drop the re-add), `scene.update()` for color/opacity transitions, and `scene.remove()` during the gone phase.
 
 Driver attributes:
 
