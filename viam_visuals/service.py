@@ -805,6 +805,9 @@ class SceneServiceBase(WorldStateStore):
                 self.uuid_strategy = str(strategy)
                 return {"strategy": self.uuid_strategy}
 
+        if cmd == "apply_events":
+            return await self._apply_events(command)
+
         # Custom verb hook — subclass can return a Mapping for known
         # custom verbs, or None to fall through.
         custom = await self.handle_custom_command(command)
@@ -874,6 +877,104 @@ class SceneServiceBase(WorldStateStore):
         if "animation" in patch:
             item["animation"] = dict(patch["animation"])
         return updated_fields
+
+    async def _apply_events(
+        self, command: Mapping[str, ValueTypes],
+    ) -> Mapping[str, ValueTypes]:
+        """Apply a batch of SceneEvent wire-format records.
+
+        The Scene class on the driver side produces these via
+        ``Scene.add/update/remove``; the driver serializes them to the
+        wire format (kind + label + item + paths) and pushes the batch
+        here. Returns counters for each kind plus a list of per-event
+        errors. Errors don't abort the batch — remaining events still
+        apply.
+
+        Optional ``namespace`` prefixes every label so multiple drivers
+        can share one visualizer without collisions.
+        """
+        events = command.get("events") or []
+        if not isinstance(events, list):
+            raise Exception("apply_events requires 'events' as a list")
+        namespace = str(command.get("namespace") or "")
+        prefix = (namespace + "/") if namespace else ""
+
+        added = updated = removed = 0
+        errors: List[str] = []
+        async with self._lock:
+            for i, evt in enumerate(events):
+                if not isinstance(evt, Mapping):
+                    errors.append(f"event[{i}]: not a dict")
+                    continue
+                try:
+                    kind = evt.get("kind")
+                    raw_label = evt.get("label")
+                    if not raw_label:
+                        raise Exception("missing 'label'")
+                    label = prefix + str(raw_label)
+
+                    if kind == "added":
+                        item = dict(evt.get("item") or {})
+                        if not item:
+                            raise Exception("'added' event missing 'item'")
+                        item["label"] = label
+                        if label in self._state:
+                            raise Exception(f"label {label!r} already exists")
+                        self._install_item(item)
+                        tf = self._state[label]["transform"]
+                        self._broadcast(StreamTransformChangesResponse(
+                            change_type=TransformChangeType.TRANSFORM_CHANGE_TYPE_ADDED,
+                            transform=tf,
+                        ))
+                        added += 1
+
+                    elif kind == "updated":
+                        s = self._state.get(label)
+                        if s is None:
+                            raise Exception(f"unknown label {label!r}")
+                        new_item = dict(evt.get("item") or {})
+                        new_item["label"] = label
+                        paths = list(evt.get("paths") or [])
+                        s["item"] = new_item
+                        s["base_pose"] = dict(new_item.get("pose") or {})
+                        for k, default in (("x", 0.0), ("y", 0.0), ("z", 0.0),
+                                           ("ox", 0.0), ("oy", 0.0), ("oz", 1.0),
+                                           ("theta", 0.0)):
+                            s["base_pose"].setdefault(k, default)
+                        s["base_geom"] = self.base_geom_for_item(new_item)
+                        geom_proto = self.build_geometry(new_item, s["base_geom"])
+                        new_tf = self._build_transform(
+                            new_item, s["base_pose"], geom_proto, s["uuid"],
+                            self.parent_frame,
+                        )
+                        s["transform"] = new_tf
+                        self._broadcast(StreamTransformChangesResponse(
+                            change_type=TransformChangeType.TRANSFORM_CHANGE_TYPE_UPDATED,
+                            transform=new_tf,
+                            updated_fields=FieldMask(paths=paths),
+                        ))
+                        updated += 1
+
+                    elif kind == "removed":
+                        tf = self._remove_item(label)
+                        if tf is not None:
+                            self._broadcast(StreamTransformChangesResponse(
+                                change_type=TransformChangeType.TRANSFORM_CHANGE_TYPE_REMOVED,
+                                transform=tf,
+                            ))
+                            removed += 1
+
+                    else:
+                        raise Exception(f"unknown kind {kind!r}")
+                except Exception as e:
+                    errors.append(f"event[{i}] ({evt.get('label')!r}): {e}")
+        return {
+            "applied": added + updated + removed,
+            "added": added,
+            "updated": updated,
+            "removed": removed,
+            "errors": errors,
+        }
 
     def _maybe_restart_tick(self) -> None:
         has_animated = any(

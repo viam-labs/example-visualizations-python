@@ -63,7 +63,15 @@ from .shapes import (
     to_dicts,
 )
 from . import registry
-from .scene import ADDED, REMOVED, UPDATED, Scene, SceneEntry, SceneEvent
+from .scene import (
+    ADDED,
+    REMOVED,
+    UPDATED,
+    Scene,
+    SceneEntry,
+    SceneEvent,
+    events_to_wire,
+)
 from .service import SceneServiceBase
 from .uuid_strategy import VALID_STRATEGIES, initial_uuid, versioned_uuid
 
@@ -118,6 +126,7 @@ __all__ = [
     "ADDED",
     "UPDATED",
     "REMOVED",
+    "events_to_wire",
     # In-process registry
     "registry",
 ]

@@ -50,7 +50,7 @@ from .composites import Composite
 from .shapes import Visual
 
 
-__all__ = ["Scene", "SceneEvent", "SceneEntry"]
+__all__ = ["Scene", "SceneEvent", "SceneEntry", "events_to_wire"]
 
 
 # ---- Event kinds + records ---------------------------------------------
@@ -295,6 +295,30 @@ def _flatten_labels(
             raise TypeError(
                 f"expected str | Visual | Composite, got {type(t).__name__}"
             )
+    return out
+
+
+def events_to_wire(events: Sequence[SceneEvent]) -> List[Dict[str, Any]]:
+    """Serialize a list of :class:`SceneEvent` records to the dict form
+    the ``apply_events`` DoCommand verb accepts.
+
+    Use this on the driver side to ship a batch of Scene mutations to
+    a visualizer::
+
+        events = scene.update(box, sphere)
+        await visualizer.do_command({
+            "command": "apply_events",
+            "events": events_to_wire(events),
+        })
+    """
+    out: List[Dict[str, Any]] = []
+    for e in events:
+        rec: Dict[str, Any] = {"kind": e.kind, "label": e.label}
+        if e.item_dict:
+            rec["item"] = dict(e.item_dict)
+        if e.paths:
+            rec["paths"] = list(e.paths)
+        out.append(rec)
     return out
 
 
