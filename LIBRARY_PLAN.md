@@ -172,6 +172,72 @@ s.add(Box("hello", dims_mm=(100, 100, 100)))
 # s.list_uuids(), s.get_transform(uuid), s.stream() are all directly callable.
 ```
 
+## Object lifecycle: construct → add → mutate → update → remove
+
+Every visual is a typed object the caller holds a reference to. The label is internal bookkeeping (auto-generated if you omit it); identity flows through the object reference, not through string labels passed across boundaries.
+
+```python
+# 1) Construct — fully typed; bad params error at construction, not on the wire.
+bbox = BoundingBox(dims_mm=(100, 200, 50), pose=Pose.mm(0, 0, 50), color="red")
+ball = Sphere(radius_mm=80, color=Named("green"), animation=Spin(rpm=15))
+
+# 2) Add — registers with the scene; broadcasts ADDED to subscribers.
+scene.add(bbox, ball)              # variadic: bulk-add in one call
+
+# 3) Mutate — fields are public attributes you assign to.
+bbox.pose = new_pose
+bbox.color = "blue"
+# 4) Update — scene diffs current state against last-committed snapshot,
+#    derives field-mask paths from real changes, broadcasts UPDATED
+#    (or REMOVED+ADDED if uuid_strategy="versioned").
+scene.update(bbox)
+
+# 5) Remove — pass the object OR the label (whichever you still have).
+scene.remove(ball)
+scene.remove("object_a_bbox")
+```
+
+`scene.add_or_update(obj)` exists for the common "upsert" pattern when caller code doesn't know whether the object is new or in steady-state. It's the right default for tick-driven update loops.
+
+The scene's registry is `{label → (object_ref, last_committed_state)}`. When `update(obj)` runs, the diff is between `obj`'s current state and the snapshot; the snapshot is refreshed afterward. This is the **state-based diff**: the field-mask reflects what actually changed, not what the caller "intended" via a patch dict. So a caller that mutates only `bbox.pose` (and leaves `color` alone) generates a `FieldMask` containing only pose paths — no spurious `metadata.colors` update.
+
+## Composite shapes are classes too
+
+Several useful visuals aren't single primitives — they expand to multiple parented Transforms internally. The caller treats them as one object:
+
+```python
+from viamvizhelpers import CoordinateFrame, Arrow, Line, Text, BoundingBox
+
+# Three colored axis capsules + invisible anchor + optional caption — one object.
+frame = CoordinateFrame(pose=tcp_pose, size_mm=120, label="tcp", caption="TCP")
+
+# A capsule from start to end with conical tip; computes orientation internally.
+arrow = Arrow.from_to(start=hand_pose, end=hand_pose + force_vec, color="orange")
+
+# A polyline rendered as a capsule chain (workaround for the missing
+# native line primitive). Each segment is its own internal item.
+path = Line(points=trajectory_waypoints, width_mm=4, color="blue")
+
+# A baked text plaque — uses the same matplotlib+trimesh pipeline
+# this module's playground uses today.
+caption = Text("OBJECT A", height_mm=40, pose=Pose.above(bbox, 200))
+
+# Six-sided wireframe box (12 capsule edges) — for detection overlays
+# where you want the outline, not the solid.
+outline = BoundingBox(dims_mm=(100, 200, 50), pose=pose, wireframe=True)
+
+scene.add(frame, arrow, path, caption, outline)
+
+# Mutating the composite mutates its children atomically — the caller
+# never touches the internal items.
+frame.pose = new_tcp_pose
+arrow.start = new_hand
+arrow.end = new_hand + new_force
+scene.update(frame, arrow)
+```
+
+Under the hood the scene registers N transforms per composite, but `scene.update(frame)` operates atomically and emits the right deltas for whatever child fields changed. Composites that have a single root parent (CoordinateFrame, Arrow with a single anchor) propagate pose changes via the parent chain — only the anchor's pose update goes on the wire, the children inherit. Composites that don't share a root (Line: each segment is a sibling) emit per-segment updates.
+
 What the module author **does not** write:
 
 - The metadata struct (`colors` / `opacities` as base64-packed bytes, `color_format=1`, `show_axes_helper`, `invisible`, optional `chunks`) — handled internally.
@@ -181,34 +247,67 @@ What the module author **does not** write:
 - Monotonic-counter UUID rotation on REMOVED→ADDED transitions — `Scene` owns it.
 - Subscriber queue, backpressure, initial-burst — `Scene.stream()`.
 - The `EasyResource.new`-doesn't-call-reconfigure quirk — `ServiceBase` handles it.
+- Composite-shape decomposition. A `CoordinateFrame` "is" five transforms; the caller sees one object.
+- Diffing. `scene.update(obj)` figures out what changed by itself.
+
+## The class hierarchy
+
+All visuals share a common base — `Visual` (or just `Item` depending on naming preference). The hierarchy:
+
+```
+Visual                                # abstract: label, pose, color, opacity,
+│                                     # parent_frame, animation, show_axes_helper
+├── Primitive                         # concrete: maps 1-to-1 to a commonpb.Geometry
+│   ├── Box                           # dims_mm
+│   ├── Sphere                        # radius_mm
+│   ├── Capsule                       # radius_mm + length_mm
+│   ├── Point                         # (radius internally 8mm so it actually renders)
+│   ├── Mesh                          # mesh_path OR raw bytes; auto STL→PLY
+│   └── PointCloud                    # pointcloud_path OR raw bytes; chunked opt-in
+│
+└── Composite                         # one user-facing object, N internal Visuals
+    ├── Arrow                         # shaft + tip; .from_to(start, end) constructor
+    ├── Line                          # capsule chain through a sequence of points
+    ├── BoundingBox                   # wireframe (12 edges) or solid Box passthrough
+    ├── CoordinateFrame               # anchor + 3 axis capsules + optional caption
+    ├── Text                          # baked PLY plaque from a string
+    └── Labeled[T]                    # any Visual paired with a Text caption above
+```
+
+Every concrete class validates its params in `__init__` so type errors surface at construction, not on the wire. Animations attach via `animation=` parameter or `.animate(Spin(...))` method. Composite classes own their children's parenting so the caller never wires up `parent_frame` for the internals.
 
 ## Delivery order
 
 Not strict phases — just the order to build in, since each piece is usable as soon as it exists. Tag a `v0.x` when a chunk feels stable enough.
 
-1. **Geometry constructors + asset loaders first.** `Box`, `Sphere`, `Capsule`, `Point`, `Arrow`, `Mesh`, `PointCloud`. STL→PLY conversion, PCD writer matching `pointcloud.ToPCD` byte-for-byte, the metadata struct with all five required keys. A user can build a single Transform that the viewer renders correctly — already useful.
+1. **`Visual` base + primitive classes + asset loaders first.** `Box`, `Sphere`, `Capsule`, `Point`, `Mesh`, `PointCloud`. STL→PLY conversion, PCD writer matching `pointcloud.ToPCD` byte-for-byte, the metadata struct with all five required keys. A user can build a single Transform that the viewer renders correctly — already useful.
 
-2. **`Scene` class with state + subscribers + animation tick.** Stable vs. versioned UUID strategies, the rotate-on-readd default for the renderer cache bug, the 10 animation modes. A user can drive a scene with motion entirely in-process — useful for headless tests and for scripts that drive the viewer directly without an RDK module.
+2. **`Scene` class with state + subscribers + animation tick + diff-based update.** Stable vs. versioned UUID strategies, the rotate-on-readd default for the renderer cache bug, the 10 animation modes, the `scene.add / update / add_or_update / remove` lifecycle. A user can drive a scene with motion entirely in-process — useful for headless tests and for scripts that drive the viewer directly without an RDK module.
 
-3. **`ServiceBase`.** The inheritable WSStore service. Standard nine DoCommand verbs default-dispatched; users override `build_scene` and optionally `handle_command(verb, payload)` for custom verbs.
+3. **Composite classes.** `Arrow.from_to`, `Line`, `BoundingBox(wireframe=True)`, `CoordinateFrame`, `Text`, `Labeled`. Each one is the kind of thing every viz-aware module ends up reinventing; baking them in is the highest-leverage piece for ergonomics.
 
-4. **Chunked delivery.** Gated behind `PointCloud.from_file(..., chunked=True)` and marked experimental in the docstring until viz team confirms the schema. Implementation isolated to one module so a wire-format change touches one file.
+4. **`ServiceBase`.** The inheritable WSStore service. Standard nine DoCommand verbs default-dispatched; users override `build_scene` and optionally `handle_command(verb, payload)` for custom verbs.
 
-5. **Drawing-API support (post-viz-team-clarification).** Lines, NURBS, points-with-size. Only after the viewer's drawing-API channel is exposed to module-side services.
+5. **Chunked delivery.** Gated behind `PointCloud.from_file(..., chunked=True)` and marked experimental in the docstring until viz team confirms the schema. Implementation isolated to one module so a wire-format change touches one file.
 
-Each step in 1–3 has a milestone: re-implement this module's `all` preset using the library. If the library's version is meaningfully shorter than the current `src/presets.py::all_preset`, the API is in the right shape.
+6. **Drawing-API support (post-viz-team-clarification).** Lines, NURBS, points-with-size. Only after the viewer's drawing-API channel is exposed to module-side services. (When this lands, `Line` and `Point`'s capsule/sphere workarounds become native passthroughs internally — the user-facing API doesn't change.)
+
+Each step in 1–4 has a milestone: re-implement this module's `all` preset using the library. If the library's version is meaningfully shorter than the current `src/presets.py::all_preset`, the API is in the right shape.
 
 ## Migration path for this module
 
 `example-visualizations` is the canonical first adopter. The phases above translate into concrete shrinkage here:
 
-- **After step 1**: `src/geometries.py` collapses from 650 lines to ~30. Most of it was metadata struct construction, PCD header byte-matching, STL→PLY conversion — all internal to the library.
-- **After step 2**: `src/animation.py` (482 lines) → 0; presets reference `viamvizhelpers.anim` classes by name. `src/service.py` (1090 lines) → ~80; the WSStore methods, subscriber fanout, tick loop, UUID rotation, and the EasyResource quirk all live in `ServiceBase`.
-- **After step 3**: `src/presets.py` shrinks from 1194 lines to ~700; preset shape stays but each item is a one-liner instead of a manually-built dict with metadata wired separately.
+- **After step 1** (primitive classes + asset loaders): `src/geometries.py` collapses from ~650 lines to ~30. Most of it was metadata struct construction, PCD header byte-matching, STL→PLY conversion — all internal to the library.
+- **After step 2** (Scene + diff-based update + animations): `src/animation.py` (~482 lines) → 0; presets attach `Spin(...)` / `Pulse(...)` / etc. directly to visual objects. `src/service.py` (~1090 lines) → ~80; the WSStore methods, subscriber fanout, tick loop, UUID rotation, and the EasyResource quirk all live in the library. The `do_command update` patch surface is no longer needed — callers mutate objects and call `scene.update(obj)` instead, so `update`/`add` DoCommand verbs become thin wrappers over the OO API.
+- **After step 3** (composites): the text-label generator + the manual CoordinateFrame in `reference_frame_demo` + the manual capsule-chain trajectory line all become one-liner composites. `src/presets.py` drops by ~300 more lines beyond step 2.
+- **After step 4** (ServiceBase): module shrinks to: register the model, override `build_scene()`, return a `Scene` with the preset items wired in.
 
 **Total: 3425 lines → ~820 lines. ~4× reduction.** More importantly, future modules that aren't trying to be a renderer-behavior probe get a one-import library and don't repeat any of this.
 
 The migration would happen incrementally: each step in delivery order ships, this module adopts the matching piece, the tests stay green throughout. No big-bang rewrite.
+
+**Bootstrapping option:** if waiting for a separate library repo to publish slows iteration, the first few steps can land inside `example-visualizations-python` as a `viamvizhelpers/` subpackage. The module is already the prototype source — keeping the library co-located until the API stabilizes lets the playground exercise it on every push without a publish cycle. Extract to a standalone repo when `v0.x` feels stable.
 
 ## Testing strategy
 
