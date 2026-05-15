@@ -53,7 +53,10 @@ async def _make_driver(
     }
     if namespace:
         attrs["namespace"] = namespace
-    await d.reconfigure(_config(attrs, name="drv"), {})
+    d.reconfigure(_config(attrs, name="drv"), {})
+    # Wait for the spawned initial-scene push to complete before
+    # tests assert on visualizer state.
+    await asyncio.sleep(0.02)
     return d
 
 

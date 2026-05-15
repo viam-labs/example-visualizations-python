@@ -82,7 +82,24 @@ class PlaygroundDriver(Generic, EasyResource):
 
     # ---- lifecycle ----------------------------------------------------
 
-    async def reconfigure(self, config, dependencies):
+    @classmethod
+    def new(cls, config, dependencies):
+        """Override so we actually call ``reconfigure``. ``EasyResource.new``
+        only sets ``self.name`` and returns — the framework never
+        runs reconfigure on initial construction (only on config
+        changes), so without this the driver loads but never wires
+        up its scene or tick. Same trap as ``SceneServiceBase``.
+        """
+        instance = cls(config.name)
+        instance.reconfigure(config, dependencies)
+        return instance
+
+    def reconfigure(self, config, dependencies):
+        """Parse config + look up visualizer (sync), then kick off
+        the async setup that pushes the initial scene and runs the
+        tick loop. ``reconfigure`` itself stays sync to match the
+        framework's expectation that it doesn't return a coroutine.
+        """
         attrs = struct_to_dict(config.attributes) if config.attributes else {}
         self._vis_name: str = attrs["visualizer"]
         self._recipe_name: str = attrs.get("recipe", DEFAULT_RECIPE)
@@ -101,47 +118,38 @@ class PlaygroundDriver(Generic, EasyResource):
             raise Exception(
                 f"visualizer {self._vis_name!r} not found in the in-process "
                 "registry; ensure it's configured and listed before this "
-                "driver in 'depends_on'. (Cross-process driver→visualizer "
-                "via gRPC isn't supported yet.)"
+                "driver in 'depends_on'. Registered: {sorted(registry.names())}. "
+                "(Cross-process driver→visualizer via gRPC isn't supported yet.)"
             )
         self._visualizer = vis
 
-        # Cancel any prior tick task.
+        # Cancel any prior tick task (only on reconfigure, not first run).
         prev_task = getattr(self, "_tick_task", None)
         if prev_task is not None and not prev_task.done():
             prev_task.cancel()
-            try:
-                await prev_task
-            except (asyncio.CancelledError, Exception):
-                pass
 
         # Build fresh Scene from the recipe.
         self._scene = Scene()
         initial_events = self._recipe.initial(self._scene)
-
-        # Clear any prior visualizer state for our namespace (best-
-        # effort — drop our own labels in case a prior driver left
-        # them behind). We do this by REMOVING every label in the
-        # scene first.
-        # NOTE: this only clears labels we'd be re-adding; other
-        # namespaces or labels remain untouched.
-        if initial_events:
-            wipe = [
-                {"kind": "removed", "label": e.label}
-                for e in initial_events
-            ]
-            await self._send_command({
-                "command": "apply_events",
-                "namespace": self._namespace,
-                "events": wipe,
-            })
-
-        # Push the initial scene.
-        await self._send_events(initial_events)
-
-        # Start the tick task.
         self._t0 = time.monotonic()
-        self._tick_task = asyncio.create_task(self._tick_loop())
+
+        # Async setup + tick loop: spawned as a task so reconfigure
+        # stays sync. There's a running event loop here because the
+        # framework's add_resource / reconfigure_resource are async.
+        self._tick_task = asyncio.create_task(
+            self._startup_then_tick(initial_events)
+        )
+
+    async def _startup_then_tick(self, initial_events):
+        """Push the initial scene, then enter the tick loop."""
+        try:
+            await self._send_events(initial_events)
+        except Exception as e:
+            logger = getattr(self, "logger", None)
+            if logger is not None:
+                logger.warn(f"initial scene push failed: {e}")
+            return
+        await self._tick_loop()
 
     async def close(self):
         task = getattr(self, "_tick_task", None)
