@@ -7,8 +7,8 @@
   "models": [
     {
       "api": "rdk:service:world_state_store",
-      "model": "viam:example-visualizations-python:playground",
-      "short_description": "Single-service playground that renders every supported geometry primitive in the 3D scene viewer.",
+      "model": "viam:example-visualizations-python:standalone-playground",
+      "short_description": "Monolith playground that renders every supported geometry primitive in the 3D scene viewer.",
       "markdown_link": "README.md"
     }
   ],

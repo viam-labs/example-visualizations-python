@@ -52,7 +52,7 @@ class SceneSprites(SceneServiceBase, EasyResource):
     primitive to the Viam 3D scene viewer."""
 
     MODEL = Model(
-        ModelFamily("viam", "example-visualizations-python"), "playground",
+        ModelFamily("viam", "example-visualizations-python"), "standalone-playground",
     )
     DEFAULT_PRESET = "all"
 
