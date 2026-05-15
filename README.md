@@ -113,6 +113,8 @@ Available recipes (in `src/recipes.py`):
 
 - `marching_boxes` — five boxes in a row along X, each bobbing in Y on a phase-offset sine wave. Simplest end-to-end recipe; useful for confirming the pipeline works.
 - `pulsing_spheres` — three spheres pulsing their radius on phase-offset sine waves. Exercises the `physicalObject.geometryType.value.radiusMm` field-mask path, complementary to the pose-only `marching_boxes`.
+- `all_primitives` — one of every supported shape (box, sphere, capsule, point, arrow, mesh, pointcloud) in a row, static. Driver-side equivalent of the standalone-playground `primitives` preset. The mesh and pointcloud items reference assets in the module's installed directory — the visualizer resolves them at install time.
+- `detections_overlay` — four translucent bounding boxes drifting on circular paths. The canonical driver-shaped use case: a perception module producing detections per tick. Demonstrates `Scene.add_or_update(composite)` — the first tick fires ADDED, subsequent ticks fire UPDATED with pose paths.
 
 Driver attributes:
 

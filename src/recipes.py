@@ -21,7 +21,19 @@ from __future__ import annotations
 import math
 from typing import Dict, List, Protocol
 
-from viam_visuals import Box, Pose, Scene, SceneEvent, Sphere
+from viam_visuals import (
+    Arrow,
+    BoundingBox,
+    Box,
+    Capsule,
+    Mesh,
+    Point,
+    PointCloud,
+    Pose,
+    Scene,
+    SceneEvent,
+    Sphere,
+)
 
 
 class Recipe(Protocol):
@@ -137,11 +149,152 @@ class PulsingSpheres:
         return out
 
 
+# ---- all_primitives ----------------------------------------------------
+
+class AllPrimitives:
+    """One of every supported shape, static.
+
+    Driver-side equivalent of the standalone-playground ``primitives``
+    preset. Useful as the "what can I put in a Scene" reference: each
+    shape type appears in a labeled row along X. Static — the driver
+    pushes ADDED events on startup and nothing thereafter.
+
+    Note that ``Mesh`` and ``PointCloud`` items reference asset paths
+    that the *visualizer* resolves at install time. As long as the
+    driver and visualizer ship from the same module binary (the
+    default with the in-process registry), the visualizer's
+    ``read_asset`` hook finds the assets in the module's installed
+    directory. Cross-module drivers pointing at this visualizer would
+    need the visualizer to know about the requested asset paths.
+    """
+
+    name = "all_primitives"
+
+    SPACING_MM = 280
+
+    def initial(self, scene: Scene) -> List[SceneEvent]:
+        z = 100
+        items = [
+            Box(
+                label="demo_box",
+                pose=Pose.at(x=-3 * self.SPACING_MM, z=z),
+                dims_mm=(140, 140, 140),
+                color=(230, 25, 75),
+            ),
+            Sphere(
+                label="demo_sphere",
+                pose=Pose.at(x=-2 * self.SPACING_MM, z=z),
+                radius_mm=80,
+                color=(60, 180, 75),
+            ),
+            Capsule(
+                label="demo_capsule",
+                pose=Pose.at(x=-1 * self.SPACING_MM, z=z),
+                radius_mm=40,
+                length_mm=200,
+                color=(0, 130, 200),
+            ),
+            Point(
+                label="demo_point",
+                pose=Pose.at(x=0, z=z),
+                color=(245, 130, 48),
+            ),
+            Arrow(
+                label="demo_arrow",
+                pose=Pose.at(x=1 * self.SPACING_MM, z=z),
+                length_mm=240,
+                radius_mm=20,
+                color=(145, 30, 180),
+            ),
+            Mesh(
+                label="demo_bunny",
+                pose=Pose.at(x=2 * self.SPACING_MM, z=z),
+                mesh_path="assets/bunny.stl",
+                color=(70, 240, 240),
+            ),
+            PointCloud(
+                label="demo_pcd",
+                pose=Pose.at(x=3 * self.SPACING_MM, z=z),
+                pointcloud_path="assets/helix.pcd",
+            ),
+        ]
+        return scene.add(*items)
+
+    def tick(self, scene: Scene, t: float) -> List[SceneEvent]:
+        return []  # static — nothing animates
+
+
+# ---- detections_overlay ------------------------------------------------
+
+class DetectionsOverlay:
+    """Simulated object-detection overlay: N wireframe bounding boxes
+    drifting around the origin.
+
+    This is the canonical driver-shaped use case — a perception
+    module produces detections on every tick and the visualizer
+    publishes them to the renderer. The recipe stands in for the
+    real detector by walking ``N`` synthetic detections on
+    phase-offset circular paths.
+
+    Uses :class:`viam_visuals.BoundingBox` (solid translucent
+    variant), one Box per detection. Each tick rebuilds the
+    BoundingBox with a fresh center pose; ``scene.add_or_update``
+    diffs against the committed wire-format dict so existing
+    detections produce UPDATED events with just the pose paths,
+    while never-seen labels produce ADDEDs.
+
+    Mirrors the visual style of common perception output (YOLO,
+    Google Cloud Vision, etc.) — a colored translucent box over the
+    detected region. The translucency keeps the renderer's underlying
+    scene visible through the overlay.
+
+    Note: ``wireframe=True`` on BoundingBox composes 12 capsule edges
+    via ``parent_frame`` chaining — useful when you have an emitted
+    anchor transform at the detection pose, but doesn't honor
+    ``pose=`` directly today. The solid variant is the right choice
+    here; wireframe is a future direction once an anchor-frame
+    pattern is wired into the recipe.
+    """
+
+    name = "detections_overlay"
+
+    N_DETECTIONS = 4
+    ORBIT_RADIUS_MM = 500
+    ORBIT_PERIOD_S = 8.0
+    BOX_DIMS_MM = (140, 100, 120)
+
+    def initial(self, scene: Scene) -> List[SceneEvent]:
+        # Detections "appear" as soon as the driver ticks. Returning
+        # nothing here keeps the initial-burst clean — the renderer
+        # sees ADDED events for each bbox on the first tick.
+        return []
+
+    def tick(self, scene: Scene, t: float) -> List[SceneEvent]:
+        events: List[SceneEvent] = []
+        for i in range(self.N_DETECTIONS):
+            phase = (2 * math.pi) * i / self.N_DETECTIONS
+            angle = 2 * math.pi * t / self.ORBIT_PERIOD_S + phase
+            x = self.ORBIT_RADIUS_MM * math.cos(angle)
+            y = self.ORBIT_RADIUS_MM * math.sin(angle)
+            z = 200
+            bbox = BoundingBox(
+                label=f"det_{i}",
+                pose=Pose.at(x=x, y=y, z=z),
+                dims_mm=self.BOX_DIMS_MM,
+                color=_rainbow(i / self.N_DETECTIONS),
+                opacity=0.4,
+            )
+            events.extend(scene.add_or_update(bbox))
+        return events
+
+
 # ---- registry ----------------------------------------------------------
 
 RECIPES: Dict[str, Recipe] = {
     MarchingBoxes.name: MarchingBoxes(),
     PulsingSpheres.name: PulsingSpheres(),
+    AllPrimitives.name: AllPrimitives(),
+    DetectionsOverlay.name: DetectionsOverlay(),
 }
 
 
