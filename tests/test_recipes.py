@@ -14,6 +14,7 @@ import pytest
 from src.recipes import (
     RECIPES,
     AllPrimitives,
+    AllRecipe,
     CoordinateFramesArm,
     DetectionsOverlay,
     LifecycleGarden,
@@ -26,11 +27,12 @@ from viam_visuals import Scene
 
 # ---- registry ---------------------------------------------------------
 
-def test_recipes_registry_contains_all_seven():
+def test_recipes_registry_contains_all_eight():
     assert set(RECIPES) == {
         "marching_boxes", "pulsing_spheres",
         "all_primitives", "detections_overlay",
         "coordinate_frames_arm", "trajectory_runner", "lifecycle_garden",
+        "all",
     }
 
 
@@ -244,7 +246,7 @@ def test_trajectory_runner_starts_at_first_waypoint_at_t_zero():
     TrajectoryRunner().initial(scene)
     TrajectoryRunner().tick(scene, 0.0)
     runner = scene.get("trajectory_runner")
-    wp0 = TrajectoryRunner.WAYPOINTS[0]
+    wp0 = TrajectoryRunner.BASE_WAYPOINTS[0]
     assert runner is not None
     assert abs(runner.pose.x - wp0.x) < 1e-6
     assert abs(runner.pose.y - wp0.y) < 1e-6
@@ -268,12 +270,12 @@ def test_trajectory_runner_midpoint_lerps_between_waypoints():
     TrajectoryRunner().initial(scene)
     # n_segs = N_WAYPOINTS (because LOOP=True). Segment 0 spans
     # t=0 .. LAP_PERIOD_S/n_segs. Midpoint t = LAP_PERIOD_S/n_segs/2.
-    n_segs = len(TrajectoryRunner.WAYPOINTS)  # LOOP=True
+    n_segs = len(TrajectoryRunner.BASE_WAYPOINTS)  # LOOP=True
     t_mid = (TrajectoryRunner.LAP_PERIOD_S / n_segs) / 2.0
     TrajectoryRunner().tick(scene, t_mid)
     runner = scene.get("trajectory_runner")
-    wp0 = TrajectoryRunner.WAYPOINTS[0]
-    wp1 = TrajectoryRunner.WAYPOINTS[1]
+    wp0 = TrajectoryRunner.BASE_WAYPOINTS[0]
+    wp1 = TrajectoryRunner.BASE_WAYPOINTS[1]
     mid_x = (wp0.x + wp1.x) / 2
     mid_y = (wp0.y + wp1.y) / 2
     mid_z = (wp0.z + wp1.z) / 2
@@ -359,6 +361,96 @@ def test_lifecycle_garden_color_changes_through_phases():
     recipe.tick(scene, LifecycleGarden.APPEAR_S + 0.1)
     plot0 = next(scene.get(l) for l in scene.labels() if l.startswith("garden_0_v"))
     assert plot0.color == recipe.COLOR_ALIVE
+
+
+# ---- y_origin parameter ----------------------------------------------
+
+def test_y_origin_shifts_marching_boxes():
+    """Each recipe accepts a y_origin parameter (default 0). The
+    ``all`` recipe relies on this to stack sub-recipes at distinct Y
+    offsets without overlap."""
+    scene = Scene()
+    MarchingBoxes(y_origin=-1500).initial(scene)
+    box = scene.get("march_0")
+    assert box is not None
+    assert box.pose.y == -1500
+
+
+def test_y_origin_shifts_coordinate_frames_arm():
+    scene = Scene()
+    CoordinateFramesArm(y_origin=1000).initial(scene)
+    # Frames sit at FRAME_Y_OFFSET (=600) + y_origin.
+    frame0 = scene.get("frame_0")
+    assert frame0 is not None
+    assert frame0.pose.y == 1600
+    # Arm shoulder sits at ARM_BASE_Y_OFFSET (=-400) + y_origin.
+    shoulder = scene.get("arm_shoulder")
+    assert shoulder is not None
+    assert shoulder.pose.y == 600
+
+
+def test_y_origin_shifts_trajectory_waypoints():
+    scene = Scene()
+    TrajectoryRunner(y_origin=500).initial(scene)
+    # First waypoint's base Y is -300; shifted by 500 → 200.
+    wp0 = scene.get("wp_0")
+    assert wp0 is not None
+    assert wp0.pose.y == 200
+
+
+# ---- all recipe ------------------------------------------------------
+
+def test_all_recipe_runs_every_sub_recipe():
+    scene = Scene()
+    AllRecipe().initial(scene)
+    # Every sub-recipe's labels should appear (composite expansions
+    # included). Spot-check one label from each sub.
+    expected = [
+        "march_0",        # marching_boxes
+        "pulse_0",        # pulsing_spheres
+        "demo_box",       # all_primitives
+        "frame_0",        # coordinate_frames_arm
+        "arm_shoulder",   # coordinate_frames_arm
+        "wp_0",           # trajectory_runner
+        "trajectory_runner",  # trajectory_runner runner
+    ]
+    for label in expected:
+        assert label in scene.labels(), f"{label!r} missing from `all` scene"
+
+
+def test_all_recipe_sub_recipes_dont_overlap():
+    """Each sub-recipe lives at its own Y zone — picking two
+    sub-recipes and inspecting a representative label confirms
+    they don't collapse onto each other."""
+    scene = Scene()
+    AllRecipe().initial(scene)
+    march = scene.get("march_0")
+    pulse = scene.get("pulse_0")
+    assert march is not None and pulse is not None
+    # Sub-recipes are stacked along Y; spacing is at least 500mm.
+    assert abs(march.pose.y - pulse.pose.y) >= 500
+
+
+def test_all_recipe_tick_animates_all_sub_recipes():
+    """A single tick produces events from every animated sub-recipe."""
+    recipe = AllRecipe()
+    scene = Scene()
+    recipe.initial(scene)
+    events = recipe.tick(scene, 0.5)
+    # all_primitives is static; the rest produce at least one event.
+    labels_in_events = {e.label for e in events}
+    # Confirm at least one event from each animated sub.
+    assert any(l.startswith("march_") for l in labels_in_events)
+    assert any(l.startswith("pulse_") for l in labels_in_events)
+    assert any(l.startswith("det_") for l in labels_in_events)
+    assert any(l.startswith("trajectory") for l in labels_in_events)
+
+
+def test_all_recipe_subs_get_distinct_y_origins():
+    """The internal layout table assigns each sub-recipe a unique
+    y_origin — accidentally reusing one would stack two recipes."""
+    layout_ys = [y for _, y in AllRecipe._LAYOUT]
+    assert len(set(layout_ys)) == len(layout_ys)
 
 
 # ---- driver round-trip ------------------------------------------------

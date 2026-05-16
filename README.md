@@ -118,6 +118,7 @@ Available recipes (in `src/recipes.py`):
 - `coordinate_frames_arm` — three spinning coordinate-frame triads + an articulated 5-link arm. Demonstrates composite expansion (`CoordinateFrame` → anchor sphere + 3 axis capsules) and chained `parent_frame` propagation (each arm link parents to the prior link's label). Joint angles are driver-computed.
 - `trajectory_runner` — a "runner" sphere walking through 5 waypoints with linear interpolation, plus the static path drawn as a `Line` composite (capsule chain). Mirrors the standalone-playground's `trajectory_preview` preset; the canonical template for previewing planned motion in the renderer.
 - `lifecycle_garden` — 5 plots cycling through appear → alive → disappear → gone phases at staggered offsets. Demonstrates scene-graph mutation from the driver: each cycle calls `scene.add()` with a fresh version label (so the renderer's REMOVED-UUID cache doesn't drop the re-add), `scene.update()` for color/opacity transitions, and `scene.remove()` during the gone phase.
+- `all` — every recipe above, run simultaneously, stacked along Y so they don't overlap. Driver-side equivalent of the standalone-playground's `all` preset. Each sub-recipe accepts a `y_origin` constructor argument; the `all` recipe instantiates each one at a distinct Y offset. Useful for seeing the entire driver feature surface in one viewport.
 
 Driver attributes:
 

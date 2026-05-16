@@ -68,6 +68,10 @@ class MarchingBoxes:
     heights at a given instant, which makes it obvious the driver is
     actually streaming updates rather than the visualizer caching a
     static scene.
+
+    The optional ``y_origin`` constructor argument shifts the whole
+    row along Y. Used by the ``all`` recipe to stack this recipe
+    alongside the others without overlap.
     """
 
     name = "marching_boxes"
@@ -77,13 +81,16 @@ class MarchingBoxes:
     AMPLITUDE_MM = 150
     PERIOD_S = 3.0
 
+    def __init__(self, y_origin: float = 0.0) -> None:
+        self.y_origin = float(y_origin)
+
     def initial(self, scene: Scene) -> List[SceneEvent]:
         events: List[SceneEvent] = []
         for i in range(self.N_BOXES):
             x = (i - (self.N_BOXES - 1) / 2.0) * self.SPACING_MM
             box = Box(
                 label=f"march_{i}",
-                pose=Pose.at(x=x, y=0, z=100),
+                pose=Pose.at(x=x, y=self.y_origin, z=100),
                 dims_mm=(120, 120, 120),
                 color=_rainbow(i / self.N_BOXES),
             )
@@ -100,7 +107,7 @@ class MarchingBoxes:
             x = (i - (self.N_BOXES - 1) / 2.0) * self.SPACING_MM
             phase = (2 * math.pi) * i / self.N_BOXES
             y = self.AMPLITUDE_MM * math.sin(2 * math.pi * t / self.PERIOD_S + phase)
-            box.pose = Pose.at(x=x, y=y, z=100)
+            box.pose = Pose.at(x=x, y=self.y_origin + y, z=100)
             out.extend(scene.update(box))
         return out
 
@@ -113,6 +120,8 @@ class PulsingSpheres:
     Exercises a different field-mask path
     (``physicalObject.geometryType.value.radiusMm``) and confirms
     the visualizer rebuilds the geometry proto, not just the pose.
+
+    ``y_origin`` shifts the row along Y for use in the ``all`` recipe.
     """
 
     name = "pulsing_spheres"
@@ -123,13 +132,16 @@ class PulsingSpheres:
     R_AMPLITUDE = 30
     PERIOD_S = 2.5
 
+    def __init__(self, y_origin: float = 0.0) -> None:
+        self.y_origin = float(y_origin)
+
     def initial(self, scene: Scene) -> List[SceneEvent]:
         events: List[SceneEvent] = []
         for i in range(self.N_SPHERES):
             x = (i - (self.N_SPHERES - 1) / 2.0) * self.SPACING_MM
             sphere = Sphere(
                 label=f"pulse_{i}",
-                pose=Pose.at(x=x, y=0, z=120),
+                pose=Pose.at(x=x, y=self.y_origin, z=120),
                 radius_mm=self.R_BASE,
                 color=_rainbow(0.7 * i / max(1, self.N_SPHERES - 1)),
             )
@@ -174,49 +186,53 @@ class AllPrimitives:
 
     SPACING_MM = 280
 
+    def __init__(self, y_origin: float = 0.0) -> None:
+        self.y_origin = float(y_origin)
+
     def initial(self, scene: Scene) -> List[SceneEvent]:
         z = 100
+        y = self.y_origin
         items = [
             Box(
                 label="demo_box",
-                pose=Pose.at(x=-3 * self.SPACING_MM, z=z),
+                pose=Pose.at(x=-3 * self.SPACING_MM, y=y, z=z),
                 dims_mm=(140, 140, 140),
                 color=(230, 25, 75),
             ),
             Sphere(
                 label="demo_sphere",
-                pose=Pose.at(x=-2 * self.SPACING_MM, z=z),
+                pose=Pose.at(x=-2 * self.SPACING_MM, y=y, z=z),
                 radius_mm=80,
                 color=(60, 180, 75),
             ),
             Capsule(
                 label="demo_capsule",
-                pose=Pose.at(x=-1 * self.SPACING_MM, z=z),
+                pose=Pose.at(x=-1 * self.SPACING_MM, y=y, z=z),
                 radius_mm=40,
                 length_mm=200,
                 color=(0, 130, 200),
             ),
             Point(
                 label="demo_point",
-                pose=Pose.at(x=0, z=z),
+                pose=Pose.at(x=0, y=y, z=z),
                 color=(245, 130, 48),
             ),
             Arrow(
                 label="demo_arrow",
-                pose=Pose.at(x=1 * self.SPACING_MM, z=z),
+                pose=Pose.at(x=1 * self.SPACING_MM, y=y, z=z),
                 length_mm=240,
                 radius_mm=20,
                 color=(145, 30, 180),
             ),
             Mesh(
                 label="demo_bunny",
-                pose=Pose.at(x=2 * self.SPACING_MM, z=z),
+                pose=Pose.at(x=2 * self.SPACING_MM, y=y, z=z),
                 mesh_path="assets/bunny.stl",
                 color=(70, 240, 240),
             ),
             PointCloud(
                 label="demo_pcd",
-                pose=Pose.at(x=3 * self.SPACING_MM, z=z),
+                pose=Pose.at(x=3 * self.SPACING_MM, y=y, z=z),
                 pointcloud_path="assets/helix.pcd",
             ),
         ]
@@ -265,6 +281,9 @@ class DetectionsOverlay:
     ORBIT_PERIOD_S = 8.0
     BOX_DIMS_MM = (140, 100, 120)
 
+    def __init__(self, y_origin: float = 0.0) -> None:
+        self.y_origin = float(y_origin)
+
     def initial(self, scene: Scene) -> List[SceneEvent]:
         # Detections "appear" as soon as the driver ticks. Returning
         # nothing here keeps the initial-burst clean — the renderer
@@ -277,7 +296,7 @@ class DetectionsOverlay:
             phase = (2 * math.pi) * i / self.N_DETECTIONS
             angle = 2 * math.pi * t / self.ORBIT_PERIOD_S + phase
             x = self.ORBIT_RADIUS_MM * math.cos(angle)
-            y = self.ORBIT_RADIUS_MM * math.sin(angle)
+            y = self.y_origin + self.ORBIT_RADIUS_MM * math.sin(angle)
             z = 200
             bbox = BoundingBox(
                 label=f"det_{i}",
@@ -320,11 +339,13 @@ class CoordinateFramesArm:
     name = "coordinate_frames_arm"
 
     FRAME_POSITIONS = (-400, 0, 400)   # x positions for the 3 triads
-    FRAME_Y = 600                       # in front of the arm
+    FRAME_Y_OFFSET = 600                # in front of the arm
     FRAME_SIZE_MM = 120
     FRAME_PERIODS_S = (4.0, 5.5, 7.0)   # phase-offset spin rates
 
-    ARM_BASE_POS = (-800, -400, 0)      # (x, y, z) of arm shoulder
+    ARM_BASE_X = -800
+    ARM_BASE_Y_OFFSET = -400            # behind the frames
+    ARM_BASE_Z = 0
     LINK_LENGTH = 200
     SHOULDER_AMP_DEG = 50
     SHOULDER_PERIOD_S = 4.5
@@ -333,20 +354,26 @@ class CoordinateFramesArm:
     WRIST_AMP_DEG = 90
     WRIST_PERIOD_S = 2.6
 
+    def __init__(self, y_origin: float = 0.0) -> None:
+        self.y_origin = float(y_origin)
+
     def initial(self, scene: Scene) -> List[SceneEvent]:
         events: List[SceneEvent] = []
 
         # Three coordinate-frame triads (each = anchor sphere + 3 axes).
+        frame_y = self.y_origin + self.FRAME_Y_OFFSET
         for i, x in enumerate(self.FRAME_POSITIONS):
             frame = CoordinateFrame(
                 label=f"frame_{i}",
-                pose=Pose.at(x=x, y=self.FRAME_Y, z=200),
+                pose=Pose.at(x=x, y=frame_y, z=200),
                 size_mm=self.FRAME_SIZE_MM,
             )
             events.extend(scene.add(frame))
 
         # Articulated arm. Each link parents to the previous's label.
-        bx, by, bz = self.ARM_BASE_POS
+        bx = self.ARM_BASE_X
+        by = self.y_origin + self.ARM_BASE_Y_OFFSET
+        bz = self.ARM_BASE_Z
         L = self.LINK_LENGTH
         events.extend(scene.add(
             Sphere(label="arm_shoulder", pose=Pose.at(x=bx, y=by, z=bz),
@@ -373,6 +400,7 @@ class CoordinateFramesArm:
 
         # Spin each coordinate-frame anchor on Z. The axes follow via
         # parent_frame chain — only the anchor's pose changes here.
+        frame_y = self.y_origin + self.FRAME_Y_OFFSET
         for i, x in enumerate(self.FRAME_POSITIONS):
             anchor = scene.get(f"frame_{i}")
             if anchor is None:
@@ -380,7 +408,7 @@ class CoordinateFramesArm:
             period = self.FRAME_PERIODS_S[i]
             theta = 360.0 * (t / period) % 360.0
             anchor.pose = Pose.at(
-                x=x, y=self.FRAME_Y, z=200, theta=theta,
+                x=x, y=frame_y, z=200, theta=theta,
             )
             events.extend(scene.update(anchor))
 
@@ -391,7 +419,9 @@ class CoordinateFramesArm:
         )
         shoulder = scene.get("arm_shoulder")
         if shoulder is not None:
-            bx, by, bz = self.ARM_BASE_POS
+            bx = self.ARM_BASE_X
+            by = self.y_origin + self.ARM_BASE_Y_OFFSET
+            bz = self.ARM_BASE_Z
             shoulder.pose = Pose.at(
                 x=bx, y=by, z=bz, ox=0, oy=1, oz=0, theta=shoulder_theta,
             )
@@ -445,7 +475,9 @@ class TrajectoryRunner:
 
     # Ascending 3D arc — same shape as the standalone preset's
     # trajectory_preview, scaled to fit alongside other recipes.
-    WAYPOINTS = (
+    # Waypoints are RELATIVE to ``y_origin``; the recipe applies the
+    # offset at construction time.
+    BASE_WAYPOINTS = (
         Pose.at(x=-400, y=-300, z=100),
         Pose.at(x=-200, y=-150, z=200),
         Pose.at(x=0,    y=0,    z=300),
@@ -455,12 +487,20 @@ class TrajectoryRunner:
     LAP_PERIOD_S = 8.0   # time to traverse all segments once
     LOOP = True          # wrap back to wp0 after wp4
 
+    def __init__(self, y_origin: float = 0.0) -> None:
+        self.y_origin = float(y_origin)
+        # Apply the Y offset to each waypoint once at construction.
+        self.waypoints = tuple(
+            Pose.at(x=wp.x, y=wp.y + self.y_origin, z=wp.z)
+            for wp in self.BASE_WAYPOINTS
+        )
+
     def initial(self, scene: Scene) -> List[SceneEvent]:
         events: List[SceneEvent] = []
 
         # Static waypoint markers — small translucent spheres so the
         # runner is visually distinct from the waypoints it passes.
-        for i, wp in enumerate(self.WAYPOINTS):
+        for i, wp in enumerate(self.waypoints):
             events.extend(scene.add(Sphere(
                 label=f"wp_{i}",
                 pose=wp,
@@ -473,7 +513,7 @@ class TrajectoryRunner:
         # to one Capsule per segment.
         events.extend(scene.add(Line(
             label_prefix="trajectory",
-            points=list(self.WAYPOINTS),
+            points=list(self.waypoints),
             width_mm=6,
             color=(120, 180, 220),
             opacity=0.5,
@@ -483,7 +523,7 @@ class TrajectoryRunner:
         # orientation through the arc is visible.
         events.extend(scene.add(Sphere(
             label="trajectory_runner",
-            pose=self.WAYPOINTS[0],
+            pose=self.waypoints[0],
             radius_mm=55,
             color=(255, 200, 50),
             show_axes_helper=True,
@@ -495,14 +535,14 @@ class TrajectoryRunner:
         if runner is None:
             return []
 
-        n = len(self.WAYPOINTS)
+        n = len(self.waypoints)
         n_segs = n - 1 if not self.LOOP else n
         # Total progress in [0, n_segs).
         progress = (t / self.LAP_PERIOD_S * n_segs) % n_segs
         seg_idx = int(progress)
         local = progress - seg_idx
-        a = self.WAYPOINTS[seg_idx]
-        b = self.WAYPOINTS[(seg_idx + 1) % n]
+        a = self.waypoints[seg_idx]
+        b = self.waypoints[(seg_idx + 1) % n]
 
         # Linear position interpolation. (Orientation would interp via
         # SLERP normally; this recipe stays simple — orientation is
@@ -558,11 +598,12 @@ class LifecycleGarden:
     COLOR_ALIVE = (255, 165, 0)
     COLOR_DISAPPEAR = (220, 60, 60)
 
-    def __init__(self) -> None:
+    def __init__(self, y_origin: float = 0.0) -> None:
         # Version counter per plot — bumps each cycle so the next
         # entity gets a fresh label / UUID and dodges the renderer's
         # REMOVED-UUID cache.
         self._version = [0] * self.N_PLOTS
+        self.y_origin = float(y_origin)
 
     def initial(self, scene: Scene) -> List[SceneEvent]:
         # All plots start in the gone phase; tick() handles add/update.
@@ -596,7 +637,7 @@ class LifecycleGarden:
                 self._version[i] += 1
                 box = Box(
                     label=f"garden_{i}_v{self._version[i]}",
-                    pose=Pose.at(x=x, z=100),
+                    pose=Pose.at(x=x, y=self.y_origin, z=100),
                     dims_mm=(140, 140, 140),
                     color=color,
                     opacity=opacity,
@@ -643,6 +684,62 @@ class LifecycleGarden:
         return 0.0
 
 
+# ---- all (every recipe, stacked along Y) ------------------------------
+
+class AllRecipe:
+    """Run every other recipe simultaneously, stacked along Y.
+
+    Driver-side equivalent of the standalone-playground's ``all``
+    preset: rows of recipes at distinct Y offsets so the renderer
+    shows the entire driver feature surface in one viewport.
+
+    Each sub-recipe gets a unique ``y_origin`` so their visuals don't
+    collide. Label uniqueness is already enforced across recipes
+    (each uses its own prefix — ``march_*``, ``pulse_*``, ``demo_*``,
+    ``det_*``, ``frame_*`` / ``arm_*``, ``wp_*`` / ``trajectory_*``,
+    ``garden_*``), so simply running them in sequence is collision-
+    free.
+
+    Row layout, increasing Y (front-to-back as the renderer's camera
+    typically frames the scene):
+
+      * ``marching_boxes``        — y = -2000
+      * ``pulsing_spheres``       — y = -1400
+      * ``all_primitives``        — y = -800
+      * ``detections_overlay``    — y =  0     (centered; orbits)
+      * ``lifecycle_garden``      — y = +800
+      * ``trajectory_runner``     — y = +1500
+      * ``coordinate_frames_arm`` — y = +2400  (extra room for arm sweep)
+    """
+
+    name = "all"
+
+    _LAYOUT = (
+        (MarchingBoxes,      -2000.0),
+        (PulsingSpheres,     -1400.0),
+        (AllPrimitives,       -800.0),
+        (DetectionsOverlay,      0.0),
+        (LifecycleGarden,     +800.0),
+        (TrajectoryRunner,   +1500.0),
+        (CoordinateFramesArm,+2400.0),
+    )
+
+    def __init__(self) -> None:
+        self._subs = tuple(cls(y_origin=y) for cls, y in self._LAYOUT)
+
+    def initial(self, scene: Scene) -> List[SceneEvent]:
+        events: List[SceneEvent] = []
+        for sub in self._subs:
+            events.extend(sub.initial(scene))
+        return events
+
+    def tick(self, scene: Scene, t: float) -> List[SceneEvent]:
+        events: List[SceneEvent] = []
+        for sub in self._subs:
+            events.extend(sub.tick(scene, t))
+        return events
+
+
 # ---- registry ----------------------------------------------------------
 
 RECIPES: Dict[str, Recipe] = {
@@ -653,6 +750,7 @@ RECIPES: Dict[str, Recipe] = {
     CoordinateFramesArm.name: CoordinateFramesArm(),
     TrajectoryRunner.name: TrajectoryRunner(),
     LifecycleGarden.name: LifecycleGarden(),
+    AllRecipe.name: AllRecipe(),
 }
 
 
