@@ -875,6 +875,69 @@ class BreathingShapes:
         return events
 
 
+# ---- color_cycling -----------------------------------------------------
+
+class ColorCycling:
+    """N spheres whose color smoothly cycles through the rainbow via
+    label rotation.
+
+    Sibling to :class:`BreathingShapes`: same REMOVE+re-ADD pattern
+    (the renderer ignores ``metadata.color`` UPDATED paths just like
+    ``metadata.opacities``), but cycles hue instead of opacity.
+    Together they cover the two metadata-only animation knobs.
+
+    Hue snaps to ``STEPS_PER_PERIOD`` discrete values per cycle so
+    the label-rotation rate stays bounded. The phase offset across
+    slots means the row reads as a smooth rainbow wave moving across.
+    """
+
+    name = "color_cycling"
+
+    N_SHAPES = 4
+    SPACING_MM = 300.0
+    RADIUS_MM = 80.0
+    PERIOD_S = 5.0
+    STEPS_PER_PERIOD = 24
+
+    def __init__(self, y_origin: float = 0.0) -> None:
+        self.y_origin = float(y_origin)
+        self._version = [0] * self.N_SHAPES
+        self._last_step = [-1] * self.N_SHAPES
+
+    def initial(self, scene: Scene) -> List[SceneEvent]:
+        return []
+
+    def tick(self, scene: Scene, t: float) -> List[SceneEvent]:
+        events: List[SceneEvent] = []
+        steps = self.STEPS_PER_PERIOD
+        for i in range(self.N_SHAPES):
+            phase = i / self.N_SHAPES
+            hue = (t / self.PERIOD_S + phase) % 1.0
+            step = int(hue * steps) % steps
+            if step == self._last_step[i]:
+                continue
+            self._last_step[i] = step
+            self._version[i] += 1
+
+            prefix = f"colorcycle_{i}_v"
+            current = next(
+                (lab for lab in scene.labels() if lab.startswith(prefix)),
+                None,
+            )
+            if current is not None:
+                events.extend(scene.remove(current))
+
+            x = (i - (self.N_SHAPES - 1) / 2.0) * self.SPACING_MM
+            sphere = Sphere(
+                label=f"colorcycle_{i}_v{self._version[i]}",
+                pose=Pose.at(x=x, y=self.y_origin, z=120),
+                radius_mm=self.RADIUS_MM,
+                color=_rainbow(step / steps),
+            )
+            events.extend(scene.add(sphere))
+        return events
+
+
 # ---- all (every recipe, stacked along Y) ------------------------------
 
 class AllRecipe:
@@ -906,9 +969,10 @@ class AllRecipe:
     name = "all"
 
     _LAYOUT = (
-        (MarchingBoxes,      -2600.0),
-        (PulsingSpheres,     -2000.0),
-        (BreathingShapes,    -1400.0),
+        (MarchingBoxes,      -3200.0),
+        (PulsingSpheres,     -2600.0),
+        (BreathingShapes,    -2000.0),
+        (ColorCycling,       -1400.0),
         (AllPrimitives,       -800.0),
         (DetectionsOverlay,      0.0),
         (ForceVector,         +600.0),
@@ -945,6 +1009,7 @@ RECIPES: Dict[str, Recipe] = {
     LifecycleGarden.name: LifecycleGarden(),
     ForceVector.name: ForceVector(),
     BreathingShapes.name: BreathingShapes(),
+    ColorCycling.name: ColorCycling(),
     AllRecipe.name: AllRecipe(),
 }
 

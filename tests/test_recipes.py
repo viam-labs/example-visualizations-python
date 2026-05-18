@@ -29,12 +29,12 @@ from viam_visuals import Scene
 
 # ---- registry ---------------------------------------------------------
 
-def test_recipes_registry_contains_all_ten():
+def test_recipes_registry_contains_all_recipes():
     assert set(RECIPES) == {
         "marching_boxes", "pulsing_spheres",
         "all_primitives", "detections_overlay",
         "coordinate_frames_arm", "trajectory_runner", "lifecycle_garden",
-        "force_vector", "breathing_shapes",
+        "force_vector", "breathing_shapes", "color_cycling",
         "all",
     }
 
@@ -558,6 +558,37 @@ def test_breathing_shapes_label_versions_bump_per_step():
     # Every slot's version should have bumped at least once.
     for i in range(recipe.N_SHAPES):
         assert v_after[i] > v_before[i], f"slot {i} version did not bump"
+
+
+# ---- color_cycling recipe --------------------------------------------
+
+def test_color_cycling_initial_is_empty():
+    from src.recipes import ColorCycling
+    scene = Scene()
+    assert ColorCycling().initial(scene) == []
+
+
+def test_color_cycling_first_tick_adds_shapes():
+    from src.recipes import ColorCycling
+    recipe = ColorCycling()
+    scene = Scene()
+    recipe.initial(scene)
+    events = recipe.tick(scene, 0.0)
+    add_events = [e for e in events if e.kind == "added"]
+    assert len(add_events) == recipe.N_SHAPES
+
+
+def test_color_cycling_step_change_rotates_labels():
+    from src.recipes import ColorCycling
+    recipe = ColorCycling()
+    scene = Scene()
+    recipe.tick(scene, 0.0)
+    step_dt = recipe.PERIOD_S / recipe.STEPS_PER_PERIOD
+    events = recipe.tick(scene, step_dt * 1.01)
+    add_events = [e for e in events if e.kind == "added"]
+    remove_events = [e for e in events if e.kind == "removed"]
+    assert len(add_events) >= 1
+    assert len(add_events) == len(remove_events)
 
 
 # ---- y_origin parameter ----------------------------------------------
