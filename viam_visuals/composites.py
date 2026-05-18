@@ -30,7 +30,13 @@ from .pose import Pose, PoseLike, normalize_pose
 from .shapes import Arrow, Box, Capsule, Sphere, Visual
 
 
-__all__ = ["Composite", "CoordinateFrame", "Line", "BoundingBox"]
+__all__ = [
+    "Composite",
+    "CoordinateFrame",
+    "Line",
+    "BoundingBox",
+    "TrajectoryPlan",
+]
 
 
 @dataclass
@@ -285,4 +291,96 @@ class BoundingBox(Composite):
                     color=self.color, opacity=self.opacity,
                 ))
                 i += 1
+        return out
+
+
+@dataclass
+class TrajectoryPlan(Composite):
+    """Visualization for a motion plan — a list of poses with
+    orientation. Expands to a polyline connecting the waypoints
+    plus a :class:`CoordinateFrame` triad at each waypoint so the
+    orientation at each step is visible.
+
+    Designed to match the shape of motion-planner output
+    (CBiRRT, RRT*, motion-service plans). After forward-kinematics
+    on a planner's joint-position output, each step is a Cartesian
+    pose; pass that list in as ``waypoints`` and the composite
+    renders the plan.
+
+    Example::
+
+        from viam_visuals import Scene, TrajectoryPlan, Pose
+
+        plan = [
+            Pose.at(x=-400, y=-300, z=100),                       # wp 0
+            Pose.at(x=-200, y=-150, z=200, ox=1, oy=0, oz=0),     # wp 1 — tipped
+            Pose.at(x=0,    y=0,    z=300, theta=45),             # wp 2 — rolled
+            Pose.at(x=200,  y=150,  z=200, ox=0, oy=1, oz=0),     # wp 3
+            Pose.at(x=400,  y=300,  z=100),                       # wp 4
+        ]
+        scene.add(TrajectoryPlan(label_prefix="plan", waypoints=plan))
+
+    Internal labels: line segments use ``f"{label_prefix}_path_seg_NN"``;
+    waypoint frames use ``f"{label_prefix}_wp_N"`` for the anchor and
+    ``f"{label_prefix}_wp_N_axis_x"`` etc. for the axis arrows.
+
+    The pair :class:`viam_visuals.lerp_pose` interpolates between
+    two adjacent waypoints — call it from a driver tick to animate
+    a "runner" sphere that walks the plan with smoothly-rotating
+    orientation.
+    """
+
+    label_prefix: str
+    waypoints: Sequence[Any] = field(default_factory=list)  # PoseLike each
+    parent_frame: Optional[str] = None
+
+    # Path line styling.
+    line_color: ColorLike = (100, 180, 220)
+    line_width_mm: float = 6.0
+    line_opacity: Optional[float] = 0.6
+
+    # Per-waypoint CoordinateFrame styling.
+    show_frames: bool = True
+    frame_size_mm: float = 80.0
+    frame_anchor_radius_mm: float = 6.0
+    frame_axis_radius_mm: float = 4.0
+    frame_anchor_color: ColorLike = (120, 120, 120)
+    frame_anchor_opacity: Optional[float] = 0.5
+    frame_axis_opacity: Optional[float] = 1.0
+    frame_show_axes_helper: bool = False  # avoid renderer-side noise
+
+    def __post_init__(self) -> None:
+        if len(self.waypoints) < 2:
+            raise ValueError(
+                f"TrajectoryPlan needs at least 2 waypoints; "
+                f"got {len(self.waypoints)}"
+            )
+
+    def to_visuals(self) -> List[Visual]:
+        out: List[Visual] = []
+        # Path line connecting the waypoint positions.
+        out.extend(Line(
+            label_prefix=f"{self.label_prefix}_path",
+            points=list(self.waypoints),
+            width_mm=self.line_width_mm,
+            color=self.line_color,
+            opacity=self.line_opacity,
+            parent_frame=self.parent_frame,
+        ).to_visuals())
+        # CoordinateFrame triad at each waypoint.
+        if self.show_frames:
+            for i, wp in enumerate(self.waypoints):
+                out.extend(CoordinateFrame(
+                    label=f"{self.label_prefix}_wp_{i}",
+                    pose=wp,
+                    parent_frame=self.parent_frame,
+                    size_mm=self.frame_size_mm,
+                    axis_length_mm=self.frame_size_mm,
+                    axis_radius_mm=self.frame_axis_radius_mm,
+                    anchor_radius_mm=self.frame_anchor_radius_mm,
+                    anchor_color=self.frame_anchor_color,
+                    anchor_opacity=self.frame_anchor_opacity,
+                    axis_opacity=self.frame_axis_opacity,
+                    show_axes_helper=self.frame_show_axes_helper,
+                ).to_visuals())
         return out

@@ -35,6 +35,8 @@ from viam_visuals import (
     Scene,
     SceneEvent,
     Sphere,
+    TrajectoryPlan,
+    lerp_pose,
 )
 
 
@@ -456,71 +458,81 @@ class CoordinateFramesArm:
 # ---- trajectory_runner ------------------------------------------------
 
 class TrajectoryRunner:
-    """A "runner" sphere walking through a list of waypoints with
-    interpolation. Mirrors the standalone-playground's
-    ``trajectory_preview`` preset, but driven entirely client-side.
+    """A "runner" sphere walking through a list of waypoints, each
+    with its own orientation, with smooth interpolation between.
 
-    Each tick computes the runner's interpolated pose along the
-    polyline and pushes a single UPDATED. The waypoint spheres and
-    the trajectory line (a :class:`viam_visuals.Line` composite,
-    drawn as a chain of thin capsule segments) are static — installed
-    once at init, never touched again.
+    Mirrors the standalone-playground's ``trajectory_preview`` preset
+    — and, more importantly, the typical output of a motion planner
+    (CBiRRT, RRT*, motion-service plans): a sequence of Cartesian
+    poses produced by forward-kinematics on the planner's joint
+    output.
 
-    Useful as the template for previewing planned motion: replace
-    the synthetic waypoints with a planner's trajectory output, and
-    the renderer shows the executor walking the plan in real time.
+    Built on the :class:`viam_visuals.TrajectoryPlan` composite
+    (static line + per-waypoint CoordinateFrame triads showing each
+    pose's orientation) plus :func:`viam_visuals.lerp_pose` for the
+    runner's between-waypoint interpolation. To preview a real
+    motion plan, replace ``WAYPOINTS`` below with the planner's
+    pose list — the rest of the recipe is plan-agnostic.
+
+    The runner gets ``show_axes_helper=True`` so its orientation
+    is visible without needing a CoordinateFrame attached to it.
     """
 
     name = "trajectory_runner"
 
-    # Ascending 3D arc — same shape as the standalone preset's
-    # trajectory_preview, scaled to fit alongside other recipes.
-    # Waypoints are RELATIVE to ``y_origin``; the recipe applies the
-    # offset at construction time.
+    # An ascending 3D arc with deliberately-varied orientation at
+    # each waypoint so the runner's orientation visibly rotates as
+    # it walks the plan. Each waypoint's orientation is meant to
+    # imitate a real motion plan's end-effector orientation
+    # changing along the trajectory.
     BASE_WAYPOINTS = (
-        Pose.at(x=-400, y=-300, z=100),
-        Pose.at(x=-200, y=-150, z=200),
-        Pose.at(x=0,    y=0,    z=300),
-        Pose.at(x=200,  y=150,  z=200),
-        Pose.at(x=400,  y=300,  z=100),
+        # wp 0: identity (local +Z up, no roll)
+        Pose.at(x=-400, y=-300, z=100, oz=1, theta=0),
+        # wp 1: tipped onto its side (local +Z → world +X)
+        Pose.at(x=-200, y=-150, z=200, ox=1, oy=0, oz=0, theta=0),
+        # wp 2: rolled 90° around its own +Z
+        Pose.at(x=0,    y=0,    z=300, oz=1, theta=90),
+        # wp 3: tipped along Y
+        Pose.at(x=200,  y=150,  z=200, ox=0, oy=1, oz=0, theta=0),
+        # wp 4: back to identity (so the loop closes smoothly)
+        Pose.at(x=400,  y=300,  z=100, oz=1, theta=0),
     )
-    LAP_PERIOD_S = 8.0   # time to traverse all segments once
+    LAP_PERIOD_S = 12.0  # time to traverse all segments once (slower for visual clarity)
     LOOP = True          # wrap back to wp0 after wp4
+    LABEL_PREFIX = "trajectory"
 
     def __init__(self, y_origin: float = 0.0) -> None:
         self.y_origin = float(y_origin)
         # Apply the Y offset to each waypoint once at construction.
+        # Orientation is preserved verbatim; only the position shifts.
         self.waypoints = tuple(
-            Pose.at(x=wp.x, y=wp.y + self.y_origin, z=wp.z)
+            Pose.at(
+                x=wp.x, y=wp.y + self.y_origin, z=wp.z,
+                ox=wp.ox, oy=wp.oy, oz=wp.oz, theta=wp.theta,
+            )
             for wp in self.BASE_WAYPOINTS
         )
 
     def initial(self, scene: Scene) -> List[SceneEvent]:
         events: List[SceneEvent] = []
 
-        # Static waypoint markers — small translucent spheres so the
-        # runner is visually distinct from the waypoints it passes.
-        for i, wp in enumerate(self.waypoints):
-            events.extend(scene.add(Sphere(
-                label=f"wp_{i}",
-                pose=wp,
-                radius_mm=30,
-                color=(120, 180, 220),
-                opacity=0.4,
-            )))
-
-        # Path line connecting the waypoints. Line composite expands
-        # to one Capsule per segment.
-        events.extend(scene.add(Line(
-            label_prefix="trajectory",
-            points=list(self.waypoints),
-            width_mm=6,
-            color=(120, 180, 220),
-            opacity=0.5,
+        # The whole static plan visualization — line + per-waypoint
+        # coordinate-frame triads — from one composite.
+        events.extend(scene.add(TrajectoryPlan(
+            label_prefix=self.LABEL_PREFIX,
+            waypoints=list(self.waypoints),
+            line_color=(120, 180, 220),
+            line_width_mm=6,
+            line_opacity=0.5,
+            frame_size_mm=80,
+            frame_axis_radius_mm=4,
+            frame_anchor_radius_mm=8,
+            frame_anchor_opacity=0.5,
+            frame_axis_opacity=0.8,
         )))
 
-        # The runner — brighter, larger, with axes helper so its
-        # orientation through the arc is visible.
+        # The runner — brighter, larger, with its own axes helper so
+        # its orientation through the arc is unmistakable.
         events.extend(scene.add(Sphere(
             label="trajectory_runner",
             pose=self.waypoints[0],
@@ -536,7 +548,7 @@ class TrajectoryRunner:
             return []
 
         n = len(self.waypoints)
-        n_segs = n - 1 if not self.LOOP else n
+        n_segs = n if self.LOOP else n - 1
         # Total progress in [0, n_segs).
         progress = (t / self.LAP_PERIOD_S * n_segs) % n_segs
         seg_idx = int(progress)
@@ -544,23 +556,11 @@ class TrajectoryRunner:
         a = self.waypoints[seg_idx]
         b = self.waypoints[(seg_idx + 1) % n]
 
-        # Linear position interpolation along the current segment.
-        x = a.x + (b.x - a.x) * local
-        y = a.y + (b.y - a.y) * local
-        z = a.z + (b.z - a.z) * local
-
-        # Orientation: point the runner along the segment direction.
-        # The renderer re-reads the full pose on any
-        # poseInObserverFrame.pose* path, so the orientation vector
-        # propagates with the position update.
-        dx, dy, dz = b.x - a.x, b.y - a.y, b.z - a.z
-        seg_len = math.sqrt(dx * dx + dy * dy + dz * dz)
-        if seg_len > 1e-6:
-            ox, oy, oz = dx / seg_len, dy / seg_len, dz / seg_len
-        else:
-            ox, oy, oz = 0.0, 0.0, 1.0
-
-        runner.pose = Pose.at(x=x, y=y, z=z, ox=ox, oy=oy, oz=oz)
+        # Interpolate position + orientation between adjacent
+        # waypoints. lerp_pose handles the lerp-and-normalize on the
+        # orientation vector — close enough to SLERP for visual
+        # playback at typical update rates.
+        runner.pose = lerp_pose(a, b, local)
         return scene.update(runner)
 
 

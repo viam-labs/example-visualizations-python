@@ -82,6 +82,59 @@ class Pose:
 PoseLike = Union[None, Pose, Mapping[str, float]]
 
 
+def lerp_pose(a: PoseLike, b: PoseLike, t: float) -> Pose:
+    """Linearly interpolate between two poses.
+
+    Position (``x``, ``y``, ``z``) and theta are simple lerps. The
+    orientation vector ``(ox, oy, oz)`` is lerped component-wise
+    then renormalized so the result is still a unit vector (the
+    classic "fast lerp" approximation to SLERP — visually close
+    enough for trajectory playback at typical update rates).
+
+    ``t`` should be in ``[0, 1]``; values outside that range
+    extrapolate (no clamping).
+
+    Useful for motion-plan playback: feed in two adjacent waypoint
+    poses from a planner output, interpolate the runner's pose at
+    each tick, and the orientation visibly rotates between
+    waypoints.
+    """
+    import math as _math
+    pa = a if isinstance(a, Pose) else _from_like(a)
+    pb = b if isinstance(b, Pose) else _from_like(b)
+    x = pa.x + (pb.x - pa.x) * t
+    y = pa.y + (pb.y - pa.y) * t
+    z = pa.z + (pb.z - pa.z) * t
+    ox = pa.ox + (pb.ox - pa.ox) * t
+    oy = pa.oy + (pb.oy - pa.oy) * t
+    oz = pa.oz + (pb.oz - pa.oz) * t
+    norm = _math.sqrt(ox * ox + oy * oy + oz * oz)
+    if norm > 1e-9:
+        ox, oy, oz = ox / norm, oy / norm, oz / norm
+    else:
+        ox, oy, oz = 0.0, 0.0, 1.0  # degenerate; fall back to identity
+    theta = pa.theta + (pb.theta - pa.theta) * t
+    return Pose(x=x, y=y, z=z, ox=ox, oy=oy, oz=oz, theta=theta)
+
+
+def _from_like(p: PoseLike) -> Pose:
+    if p is None:
+        return Pose.identity()
+    if isinstance(p, Pose):
+        return p
+    if isinstance(p, Mapping):
+        return Pose(
+            x=float(p.get("x", 0.0)),
+            y=float(p.get("y", 0.0)),
+            z=float(p.get("z", 0.0)),
+            ox=float(p.get("ox", 0.0)),
+            oy=float(p.get("oy", 0.0)),
+            oz=float(p.get("oz", 1.0)),
+            theta=float(p.get("theta", 0.0)),
+        )
+    raise TypeError(f"unsupported PoseLike: {type(p).__name__}")
+
+
 def normalize_pose(p: PoseLike) -> Mapping[str, float]:
     """Coerce a PoseLike into the full dict the wire format expects.
 

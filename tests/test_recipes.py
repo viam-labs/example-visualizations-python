@@ -232,16 +232,23 @@ def test_coordinate_frames_arm_no_event_when_t_unchanged():
 
 # ---- trajectory_runner -----------------------------------------------
 
-def test_trajectory_runner_initial_installs_static_path_and_runner():
+def test_trajectory_runner_initial_installs_plan_and_runner():
     scene = Scene()
     events = TrajectoryRunner().initial(scene)
-    # 5 waypoints + 4 line segments + 1 runner = 10.
-    assert len(events) == 10
+    # TrajectoryPlan expands to: 4 line segments + 5 CoordinateFrames
+    # (each = anchor + 3 axes) = 4 + 20 = 24. Plus the runner sphere
+    # = 25 events.
+    assert len(events) == 25
+    # Each waypoint is now a full CoordinateFrame triad.
     for i in range(5):
-        assert f"wp_{i}" in scene.labels()
+        assert f"trajectory_wp_{i}" in scene.labels()
+        assert f"trajectory_wp_{i}_axis_x" in scene.labels()
     assert "trajectory_runner" in scene.labels()
     # 4 segments connecting 5 waypoints.
-    assert sum(1 for l in scene.labels() if l.startswith("trajectory_seg_")) == 4
+    n_segs = sum(
+        1 for l in scene.labels() if l.startswith("trajectory_path_seg_")
+    )
+    assert n_segs == 4
 
 
 def test_trajectory_runner_starts_at_first_waypoint_at_t_zero():
@@ -257,13 +264,35 @@ def test_trajectory_runner_starts_at_first_waypoint_at_t_zero():
 
 
 def test_trajectory_runner_only_runner_moves_during_tick():
-    """Waypoints and line segments are static; only the runner gets
-    an UPDATED event each tick."""
+    """The plan (line segments, waypoint frames) is static; only the
+    runner gets an UPDATED event each tick."""
     scene = Scene()
     TrajectoryRunner().initial(scene)
     events = TrajectoryRunner().tick(scene, 1.0)
     assert len(events) == 1
     assert events[0].label == "trajectory_runner"
+
+
+def test_trajectory_runner_orientation_interpolates_between_waypoints():
+    """Runner's orientation should differ at different t values
+    (interpolation between distinct waypoint orientations)."""
+    scene = Scene()
+    recipe = TrajectoryRunner()
+    recipe.initial(scene)
+    # Pick two t values that land mid-segment in different segments.
+    n_segs = len(recipe.waypoints)
+    seg_dt = recipe.LAP_PERIOD_S / n_segs
+    recipe.tick(scene, seg_dt * 0.5)  # mid wp0→wp1
+    o1 = (scene.get("trajectory_runner").pose.ox,
+          scene.get("trajectory_runner").pose.oy,
+          scene.get("trajectory_runner").pose.oz)
+    recipe.tick(scene, seg_dt * 1.5)  # mid wp1→wp2
+    o2 = (scene.get("trajectory_runner").pose.ox,
+          scene.get("trajectory_runner").pose.oy,
+          scene.get("trajectory_runner").pose.oz)
+    # The two orientations should be visibly different because the
+    # waypoints have different orientations.
+    assert o1 != o2, f"orientation didn't change between segments: {o1} vs {o2}"
 
 
 def test_trajectory_runner_midpoint_lerps_between_waypoints():
@@ -383,22 +412,20 @@ def test_trajectory_runner_tick_emits_orientation_paths():
     assert any(p.startswith("poseInObserverFrame.pose.o") for p in paths)
 
 
-def test_trajectory_runner_orientation_points_along_segment():
+def test_trajectory_runner_orientation_lerps_from_waypoint_orientations():
+    """Runner's orientation comes from lerp-and-normalize on adjacent
+    waypoint orientations — not from segment direction. At t=0 the
+    runner should exactly match wp 0's orientation."""
     scene = Scene()
     tr = TrajectoryRunner()
     tr.initial(scene)
-    # Tick at t > 0 but still in segment 0 → runner heads toward wp 1.
-    tr.tick(scene, 0.5)
+    tr.tick(scene, 0.0)
     runner = scene.get("trajectory_runner")
     wp0 = tr.waypoints[0]
-    wp1 = tr.waypoints[1]
-    # Expected orientation: unit vector from wp0 to wp1.
-    import math
-    dx, dy, dz = wp1.x - wp0.x, wp1.y - wp0.y, wp1.z - wp0.z
-    seg_len = math.sqrt(dx * dx + dy * dy + dz * dz)
-    assert abs(runner.pose.ox - dx / seg_len) < 1e-6
-    assert abs(runner.pose.oy - dy / seg_len) < 1e-6
-    assert abs(runner.pose.oz - dz / seg_len) < 1e-6
+    assert abs(runner.pose.ox - wp0.ox) < 1e-6
+    assert abs(runner.pose.oy - wp0.oy) < 1e-6
+    assert abs(runner.pose.oz - wp0.oz) < 1e-6
+    assert abs(runner.pose.theta - wp0.theta) < 1e-6
 
 
 # ---- force_vector recipe ---------------------------------------------
@@ -525,7 +552,7 @@ def test_y_origin_shifts_trajectory_waypoints():
     scene = Scene()
     TrajectoryRunner(y_origin=500).initial(scene)
     # First waypoint's base Y is -300; shifted by 500 → 200.
-    wp0 = scene.get("wp_0")
+    wp0 = scene.get("trajectory_wp_0")
     assert wp0 is not None
     assert wp0.pose.y == 200
 
@@ -538,14 +565,14 @@ def test_all_recipe_runs_every_sub_recipe():
     # Every sub-recipe's labels should appear (composite expansions
     # included). Spot-check one label from each sub.
     expected = [
-        "march_0",        # marching_boxes
-        "pulse_0",        # pulsing_spheres
-        "demo_box",       # all_primitives
-        "frame_0",        # coordinate_frames_arm
-        "arm_shoulder",   # coordinate_frames_arm
-        "wp_0",           # trajectory_runner
-        "trajectory_runner",  # trajectory_runner runner
-        "force_vector",   # force_vector
+        "march_0",                   # marching_boxes
+        "pulse_0",                   # pulsing_spheres
+        "demo_box",                  # all_primitives
+        "frame_0",                   # coordinate_frames_arm
+        "arm_shoulder",              # coordinate_frames_arm
+        "trajectory_wp_0",           # trajectory_runner waypoint frame
+        "trajectory_runner",         # trajectory_runner runner
+        "force_vector",              # force_vector
     ]
     for label in expected:
         assert label in scene.labels(), f"{label!r} missing from `all` scene"

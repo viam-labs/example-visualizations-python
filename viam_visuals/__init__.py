@@ -49,8 +49,14 @@ from .animations import (
     normalize_animation,
 )
 from .color import ColorLike, normalize_color
-from .composites import BoundingBox, Composite, CoordinateFrame, Line
-from .pose import Pose, PoseLike, normalize_pose
+from .composites import (
+    BoundingBox,
+    Composite,
+    CoordinateFrame,
+    Line,
+    TrajectoryPlan,
+)
+from .pose import Pose, PoseLike, lerp_pose, normalize_pose
 from .shapes import (
     Arrow,
     Box,
@@ -80,6 +86,7 @@ __all__ = [
     # Pose / Color / type aliases
     "Pose",
     "PoseLike",
+    "lerp_pose",
     "ColorLike",
     "AnimationLike",
     "normalize_pose",
@@ -113,6 +120,7 @@ __all__ = [
     "CoordinateFrame",
     "Line",
     "BoundingBox",
+    "TrajectoryPlan",
     # UUID strategy
     "VALID_STRATEGIES",
     "initial_uuid",
