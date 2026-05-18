@@ -145,19 +145,17 @@ def _ov_to_quat(ox: float, oy: float, oz: float, theta_deg: float) -> _Quat:
     becomes undefined; we collapse it into theta.
     """
     theta = math.radians(theta_deg)
-    sin_delta_sq = ox * ox + oy * oy
-    if sin_delta_sq < 1e-12:
-        # Gimbal-lock-like: local Z aligned with world ±Z.
+    # Match RDK's pole threshold (orientationVectorPoleRadius = 1e-4).
+    if 1.0 - abs(oz) <= _POLE_RADIUS:
+        # Gimbal-lock-like: local Z aligned with world ±Z. RDK sets
+        # lon = 0 (folds phi into theta) and uses ZYZ.
         half_t = theta / 2
         if oz >= 0:
-            # Identity tilt; pure rotation around world Z by theta.
+            # R = R_z(0) R_y(0) R_z(theta) = q_z(theta)
             return (math.cos(half_t), 0.0, 0.0, math.sin(half_t))
-        # Flipped (oz=-1): rotate 180° around world Y, then theta around the new Z
-        # (which now points along world -Z). Equivalent to a 180° rotation
-        # around world Y composed with R_z(theta) — express as quaternion.
-        # q_y(pi) = (0, 0, 1, 0); q_z(theta) = (cos(t/2), 0, 0, sin(t/2))
-        # q_y(pi) * q_z(theta) = (0, -sin(t/2), cos(t/2), 0)
-        return (0.0, -math.sin(half_t), math.cos(half_t), 0.0)
+        # R = R_z(0) R_y(pi) R_z(theta) = q_y(pi) * q_z(theta)
+        # = (0, 0, 1, 0) * (cos(t/2), 0, 0, sin(t/2)) = (0, sin(t/2), cos(t/2), 0)
+        return (0.0, math.sin(half_t), math.cos(half_t), 0.0)
 
     phi = math.atan2(oy, ox)
     delta = math.acos(max(-1.0, min(1.0, oz)))
@@ -174,31 +172,86 @@ def _ov_to_quat(ox: float, oy: float, oz: float, theta_deg: float) -> _Quat:
     return (w, x, y, z)
 
 
+_POLE_RADIUS = 1e-4  # matches RDK's orientationVectorPoleRadius / defaultAngleEpsilon
+
+
 def _quat_to_ov(w: float, x: float, y: float, z: float) -> Tuple[float, float, float, float]:
-    """Inverse of :func:`_ov_to_quat`. Returns ``(ox, oy, oz, theta_deg)``."""
-    # Apply R to (0,0,1) — the third column of the rotation matrix.
-    ox = 2.0 * (x * z + w * y)
-    oy = 2.0 * (y * z - w * x)
-    oz = 1.0 - 2.0 * (x * x + y * y)
-    # Renormalize to absorb floating-point error.
-    norm = math.sqrt(ox * ox + oy * oy + oz * oz)
-    if norm > 1e-9:
-        ox, oy, oz = ox / norm, oy / norm, oz / norm
-    sin_delta_sq = ox * ox + oy * oy
-    if sin_delta_sq < 1e-12:
-        # At the singularity, phi and theta are degenerate — extract
-        # the total rotation around world Z. The oz=+1 case is a pure
-        # Z rotation; the oz=-1 case is a 180° flip-then-roll whose
-        # extraction must match the forward convention in _ov_to_quat
-        # (q = (0, -sin(t/2), cos(t/2), 0) for input (0, 0, -1, t)).
-        if oz >= 0:
-            theta = math.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
+    """Inverse of :func:`_ov_to_quat`. Returns ``(ox, oy, oz, theta_deg)``.
+
+    Ported from RDK's ``spatialmath.QuatToOV`` so the OV → R map used
+    by the renderer round-trips exactly. The previous ZYZ-Euler
+    extraction split the total rotation between ``phi`` and ``theta``
+    using a 1e-12 pole threshold; the renderer applied a 1e-4 pole
+    threshold and dropped the ``phi`` contribution, producing a
+    visible ~45° flip per tick as the interpolation approached
+    ``|oz| = 1``.
+    """
+    # Rotated +Z (newZ) and rotated -X (newX), per RDK convention.
+    nz = (
+        2.0 * (x * z + w * y),
+        2.0 * (y * z - w * x),
+        1.0 - 2.0 * (x * x + y * y),
+    )
+    nx = (
+        -(1.0 - 2.0 * (y * y + z * z)),
+        -(2.0 * (x * y + w * z)),
+        -(2.0 * (x * z - w * y)),
+    )
+    ox, oy, oz = nz
+
+    if 1.0 - abs(oz) > _POLE_RADIUS:
+        # Non-pole: theta is the angle between the plane (newZ, newX, origin)
+        # and the plane (newZ, world+Z, origin), measured around newZ.
+        n1 = (
+            nz[1] * nx[2] - nz[2] * nx[1],
+            nz[2] * nx[0] - nz[0] * nx[2],
+            nz[0] * nx[1] - nz[1] * nx[0],
+        )
+        n2 = (nz[1], -nz[0], 0.0)
+        n1_dot_n2 = n1[0] * n2[0] + n1[1] * n2[1] + n1[2] * n2[2]
+        n1_len = math.sqrt(n1[0] ** 2 + n1[1] ** 2 + n1[2] ** 2)
+        n2_len = math.sqrt(n2[0] ** 2 + n2[1] ** 2 + n2[2] ** 2)
+        denom = n1_len * n2_len
+        if denom == 0.0:
+            return (ox, oy, oz, 0.0)
+        cos_theta = max(-1.0, min(1.0, n1_dot_n2 / denom))
+        theta = math.acos(cos_theta)
+        if theta > _POLE_RADIUS:
+            # Sign disambiguation: rotate newZ by -theta around (ox, oy, oz)
+            # and check whether the result is coplanar with the (newZ, world+Z)
+            # plane. Coplanar → theta is negative.
+            half_t = -theta / 2.0
+            sin_h = math.sin(half_t)
+            q2 = (math.cos(half_t), ox * sin_h, oy * sin_h, oz * sin_h)
+            q2w, q2x, q2y, q2z = q2
+            tz = (
+                2.0 * (q2x * q2z + q2w * q2y),
+                2.0 * (q2y * q2z - q2w * q2x),
+                1.0 - 2.0 * (q2x * q2x + q2y * q2y),
+            )
+            n3 = (
+                nz[1] * tz[2] - nz[2] * tz[1],
+                nz[2] * tz[0] - nz[0] * tz[2],
+                nz[0] * tz[1] - nz[1] * tz[0],
+            )
+            n3_len = math.sqrt(n3[0] ** 2 + n3[1] ** 2 + n3[2] ** 2)
+            if n3_len == 0.0:
+                pass  # leave theta positive
+            else:
+                cos_test = (n1[0] * n3[0] + n1[1] * n3[1] + n1[2] * n3[2]) / (n1_len * n3_len)
+                if 1.0 - cos_test < _POLE_RADIUS * _POLE_RADIUS:
+                    theta = -theta
         else:
-            theta = math.atan2(2.0 * (w * z - x * y), 2.0 * (y * y + z * z) - 1.0)
+            theta = 0.0
     else:
-        r20 = 2.0 * (x * z - w * y)
-        r21 = 2.0 * (y * z + w * x)
-        theta = math.atan2(r21, -r20)
+        # Pole: extract from the rotated -X direction.
+        if oz >= 0:
+            theta = -math.atan2(nx[1], -nx[0])
+        else:
+            theta = -math.atan2(nx[1], nx[0])
+
+    if theta == 0.0:
+        theta = 0.0  # collapse -0.0 to +0.0
     return (ox, oy, oz, math.degrees(theta))
 
 
