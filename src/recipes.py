@@ -544,13 +544,23 @@ class TrajectoryRunner:
         a = self.waypoints[seg_idx]
         b = self.waypoints[(seg_idx + 1) % n]
 
-        # Linear position interpolation. (Orientation would interp via
-        # SLERP normally; this recipe stays simple — orientation is
-        # left at identity.)
+        # Linear position interpolation along the current segment.
         x = a.x + (b.x - a.x) * local
         y = a.y + (b.y - a.y) * local
         z = a.z + (b.z - a.z) * local
-        runner.pose = Pose.at(x=x, y=y, z=z)
+
+        # Orientation: point the runner along the segment direction.
+        # The renderer re-reads the full pose on any
+        # poseInObserverFrame.pose* path, so the orientation vector
+        # propagates with the position update.
+        dx, dy, dz = b.x - a.x, b.y - a.y, b.z - a.z
+        seg_len = math.sqrt(dx * dx + dy * dy + dz * dz)
+        if seg_len > 1e-6:
+            ox, oy, oz = dx / seg_len, dy / seg_len, dz / seg_len
+        else:
+            ox, oy, oz = 0.0, 0.0, 1.0
+
+        runner.pose = Pose.at(x=x, y=y, z=z, ox=ox, oy=oy, oz=oz)
         return scene.update(runner)
 
 
@@ -684,6 +694,175 @@ class LifecycleGarden:
         return 0.0
 
 
+# ---- force_vector -----------------------------------------------------
+
+class ForceVector:
+    """Animated force-vector arrow: length / radius / orientation
+    all changing simultaneously.
+
+    Mirrors the standalone-playground's ``force_vector_demo`` preset.
+    The arrow's length and radius oscillate on phase-offset sine
+    waves; its orientation precesses around world +Z at a fixed
+    tilt. Useful template for previewing wrench / force-vector
+    visualizations.
+
+    Color cycling (the standalone preset's hue-sweep) is not
+    included because metadata updates don't propagate via UPDATED
+    events — only spawn-time. To add color cycling, use the
+    label-rotation pattern from :class:`BreathingShapes`.
+
+    All animated fields (length_mm, radius_mm, pose orientation) DO
+    propagate via UPDATED: length/radius emit
+    ``physicalObject.geometryType.value.{lengthMm,radiusMm}`` paths,
+    pose orientation rides the full-pose re-read on any
+    ``poseInObserverFrame.pose*`` path.
+    """
+
+    name = "force_vector"
+
+    BASE_LENGTH_MM = 200.0
+    LENGTH_AMPLITUDE_MM = 80.0
+    LENGTH_PERIOD_S = 3.2
+
+    BASE_RADIUS_MM = 16.0
+    RADIUS_AMPLITUDE_MM = 6.0
+    RADIUS_PERIOD_S = 2.0
+
+    TILT_DEG = 45.0          # angle from world +Z
+    PRECESSION_PERIOD_S = 5.0  # full revolution around world +Z
+
+    def __init__(self, y_origin: float = 0.0) -> None:
+        self.y_origin = float(y_origin)
+
+    def initial(self, scene: Scene) -> List[SceneEvent]:
+        # Spawn with starting state so the renderer paints the arrow
+        # immediately; tick() will keep mutating.
+        arrow = Arrow(
+            label="force_vector",
+            pose=Pose.at(x=0, y=self.y_origin, z=0, oz=1),
+            length_mm=self.BASE_LENGTH_MM,
+            radius_mm=self.BASE_RADIUS_MM,
+            color=(255, 140, 30),
+        )
+        return scene.add(arrow)
+
+    def tick(self, scene: Scene, t: float) -> List[SceneEvent]:
+        arrow = scene.get("force_vector")
+        if arrow is None:
+            return []
+
+        # Length and radius: phase-offset sinusoids.
+        length = self.BASE_LENGTH_MM + self.LENGTH_AMPLITUDE_MM * math.sin(
+            2 * math.pi * t / self.LENGTH_PERIOD_S
+        )
+        radius = self.BASE_RADIUS_MM + self.RADIUS_AMPLITUDE_MM * math.sin(
+            2 * math.pi * t / self.RADIUS_PERIOD_S + math.pi / 2
+        )
+
+        # Orientation: arrow tip at TILT_DEG from world +Z, precessing
+        # around +Z. (ox, oy, oz) is the unit vector the arrow's local
+        # +Z aligns with.
+        tilt_rad = math.radians(self.TILT_DEG)
+        phi = 2 * math.pi * t / self.PRECESSION_PERIOD_S
+        ox = math.sin(tilt_rad) * math.cos(phi)
+        oy = math.sin(tilt_rad) * math.sin(phi)
+        oz = math.cos(tilt_rad)
+
+        arrow.length_mm = length
+        arrow.radius_mm = radius
+        arrow.pose = Pose.at(x=0, y=self.y_origin, z=0, ox=ox, oy=oy, oz=oz)
+        return scene.update(arrow)
+
+
+# ---- breathing_shapes -------------------------------------------------
+
+class BreathingShapes:
+    """N spheres whose opacity smoothly cycles in ``[0, 1]`` via
+    label rotation.
+
+    Live opacity animation isn't supported by the renderer's UPDATED
+    handler (it ignores ``metadata.*`` paths). The only working
+    pattern is REMOVE + re-ADD with a fresh label so the renderer
+    re-reads the metadata at spawn. This recipe demonstrates that
+    pattern with a smooth sinusoidal opacity curve.
+
+    Each visual takes a discrete-step opacity (snapping to
+    ``STEPS_PER_PERIOD`` distinct values per oscillation period) so
+    the label-rotation rate stays bounded and the renderer's
+    REMOVED-UUID cache doesn't grow without bound during a session.
+    Smoothness is governed by ``STEPS_PER_PERIOD`` — more steps =
+    smoother fade but more REMOVE/ADD churn.
+
+    The pattern generalizes to any metadata-only animation
+    (color cycling, show_axes_helper toggling, etc.).
+    """
+
+    name = "breathing_shapes"
+
+    N_SHAPES = 4
+    SPACING_MM = 300.0
+    RADIUS_MM = 70.0
+    PERIOD_S = 3.5
+    STEPS_PER_PERIOD = 16    # snap opacity to N discrete values
+    OPACITY_MIN = 0.10
+    OPACITY_MAX = 1.0
+
+    def __init__(self, y_origin: float = 0.0) -> None:
+        self.y_origin = float(y_origin)
+        # Per-slot version counter (bumps on each opacity step).
+        self._version = [0] * self.N_SHAPES
+        # Per-slot last-emitted opacity step (so we don't re-rotate
+        # the label when the snapped step hasn't changed).
+        self._last_step = [-1] * self.N_SHAPES
+
+    def initial(self, scene: Scene) -> List[SceneEvent]:
+        # Shapes appear on the first tick. Empty initial keeps the
+        # initial-burst broadcast clean.
+        return []
+
+    def tick(self, scene: Scene, t: float) -> List[SceneEvent]:
+        events: List[SceneEvent] = []
+        steps = self.STEPS_PER_PERIOD
+        for i in range(self.N_SHAPES):
+            # Phase offset per slot.
+            phase = (2 * math.pi) * i / self.N_SHAPES
+            theta = 2 * math.pi * t / self.PERIOD_S + phase
+            # Continuous opacity in [OPACITY_MIN, OPACITY_MAX].
+            opacity = self.OPACITY_MIN + (
+                (self.OPACITY_MAX - self.OPACITY_MIN)
+                * (0.5 * (1 + math.sin(theta)))
+            )
+            # Snap to the nearest step so label rotations happen at
+            # a bounded rate.
+            step = int(theta / (2 * math.pi / steps)) % steps
+            if step == self._last_step[i]:
+                continue
+            self._last_step[i] = step
+            self._version[i] += 1
+
+            # Find and REMOVE the current version of this slot.
+            prefix = f"breathe_{i}_v"
+            current = next(
+                (lab for lab in scene.labels() if lab.startswith(prefix)),
+                None,
+            )
+            if current is not None:
+                events.extend(scene.remove(current))
+
+            # ADD a fresh version with the new opacity. Renderer
+            # reads metadata at spawn — so the new opacity paints.
+            x = (i - (self.N_SHAPES - 1) / 2.0) * self.SPACING_MM
+            sphere = Sphere(
+                label=f"breathe_{i}_v{self._version[i]}",
+                pose=Pose.at(x=x, y=self.y_origin, z=120),
+                radius_mm=self.RADIUS_MM,
+                color=_rainbow(i / self.N_SHAPES),
+                opacity=opacity,
+            )
+            events.extend(scene.add(sphere))
+        return events
+
+
 # ---- all (every recipe, stacked along Y) ------------------------------
 
 class AllRecipe:
@@ -715,13 +894,15 @@ class AllRecipe:
     name = "all"
 
     _LAYOUT = (
-        (MarchingBoxes,      -2000.0),
-        (PulsingSpheres,     -1400.0),
+        (MarchingBoxes,      -2600.0),
+        (PulsingSpheres,     -2000.0),
+        (BreathingShapes,    -1400.0),
         (AllPrimitives,       -800.0),
         (DetectionsOverlay,      0.0),
-        (LifecycleGarden,     +800.0),
-        (TrajectoryRunner,   +1500.0),
-        (CoordinateFramesArm,+2400.0),
+        (ForceVector,         +600.0),
+        (LifecycleGarden,    +1200.0),
+        (TrajectoryRunner,   +1900.0),
+        (CoordinateFramesArm,+2800.0),
     )
 
     def __init__(self) -> None:
@@ -750,6 +931,8 @@ RECIPES: Dict[str, Recipe] = {
     CoordinateFramesArm.name: CoordinateFramesArm(),
     TrajectoryRunner.name: TrajectoryRunner(),
     LifecycleGarden.name: LifecycleGarden(),
+    ForceVector.name: ForceVector(),
+    BreathingShapes.name: BreathingShapes(),
     AllRecipe.name: AllRecipe(),
 }
 

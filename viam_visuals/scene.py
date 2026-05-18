@@ -112,12 +112,19 @@ class SceneEntry:
 # See ``LESSONS.md::renderer-honors-only-pose-and-physicalobject-on-updated``.
 
 _POSE_KEY_TO_PATH = {
-    "x": "poseInObserverFrame.pose.x",
-    "y": "poseInObserverFrame.pose.y",
-    "z": "poseInObserverFrame.pose.z",
+    "x":     "poseInObserverFrame.pose.x",
+    "y":     "poseInObserverFrame.pose.y",
+    "z":     "poseInObserverFrame.pose.z",
+    "ox":    "poseInObserverFrame.pose.oX",
+    "oy":    "poseInObserverFrame.pose.oY",
+    "oz":    "poseInObserverFrame.pose.oZ",
     "theta": "poseInObserverFrame.pose.theta",
-    # ox/oy/oz fall under the same prefix and trigger a full Pose
-    # re-read; the renderer's only sensitivity is the prefix match.
+    # All seven keys share the renderer's ``poseInObserverFrame.pose``
+    # prefix, which triggers a full Pose re-read. Emitting per-subfield
+    # paths is informational; a single path of the right prefix is
+    # sufficient. Including the orientation-vector keys means
+    # orientation-only mutations (precession, "face the next waypoint")
+    # still emit at least one path and propagate to the renderer.
 }
 
 _TOPLEVEL_KEY_TO_PATH = {

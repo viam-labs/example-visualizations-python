@@ -15,8 +15,10 @@ from src.recipes import (
     RECIPES,
     AllPrimitives,
     AllRecipe,
+    BreathingShapes,
     CoordinateFramesArm,
     DetectionsOverlay,
+    ForceVector,
     LifecycleGarden,
     MarchingBoxes,
     PulsingSpheres,
@@ -27,11 +29,12 @@ from viam_visuals import Scene
 
 # ---- registry ---------------------------------------------------------
 
-def test_recipes_registry_contains_all_eight():
+def test_recipes_registry_contains_all_ten():
     assert set(RECIPES) == {
         "marching_boxes", "pulsing_spheres",
         "all_primitives", "detections_overlay",
         "coordinate_frames_arm", "trajectory_runner", "lifecycle_garden",
+        "force_vector", "breathing_shapes",
         "all",
     }
 
@@ -363,6 +366,135 @@ def test_lifecycle_garden_color_changes_through_phases():
     assert plot0.color == recipe.COLOR_ALIVE
 
 
+# ---- trajectory_runner orientation -----------------------------------
+
+def test_trajectory_runner_tick_emits_orientation_paths():
+    """Runner should face along the current segment direction —
+    update events must carry orientation paths so the renderer
+    re-reads the pose."""
+    scene = Scene()
+    TrajectoryRunner().initial(scene)
+    events = TrajectoryRunner().tick(scene, 0.5)
+    paths = set(events[0].paths)
+    # Position paths.
+    assert "poseInObserverFrame.pose.x" in paths
+    # Orientation paths — the renderer's prefix-match handles either,
+    # but they should appear when the orientation vector changes.
+    assert any(p.startswith("poseInObserverFrame.pose.o") for p in paths)
+
+
+def test_trajectory_runner_orientation_points_along_segment():
+    scene = Scene()
+    tr = TrajectoryRunner()
+    tr.initial(scene)
+    # Tick at t > 0 but still in segment 0 → runner heads toward wp 1.
+    tr.tick(scene, 0.5)
+    runner = scene.get("trajectory_runner")
+    wp0 = tr.waypoints[0]
+    wp1 = tr.waypoints[1]
+    # Expected orientation: unit vector from wp0 to wp1.
+    import math
+    dx, dy, dz = wp1.x - wp0.x, wp1.y - wp0.y, wp1.z - wp0.z
+    seg_len = math.sqrt(dx * dx + dy * dy + dz * dz)
+    assert abs(runner.pose.ox - dx / seg_len) < 1e-6
+    assert abs(runner.pose.oy - dy / seg_len) < 1e-6
+    assert abs(runner.pose.oz - dz / seg_len) < 1e-6
+
+
+# ---- force_vector recipe ---------------------------------------------
+
+def test_force_vector_initial_installs_arrow():
+    scene = Scene()
+    events = ForceVector().initial(scene)
+    assert len(events) == 1
+    assert events[0].kind == "added"
+    assert events[0].item_dict["type"] == "arrow"
+
+
+def test_force_vector_tick_emits_length_radius_orientation_paths():
+    scene = Scene()
+    ForceVector().initial(scene)
+    events = ForceVector().tick(scene, 1.0)
+    assert len(events) == 1
+    paths = set(events[0].paths)
+    # Length and radius update.
+    assert "physicalObject.geometryType.value.lengthMm" in paths
+    assert "physicalObject.geometryType.value.radiusMm" in paths
+    # Orientation vector update.
+    assert any(p.startswith("poseInObserverFrame.pose.o") for p in paths)
+
+
+def test_force_vector_orientation_precesses():
+    """At t = T/4 of the precession period, the projection of the
+    orientation vector onto the XY plane should have rotated 90°
+    from t = 0."""
+    import math
+    recipe = ForceVector()
+    scene = Scene()
+    recipe.initial(scene)
+    recipe.tick(scene, 0.0)
+    o0 = scene.get("force_vector").pose
+    recipe.tick(scene, ForceVector.PRECESSION_PERIOD_S * 0.25)
+    o1 = scene.get("force_vector").pose
+    # phi changes by π/2; sin(0)=0, cos(0)=1 → sin(π/2)=1, cos(π/2)=0
+    # so (ox, oy) rotates 90° in the XY plane.
+    # Dot product should be near 0 in the XY plane.
+    dot_xy = o0.ox * o1.ox + o0.oy * o1.oy
+    assert abs(dot_xy) < 0.05
+
+
+# ---- breathing_shapes recipe -----------------------------------------
+
+def test_breathing_shapes_initial_is_empty():
+    scene = Scene()
+    assert BreathingShapes().initial(scene) == []
+
+
+def test_breathing_shapes_first_tick_adds_shapes():
+    recipe = BreathingShapes()
+    scene = Scene()
+    recipe.initial(scene)
+    events = recipe.tick(scene, 0.0)
+    add_events = [e for e in events if e.kind == "added"]
+    assert len(add_events) == recipe.N_SHAPES
+
+
+def test_breathing_shapes_subsequent_ticks_rotate_labels():
+    """Each opacity-step change produces a REMOVE + ADD pair (the
+    only working pattern for live opacity changes)."""
+    recipe = BreathingShapes()
+    scene = Scene()
+    # Tick at t=0 (initial spawn) then advance enough for opacity
+    # step to change.
+    recipe.tick(scene, 0.0)
+    step_dt = recipe.PERIOD_S / recipe.STEPS_PER_PERIOD
+    # Tick across a full opacity step for every slot.
+    events = recipe.tick(scene, step_dt * 1.01)
+    # Should see REMOVE+ADD pairs (one per slot whose step changed).
+    add_events = [e for e in events if e.kind == "added"]
+    remove_events = [e for e in events if e.kind == "removed"]
+    assert len(add_events) >= 1
+    assert len(add_events) == len(remove_events), (
+        f"add and remove counts should match: {len(add_events)} adds, "
+        f"{len(remove_events)} removes"
+    )
+
+
+def test_breathing_shapes_label_versions_bump_per_step():
+    recipe = BreathingShapes()
+    scene = Scene()
+    recipe.tick(scene, 0.0)
+    v_before = list(recipe._version)
+    # Walk through enough opacity steps that every slot rotates.
+    step_dt = recipe.PERIOD_S / recipe.STEPS_PER_PERIOD
+    for n in range(recipe.STEPS_PER_PERIOD):
+        recipe.tick(scene, step_dt * (n + 1) * 1.05)
+    v_after = list(recipe._version)
+    # Every slot's version should have bumped at least once.
+    for i in range(recipe.N_SHAPES):
+        assert v_after[i] > v_before[i], f"slot {i} version did not bump"
+
+
 # ---- y_origin parameter ----------------------------------------------
 
 def test_y_origin_shifts_marching_boxes():
@@ -413,9 +545,18 @@ def test_all_recipe_runs_every_sub_recipe():
         "arm_shoulder",   # coordinate_frames_arm
         "wp_0",           # trajectory_runner
         "trajectory_runner",  # trajectory_runner runner
+        "force_vector",   # force_vector
     ]
     for label in expected:
         assert label in scene.labels(), f"{label!r} missing from `all` scene"
+
+
+def test_all_recipe_includes_force_vector_and_breathing():
+    """The two recipes added after initial AllRecipe ship in the
+    layout — explicit check so a regression here surfaces fast."""
+    cls_names = {cls.__name__ for cls, _ in AllRecipe._LAYOUT}
+    assert "ForceVector" in cls_names
+    assert "BreathingShapes" in cls_names
 
 
 def test_all_recipe_sub_recipes_dont_overlap():
