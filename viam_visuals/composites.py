@@ -27,7 +27,7 @@ from typing import Any, Iterator, List, Optional, Sequence, Tuple, Union
 from .animations import AnimationLike
 from .color import ColorLike
 from .pose import Pose, PoseLike, normalize_pose
-from .shapes import Box, Capsule, Sphere, Visual
+from .shapes import Arrow, Box, Capsule, Sphere, Visual
 
 
 __all__ = ["Composite", "CoordinateFrame", "Line", "BoundingBox"]
@@ -48,17 +48,29 @@ class Composite:
 @dataclass
 class CoordinateFrame(Composite):
     """A coordinate-frame triad: an anchor sphere plus three colored
-    axis capsules parented to the anchor.
+    axis arrows parented to the anchor.
 
     Use this whenever you'd otherwise hand-build a parent-anchor
-    sphere plus three axis-aligned capsules — the
+    sphere plus three axis-aligned arrows — the
     parent-frame-composition pattern that powers the playground's
     ``reference_frame_demo`` preset.
+
+    The three axes are :class:`Arrow` primitives (cylindrical shaft
+    + conical tip) so direction is visually obvious from the tip.
+    Each arrow's tail sits at the frame origin, its tip pointing
+    along the corresponding axis. ``axis_length_mm`` and
+    ``axis_radius_mm`` parameterize the arrow size; per-axis colors
+    can each be customized independently.
 
     Animations attach to the anchor; the axes inherit motion through
     the parent-frame chain. To probe whether the renderer composes
     through chained parents, set an animation here and watch the
     triad sweep coherently.
+
+    The anchor's ``show_axes_helper`` defaults to ``True`` — the
+    renderer's built-in RGB axes triad renders alongside the
+    composite's explicit arrows, which is occasionally redundant but
+    useful when you've tinted the arrow colors away from R/G/B.
 
     Internal labels: anchor uses ``label``; axes use
     ``f"{label}_axis_x"`` / ``"_y"`` / ``"_z"`` so they're unique
@@ -70,10 +82,11 @@ class CoordinateFrame(Composite):
     size_mm: float = 100.0
     parent_frame: Optional[str] = None
     animation: Any = None  # AnimationLike
-    show_axes_helper: bool = False
+    show_axes_helper: bool = True
     anchor_radius_mm: float = 12.0
-    axis_radius_mm: float = 12.0
-    anchor_color: ColorLike = (255, 255, 255)
+    axis_radius_mm: float = 8.0
+    axis_length_mm: Optional[float] = None  # defaults to size_mm
+    anchor_color: ColorLike = (120, 120, 120)  # gray
     anchor_opacity: Optional[float] = 0.6
     axis_color_x: ColorLike = (230, 25, 75)
     axis_color_y: ColorLike = (60, 180, 75)
@@ -81,7 +94,10 @@ class CoordinateFrame(Composite):
     axis_opacity: Optional[float] = 1.0
 
     def to_visuals(self) -> List[Visual]:
-        half = float(self.size_mm) / 2.0
+        axis_len = float(
+            self.axis_length_mm if self.axis_length_mm is not None
+            else self.size_mm
+        )
         out: List[Visual] = [
             Sphere(
                 self.label,
@@ -93,30 +109,34 @@ class CoordinateFrame(Composite):
                 show_axes_helper=self.show_axes_helper,
                 animation=self.animation,
             ),
-            Capsule(
+            # Arrow's tail is at its origin; local +Z is the shaft
+            # direction. Orient each axis arrow so its local +Z
+            # aligns with the corresponding world axis.
+            Arrow(
                 f"{self.label}_axis_x",
                 parent_frame=self.label,
-                pose=Pose.at(x=half, ox=1, oy=0, oz=0),
+                pose=Pose.at(ox=1, oy=0, oz=0),
                 radius_mm=self.axis_radius_mm,
-                length_mm=self.size_mm,
+                length_mm=axis_len,
                 color=self.axis_color_x,
                 opacity=self.axis_opacity,
             ),
-            Capsule(
+            Arrow(
                 f"{self.label}_axis_y",
                 parent_frame=self.label,
-                pose=Pose.at(y=half, ox=0, oy=1, oz=0),
+                pose=Pose.at(ox=0, oy=1, oz=0),
                 radius_mm=self.axis_radius_mm,
-                length_mm=self.size_mm,
+                length_mm=axis_len,
                 color=self.axis_color_y,
                 opacity=self.axis_opacity,
             ),
-            Capsule(
+            Arrow(
                 f"{self.label}_axis_z",
                 parent_frame=self.label,
-                pose=Pose.at(z=half),
+                # Default identity orientation (+Z up).
+                pose=None,
                 radius_mm=self.axis_radius_mm,
-                length_mm=self.size_mm,
+                length_mm=axis_len,
                 color=self.axis_color_z,
                 opacity=self.axis_opacity,
             ),
