@@ -300,9 +300,10 @@ def test_trajectory_runner_midpoint_lerps_between_waypoints():
     midpoint of waypoint 0 and waypoint 1."""
     scene = Scene()
     TrajectoryRunner().initial(scene)
-    # n_segs = N_WAYPOINTS (because LOOP=True). Segment 0 spans
-    # t=0 .. LAP_PERIOD_S/n_segs. Midpoint t = LAP_PERIOD_S/n_segs/2.
-    n_segs = len(TrajectoryRunner.BASE_WAYPOINTS)  # LOOP=True
+    # n_segs = N_WAYPOINTS - 1 (snap-back loop, no phantom wrap
+    # segment). Segment 0 spans t=0 .. LAP_PERIOD_S/n_segs. Midpoint
+    # t = LAP_PERIOD_S/n_segs/2.
+    n_segs = len(TrajectoryRunner.BASE_WAYPOINTS) - 1
     t_mid = (TrajectoryRunner.LAP_PERIOD_S / n_segs) / 2.0
     TrajectoryRunner().tick(scene, t_mid)
     runner = scene.get("trajectory_runner")
@@ -314,6 +315,43 @@ def test_trajectory_runner_midpoint_lerps_between_waypoints():
     assert abs(runner.pose.x - mid_x) < 1.0
     assert abs(runner.pose.y - mid_y) < 1.0
     assert abs(runner.pose.z - mid_z) < 1.0
+
+
+def test_trajectory_runner_end_of_lap_matches_last_waypoint():
+    """Regression: at t just under the lap period, the runner should
+    be at (or arbitrarily close to) the last waypoint — NOT halfway
+    between the last and first waypoint. A phantom wp[-1]→wp[0] wrap
+    segment used to put the runner mid-air when the displayed plan
+    line and final frame were already at the last waypoint."""
+    scene = Scene()
+    recipe = TrajectoryRunner()
+    recipe.initial(scene)
+    # 0.001s before the lap completes — far enough into the last
+    # segment that the runner should be effectively at the last
+    # waypoint, but not yet wrapped.
+    t_almost_done = TrajectoryRunner.LAP_PERIOD_S - 0.001
+    recipe.tick(scene, t_almost_done)
+    runner = scene.get("trajectory_runner")
+    last = recipe.waypoints[-1]
+    assert abs(runner.pose.x - last.x) < 5.0, (
+        f"runner x={runner.pose.x} should be near last wp x={last.x}, "
+        f"not interpolating back toward wp0")
+    assert abs(runner.pose.y - last.y) < 5.0
+    assert abs(runner.pose.z - last.z) < 5.0
+
+
+def test_trajectory_runner_at_lap_boundary_snaps_to_wp0():
+    """Regression: at t = lap_period exactly, the modulo wraps progress
+    to 0 — the runner snaps back to wp0 to start a new lap."""
+    scene = Scene()
+    recipe = TrajectoryRunner()
+    recipe.initial(scene)
+    recipe.tick(scene, TrajectoryRunner.LAP_PERIOD_S)
+    runner = scene.get("trajectory_runner")
+    wp0 = recipe.waypoints[0]
+    assert abs(runner.pose.x - wp0.x) < 1e-6
+    assert abs(runner.pose.y - wp0.y) < 1e-6
+    assert abs(runner.pose.z - wp0.z) < 1e-6
 
 
 # ---- lifecycle_garden ------------------------------------------------

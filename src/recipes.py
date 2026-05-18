@@ -498,7 +498,13 @@ class TrajectoryRunner:
         Pose.at(x=400,  y=300,  z=100, oz=1, theta=0),
     )
     LAP_PERIOD_S = 12.0  # time to traverse all segments once (slower for visual clarity)
-    LOOP = True          # wrap back to wp0 after wp4
+    # Loop semantics: snap-back at end of lap (the runner jumps from
+    # the last waypoint to the first to start the next cycle). Matches
+    # the all-in-one playground's trajectory_preview; avoids a phantom
+    # interpolated wp[-1]→wp[0] segment that visually overshoots the
+    # last waypoint and makes the runner's pose stop matching the
+    # displayed frame.
+    LOOP = True
     LABEL_PREFIX = "trajectory"
 
     def __init__(self, y_origin: float = 0.0) -> None:
@@ -548,13 +554,19 @@ class TrajectoryRunner:
             return []
 
         n = len(self.waypoints)
-        n_segs = n if self.LOOP else n - 1
-        # Total progress in [0, n_segs).
-        progress = (t / self.LAP_PERIOD_S * n_segs) % n_segs
+        n_segs = n - 1  # wp0→wp1, ..., wp[n-2]→wp[n-1] — no wrap segment
+        # Total progress in [0, n_segs); the modulo gives a snap-back
+        # at the end of each lap when LOOP=True.
+        if self.LOOP:
+            progress = (t / self.LAP_PERIOD_S * n_segs) % n_segs
+        else:
+            progress = max(0.0, min(float(n_segs), t / self.LAP_PERIOD_S * n_segs))
         seg_idx = int(progress)
+        if seg_idx >= n_segs:
+            seg_idx = n_segs - 1
         local = progress - seg_idx
         a = self.waypoints[seg_idx]
-        b = self.waypoints[(seg_idx + 1) % n]
+        b = self.waypoints[seg_idx + 1]
 
         # Interpolate position + orientation between adjacent
         # waypoints. lerp_pose handles the lerp-and-normalize on the
