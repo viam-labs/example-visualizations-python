@@ -90,23 +90,44 @@ class SceneEntry:
 #
 # Wire-format paths are camelCase. The viewer ignores snake_case
 # paths — see LESSONS.md::snake-case-field-mask-paths-do-not-work.
+#
+# The renderer's ``updateEntity`` handler at
+# ``@viamrobotics/motion-tools::useWorldState.svelte.ts`` honors only
+# two path prefixes on UPDATED events:
+#
+#   * ``poseInObserverFrame.pose*`` — re-reads pose, updates the
+#     entity's Pose trait.
+#   * ``physicalObject*`` — re-reads geometryType.value, dispatches
+#     to traits.Box / Capsule / Sphere / mesh-BufferGeometry. There
+#     is no ``case === 'pointcloud'`` branch — pointcloud geometry
+#     updates aren't propagated via UPDATED today.
+#
+# ALL ``metadata.*`` paths (color, colors, opacity, show_axes_helper,
+# invisible) are dropped silently. Metadata changes propagate only
+# at spawn time. To force a metadata refresh on the renderer, the
+# entity must be REMOVED then re-ADDED with a fresh UUID (lifecycle-
+# style label rotation, or the versioned UUID strategy on the
+# visualizer).
+#
+# See ``LESSONS.md::renderer-honors-only-pose-and-physicalobject-on-updated``.
 
 _POSE_KEY_TO_PATH = {
     "x": "poseInObserverFrame.pose.x",
     "y": "poseInObserverFrame.pose.y",
     "z": "poseInObserverFrame.pose.z",
     "theta": "poseInObserverFrame.pose.theta",
-    # ox/oy/oz aren't covered by the RDK fake's path conventions;
-    # whole-pose updates safe via add+remove.
+    # ox/oy/oz fall under the same prefix and trigger a full Pose
+    # re-read; the renderer's only sensitivity is the prefix match.
 }
 
 _TOPLEVEL_KEY_TO_PATH = {
-    "color": "metadata.colors",
-    "opacity": "metadata.opacities",
-    "show_axes_helper": "metadata.show_axes_helper",
-    "invisible": "metadata.invisible",
+    # physicalObject.* paths re-read the geometry; the renderer
+    # rebuilds the appropriate trait (Box / Sphere / Capsule).
     "radius_mm": "physicalObject.geometryType.value.radiusMm",
     "length_mm": "physicalObject.geometryType.value.lengthMm",
+    # color / opacity / show_axes_helper / invisible intentionally
+    # omitted — see file header. Metadata changes don't propagate
+    # via UPDATED.
 }
 
 
@@ -328,25 +349,34 @@ def _diff_paths(
     """Compute the field-mask path list describing what changed
     between two wire-format item dicts.
 
-    Path conventions follow what the renderer empirically honors —
-    camelCase, the same form the RDK fake at
-    ``services/worldstatestore/fake/moving_geos_world.go`` emits.
+    Only emits paths the renderer honors on UPDATED events — see the
+    module-level note on the path-matcher behavior. The library's
+    state (``Scene._state``) tracks every change; only the wire-form
+    paths emitted from here are limited to what the renderer reads.
+
+    Metadata-only changes (color, opacity, show_axes_helper,
+    invisible) produce an empty list. The visual's snapshot is still
+    updated server-side, but no UPDATED event reaches the renderer;
+    a re-spawn (REMOVED + ADDED with a fresh UUID) is required for
+    the renderer to see metadata changes.
     """
     paths: List[str] = []
-    # Pose: per-subfield diff. Whole-pose orientation changes
-    # (ox/oy/oz) aren't covered by the renderer's UPDATED path set;
-    # those go through add+remove instead.
+    # Pose: per-subfield diff. The renderer's check is
+    # ``path.startsWith('poseInObserverFrame.pose')`` and re-reads
+    # the full pose, so emitting per-axis paths is informational —
+    # any one of them triggers a full Pose re-read.
     old_pose = old.get("pose") or {}
     new_pose = new.get("pose") or {}
     if old_pose != new_pose:
         for k, p in _POSE_KEY_TO_PATH.items():
             if old_pose.get(k) != new_pose.get(k):
                 paths.append(p)
-    # Top-level scalar fields with known paths.
+    # Top-level scalar fields the renderer rebuilds via physicalObject.*.
     for k, p in _TOPLEVEL_KEY_TO_PATH.items():
         if old.get(k) != new.get(k):
             paths.append(p)
-    # Box dims_mm: per-axis diff.
+    # Box dims_mm: per-axis diff. The renderer reads the full Box
+    # geometry on any physicalObject* path.
     old_dims = old.get("dims_mm") or {}
     new_dims = new.get("dims_mm") or {}
     if old_dims != new_dims:
@@ -355,10 +385,12 @@ def _diff_paths(
                 paths.append(
                     f"physicalObject.geometryType.value.dimsMm.{axis}"
                 )
-    # Mesh / pointcloud path swaps trigger a whole-geom replacement;
-    # the wire format treats this as a coarse update.
+    # Mesh path swap: renderer re-parses the PLY and sets
+    # traits.BufferGeometry.
     if old.get("mesh_path") != new.get("mesh_path"):
         paths.append("physicalObject.mesh")
-    if old.get("pointcloud_path") != new.get("pointcloud_path"):
-        paths.append("physicalObject.pointcloud")
+    # NOTE: pointcloud_path swaps would emit physicalObject.pointcloud,
+    # but the renderer's updateEntity has no ``case === 'pointcloud'``
+    # branch — pointcloud updates would silently no-op. Re-spawn the
+    # entity (REMOVED + ADDED with a fresh label) to update a pcd.
     return paths

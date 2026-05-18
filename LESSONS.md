@@ -671,6 +671,36 @@ Same pattern for `[]map[string]any` vs `[]any`-of-maps. Both shipped in `visuals
 
 **Test discipline.** When you write a Go test for a DoCommand handler, also test the case where the input is typed (not `[]any`-erased). Tests that use literal `[]any{...}` syntax simulate the gRPC path but miss the in-process path.
 
+### renderer-honors-only-pose-and-physicalobject-on-updated
+
+**Symptom.** A driver pushes UPDATED events when a visual's color or opacity changes. The visualizer's state map updates (visible via the ``snapshot`` DoCommand), broadcasts go out, the renderer is subscribed — but the entity's color in the 3D scene viewer never changes. Refreshing the page re-fetches state and the color updates; live ticks don't.
+
+**Root cause.** The Threlte/koota renderer at ``@viamrobotics/motion-tools::src/lib/hooks/useWorldState.svelte.ts::updateEntity`` matches only two path prefixes on UPDATED events:
+
+```ts
+for (const path of changes) {
+    if (path.startsWith('poseInObserverFrame.pose')) {
+        entity.set(traits.Pose, ...)
+    } else if (path.startsWith('physicalObject') && transform.physicalObject) {
+        const { geometryType } = transform.physicalObject
+        if (geometryType.case === 'box')     entity.set(traits.Box, ...)
+        else if (geometryType.case === 'capsule') entity.set(traits.Capsule, ...)
+        else if (geometryType.case === 'sphere')  entity.set(traits.Sphere, ...)
+        else if (geometryType.case === 'mesh')    entity.set(traits.BufferGeometry, ...)
+    }
+}
+```
+
+Every other path is silently dropped. ``metadata.color`` / ``metadata.colors`` / ``metadata.opacity`` / ``metadata.opacities`` / ``metadata.show_axes_helper`` / ``metadata.invisible`` — all no-ops. ``physicalObject.pointcloud`` likewise no-ops because there's no ``case === 'pointcloud'`` branch.
+
+**Evidence.** ``@viamrobotics/motion-tools@v1.9.0/src/lib/hooks/useWorldState.svelte.ts`` lines 150-174.
+
+**Fix (library-side).** ``viam_visuals.Scene._diff_paths`` (and the Go equivalent) now omits the metadata.* paths. Metadata-only mutations on a Visual produce empty event lists from ``Scene.update``. The Scene's committed snapshot is still updated so subsequent diffs are correct.
+
+**Workaround (user-side, when metadata updates *are* required).** REMOVE the entity and re-ADD it with a fresh label so the renderer sees a new UUID and re-reads metadata at spawn. The ``lifecycle_garden`` recipe demonstrates the pattern — each cycle bumps a version suffix (``garden_0_v1`` → ``garden_0_v2``) so the renderer's REMOVED-UUID cache doesn't drop the re-add. The visualizer's ``uuid_strategy = "versioned"`` config achieves the same effect automatically (every tick of an animated item gets a fresh UUID), but applies broadly rather than per-mutation.
+
+**Renderer SPAWN behavior is more complete.** ``useWorldState.svelte.ts::spawnEntity`` and ``parseMetadata`` together read ``metadata.color`` (single Color trait), ``metadata.colors`` (base64-packed bytes — first 3-4 bytes drive Color + Opacity traits), ``metadata.opacity``, ``metadata.gltf``, ``metadata.points``, ``metadata.lineWidth``, ``metadata.pointSize``, ``metadata.shape``, and ``metadata.batched``. So a fresh ADDED event paints color/opacity correctly; only UPDATED can't refresh them.
+
 ### go-makefile-package-deps
 
 **Symptom.** Pushed a Go module fix as v0.0.12, deployed, behavior didn't change. Bumped to v0.0.13 with additional diagnostics, deployed, the diagnostics didn't show up either. Registry confirmed v0.0.13 was uploaded successfully and the machine had downloaded it.

@@ -89,15 +89,20 @@ def test_update_pose_emits_per_axis_paths():
     assert "poseInObserverFrame.pose.theta" not in events[0].paths
 
 
-def test_update_color_and_opacity_emit_correct_paths():
+def test_update_metadata_only_change_yields_no_event():
+    # Color / opacity changes don't propagate via UPDATED — the
+    # renderer's updateEntity matcher ignores metadata.* prefixes.
+    # Scene.update reflects that by emitting no event for metadata-
+    # only changes; the visual's committed snapshot is still
+    # updated. To refresh the renderer, REMOVE + re-ADD with a fresh
+    # label (lifecycle pattern).
     s = Scene()
     b = Box("b", dims_mm=(100, 100, 100), color=(255, 0, 0), opacity=1.0)
     s.add(b)
     b.color = (0, 255, 0)
     b.opacity = 0.5
     events = s.update(b)
-    assert "metadata.colors" in events[0].paths
-    assert "metadata.opacities" in events[0].paths
+    assert events == []
 
 
 def test_update_no_changes_returns_empty_list():
@@ -304,4 +309,6 @@ def test_bounding_box_updates_pose_via_object_mutation():
     assert "poseInObserverFrame.pose.x" in paths
     assert "poseInObserverFrame.pose.y" in paths
     assert "poseInObserverFrame.pose.z" in paths
-    assert "metadata.colors" in paths
+    # Color change is intentionally NOT in paths — the renderer
+    # doesn't honor metadata.* updates, so emitting them would be
+    # wire noise. The Scene's committed snapshot still updates.
