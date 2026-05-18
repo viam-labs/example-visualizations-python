@@ -74,11 +74,15 @@ from .scene import (
     REMOVED,
     UPDATED,
     Scene,
-    SceneEntry,
     SceneEvent,
     events_to_wire,
 )
-from .service import SceneServiceBase
+from .service import (
+    DEFAULT_PARENT_FRAME,
+    DEFAULT_TICK_HZ,
+    DEFAULT_UUID_STRATEGY,
+    SceneServiceBase,
+)
 from .uuid_strategy import VALID_STRATEGIES, initial_uuid, versioned_uuid
 
 
@@ -127,9 +131,11 @@ __all__ = [
     "versioned_uuid",
     # Service base
     "SceneServiceBase",
+    "DEFAULT_TICK_HZ",
+    "DEFAULT_UUID_STRATEGY",
+    "DEFAULT_PARENT_FRAME",
     # Scene (mutation API)
     "Scene",
-    "SceneEntry",
     "SceneEvent",
     "ADDED",
     "UPDATED",

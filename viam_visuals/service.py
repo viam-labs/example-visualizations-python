@@ -100,6 +100,13 @@ ATTR_PARENT_FRAME = "parent_frame"
 ATTR_PRESET = "preset"
 ATTR_ITEMS = "items"
 
+# Convenience module-level constants — match the class-level defaults
+# on SceneServiceBase. Importable as `from viam_visuals import
+# DEFAULT_TICK_HZ`.
+DEFAULT_TICK_HZ: float = 30.0
+DEFAULT_UUID_STRATEGY: str = "stable"
+DEFAULT_PARENT_FRAME: str = "world"
+
 
 # ---------- pose key → field-mask path ----------
 

@@ -5,13 +5,17 @@ from __future__ import annotations
 
 import pytest
 
-from src.service import (
+from src.service import SceneSprites
+from viam_visuals import (
     DEFAULT_PARENT_FRAME,
     DEFAULT_TICK_HZ,
     DEFAULT_UUID_STRATEGY,
-    SceneSprites,
+    Box,
+    Pose,
+    Scene,
+    Sphere,
+    events_to_wire,
 )
-from viam_visuals import Pose, Scene, Box, Sphere, events_to_wire
 
 
 def _bare_service():

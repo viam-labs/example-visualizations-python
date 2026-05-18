@@ -39,14 +39,6 @@ MODULE_DIR = Path(__file__).resolve().parent.parent
 ATTR_PRESET = "preset"
 ATTR_ITEMS = "items"
 
-# Re-exports kept for tests / external callers that imported these
-# constants from src.service before the SceneServiceBase migration.
-DEFAULT_TICK_HZ = SceneServiceBase.DEFAULT_TICK_HZ
-DEFAULT_UUID_STRATEGY = SceneServiceBase.DEFAULT_UUID_STRATEGY
-DEFAULT_PARENT_FRAME = SceneServiceBase.DEFAULT_PARENT_FRAME
-UUID_STRATEGIES = VALID_STRATEGIES
-
-
 class SceneSprites(SceneServiceBase, EasyResource):
     """Playground WorldStateStore — publishes every supported geometry
     primitive to the Viam 3D scene viewer."""

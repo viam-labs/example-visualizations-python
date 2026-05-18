@@ -50,7 +50,7 @@ from .composites import Composite
 from .shapes import Visual
 
 
-__all__ = ["Scene", "SceneEvent", "SceneEntry", "events_to_wire"]
+__all__ = ["Scene", "SceneEvent", "events_to_wire"]
 
 
 # ---- Event kinds + records ---------------------------------------------

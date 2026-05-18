@@ -370,21 +370,18 @@ field-mask bookkeeping in user code.
   pipeline). Standalone-playground end-to-end streaming coverage is
   thinner than the Python side and a known gap.
 
-**Known transitional code (deferred cleanup)**
+**Extraction-readiness work shipped** (this section was once
+"Known transitional code"; cleaned up before extraction):
 
-- **Go `aliases.go`** re-exports the moved types (`Pose`, `Color`,
-  `Item`, `Animation`, `BaseGeom`, etc.) under their original
-  unqualified names so the long-lived module files (`presets.go`,
-  `animation.go`, `config.go`, `service.go`) compile without churn.
-  Removal is mechanical: update each caller to `visuals.*` names,
-  delete `aliases.go`. Defer until a dedicated cleanup pass that
-  also retires the older module-level pose-math layer.
-- **Python `src/service.py` re-exports** of `DEFAULT_TICK_HZ` /
+- Go `aliases.go` deleted; module-level files use qualified
+  `visuals.*` names directly.
+- Python `src/service.py` re-exports of `DEFAULT_TICK_HZ` /
   `DEFAULT_UUID_STRATEGY` / `DEFAULT_PARENT_FRAME` / `UUID_STRATEGIES`
-  exist for tests/external callers that imported these from
-  `src.service` before the SceneServiceBase migration. They forward
-  to the library; harmless until the library is fully extracted to
-  its own package.
+  removed; tests import these from `viam_visuals` directly.
+- READMEs, LICENSE, and `pyproject.toml` / `go.mod.template` added
+  inside each library directory so `cp -r` to a new repo yields a
+  self-contained package.
+- Internal-only `SceneEntry` removed from the Python public API.
 
 **Remaining library work toward 1.0**
 
