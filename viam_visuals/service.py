@@ -333,11 +333,11 @@ class SceneServiceBase(WorldStateStore):
         dependencies: Mapping[ResourceName, ResourceBase],
     ):
         attrs = struct_to_dict(config.attributes)
-        self.tick_hz = float(attrs.get(ATTR_TICK_HZ, self.DEFAULT_TICK_HZ))
-        self.uuid_strategy = str(
+        tick_hz = float(attrs.get(ATTR_TICK_HZ, self.DEFAULT_TICK_HZ))
+        uuid_strategy = str(
             attrs.get(ATTR_UUID_STRATEGY, self.DEFAULT_UUID_STRATEGY)
         )
-        self.parent_frame = str(
+        parent_frame = str(
             attrs.get(ATTR_PARENT_FRAME, self.DEFAULT_PARENT_FRAME)
         )
 
@@ -352,6 +352,40 @@ class SceneServiceBase(WorldStateStore):
             else:
                 items = [dict(it) for it in self.load_preset(str(preset_name))]
 
+        self.reconfigure_with(
+            items,
+            tick_hz=tick_hz,
+            uuid_strategy=uuid_strategy,
+            parent_frame=parent_frame,
+        )
+
+    def reconfigure_with(
+        self,
+        items: Sequence[Mapping[str, Any]],
+        tick_hz: Optional[float] = None,
+        uuid_strategy: Optional[str] = None,
+        parent_frame: Optional[str] = None,
+    ) -> None:
+        """Install ``items`` as the new scene, broadcasting REMOVED
+        for prior state and ADDED for the new state, restarting the
+        tick task if any items animate.
+
+        Subclasses whose scene is built in code (not from config
+        attributes) should override :meth:`reconfigure` to construct
+        the item list and call this method directly, instead of
+        going through the ``items`` / ``preset`` config plumbing.
+
+        ``None`` arguments use the class defaults (``DEFAULT_TICK_HZ``
+        etc.).
+        """
+        self.tick_hz = float(self.DEFAULT_TICK_HZ if tick_hz is None else tick_hz)
+        self.uuid_strategy = str(
+            self.DEFAULT_UUID_STRATEGY if uuid_strategy is None else uuid_strategy
+        )
+        self.parent_frame = str(
+            self.DEFAULT_PARENT_FRAME if parent_frame is None else parent_frame
+        )
+
         # Cancel any prior tick task.
         if self._tick_task is not None:
             self._tick_task.cancel()
@@ -361,7 +395,7 @@ class SceneServiceBase(WorldStateStore):
         prior_transforms = [s["transform"] for s in self._state.values()]
         self._state = {}
         for it in items:
-            self._install_item(it)
+            self._install_item(dict(it))
 
         for t in prior_transforms:
             self._broadcast(StreamTransformChangesResponse(
