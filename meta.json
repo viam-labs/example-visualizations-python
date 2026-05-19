@@ -13,6 +13,12 @@
     },
     {
       "api": "rdk:service:world_state_store",
+      "model": "viam:example-visualizations-python:simple-scene-example",
+      "short_description": "Minimal example: publishes a fixed box+sphere+capsule scene. Read first when learning the library.",
+      "markdown_link": "README.md"
+    },
+    {
+      "api": "rdk:service:world_state_store",
       "model": "viam:example-visualizations-python:playground-visualizer",
       "short_description": "Passive WSS that accepts Scene mutations pushed from a driver component.",
       "markdown_link": "README.md"

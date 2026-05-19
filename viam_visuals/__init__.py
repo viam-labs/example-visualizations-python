@@ -77,6 +77,7 @@ from .scene import (
     SceneEvent,
     events_to_wire,
 )
+from .basic_geometry import build_basic_geometry
 from .service import (
     DEFAULT_PARENT_FRAME,
     DEFAULT_TICK_HZ,
@@ -131,6 +132,7 @@ __all__ = [
     "versioned_uuid",
     # Service base
     "SceneServiceBase",
+    "build_basic_geometry",
     "DEFAULT_TICK_HZ",
     "DEFAULT_UUID_STRATEGY",
     "DEFAULT_PARENT_FRAME",
