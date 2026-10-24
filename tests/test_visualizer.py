@@ -21,7 +21,9 @@ def _config(attrs: dict) -> ComponentConfig:
         elif isinstance(v, str):
             s.fields[k].string_value = v
         elif isinstance(v, list):
-            s.fields[k].list_value.append(*v) if v else s.fields[k].list_value.append("")
+            s.fields[k].list_value.append(*v) if v else s.fields[k].list_value.append(
+                ""
+            )
         elif isinstance(v, dict):
             sub = Struct()
             for kk, vv in v.items():
@@ -36,6 +38,7 @@ def setup_function(_):
 
 
 # ---- validate_config --------------------------------------------------
+
 
 def test_validate_config_rejects_items():
     cfg = ComponentConfig(name="vis", attributes=Struct())
@@ -57,11 +60,13 @@ def test_validate_config_accepts_empty():
 
 
 def test_validate_config_accepts_visualizer_knobs():
-    cfg = _config({
-        "tick_hz": 10.0,
-        "uuid_strategy": "versioned",
-        "parent_frame": "scene",
-    })
+    cfg = _config(
+        {
+            "tick_hz": 10.0,
+            "uuid_strategy": "versioned",
+            "parent_frame": "scene",
+        }
+    )
     deps_req, deps_opt = PlaygroundVisualizer.validate_config(cfg)
     assert (list(deps_req), list(deps_opt)) == ([], [])
 
@@ -80,6 +85,7 @@ def test_validate_config_rejects_invalid_uuid_strategy():
 
 # ---- model identity ---------------------------------------------------
 
+
 def test_model_name():
     assert str(PlaygroundVisualizer.MODEL) == (
         "viam:example-visualizations-python:playground-visualizer"
@@ -93,6 +99,7 @@ def test_default_preset_is_none():
 
 # ---- apply_events through the visualizer -----------------------------
 
+
 async def test_apply_events_through_visualizer():
     """The visualizer reuses SceneSprites' apply_events. Sanity check
     that the inheritance chain doesn't shadow the verb."""
@@ -103,15 +110,19 @@ async def test_apply_events_through_visualizer():
     vis.parent_frame = "world"
 
     item = {
-        "type": "box", "label": "obj_a",
+        "type": "box",
+        "label": "obj_a",
         "pose": {"x": 0, "y": 0, "z": 0, "ox": 0, "oy": 0, "oz": 1, "theta": 0},
         "dims_mm": {"x": 100, "y": 100, "z": 100},
-        "color": {"r": 255, "g": 0, "b": 0}, "opacity": 1.0,
+        "color": {"r": 255, "g": 0, "b": 0},
+        "opacity": 1.0,
         "animation": {"mode": "none"},
     }
-    result = await vis.do_command({
-        "command": "apply_events",
-        "events": [{"kind": "added", "label": "obj_a", "item": item}],
-    })
+    result = await vis.do_command(
+        {
+            "command": "apply_events",
+            "events": [{"kind": "added", "label": "obj_a", "item": item}],
+        }
+    )
     assert result["added"] == 1
     assert "obj_a" in vis._state

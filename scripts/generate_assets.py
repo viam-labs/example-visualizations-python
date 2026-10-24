@@ -58,22 +58,50 @@ OUT.mkdir(exist_ok=True)
 
 # ---------- icosahedron PLY ----------
 
+
 def _icosahedron(scale_mm: float = 100.0):
     """Standard icosahedron vertex/face arrays."""
     phi = (1.0 + math.sqrt(5.0)) / 2.0
     raw = [
-        (-1,  phi,  0), ( 1,  phi,  0), (-1, -phi,  0), ( 1, -phi,  0),
-        ( 0, -1,  phi), ( 0,  1,  phi), ( 0, -1, -phi), ( 0,  1, -phi),
-        ( phi,  0, -1), ( phi,  0,  1), (-phi,  0, -1), (-phi,  0,  1),
+        (-1, phi, 0),
+        (1, phi, 0),
+        (-1, -phi, 0),
+        (1, -phi, 0),
+        (0, -1, phi),
+        (0, 1, phi),
+        (0, -1, -phi),
+        (0, 1, -phi),
+        (phi, 0, -1),
+        (phi, 0, 1),
+        (-phi, 0, -1),
+        (-phi, 0, 1),
     ]
     # Normalize so all vertices sit on a unit sphere, then scale to mm.
     n = math.sqrt(1 + phi * phi)
-    verts = [(scale_mm * x / n, scale_mm * y / n, scale_mm * z / n) for (x, y, z) in raw]
+    verts = [
+        (scale_mm * x / n, scale_mm * y / n, scale_mm * z / n) for (x, y, z) in raw
+    ]
     faces = [
-        (0, 11, 5), (0, 5, 1), (0, 1, 7), (0, 7, 10), (0, 10, 11),
-        (1, 5, 9), (5, 11, 4), (11, 10, 2), (10, 7, 6), (7, 1, 8),
-        (3, 9, 4), (3, 4, 2), (3, 2, 6), (3, 6, 8), (3, 8, 9),
-        (4, 9, 5), (2, 4, 11), (6, 2, 10), (8, 6, 7), (9, 8, 1),
+        (0, 11, 5),
+        (0, 5, 1),
+        (0, 1, 7),
+        (0, 7, 10),
+        (0, 10, 11),
+        (1, 5, 9),
+        (5, 11, 4),
+        (11, 10, 2),
+        (10, 7, 6),
+        (7, 1, 8),
+        (3, 9, 4),
+        (3, 4, 2),
+        (3, 2, 6),
+        (3, 6, 8),
+        (3, 8, 9),
+        (4, 9, 5),
+        (2, 4, 11),
+        (6, 2, 10),
+        (8, 6, 7),
+        (9, 8, 1),
     ]
     return verts, faces
 
@@ -92,10 +120,8 @@ def _write_ply_ascii(filename: str, verts_mm, faces) -> Path:
         "property list uchar int vertex_indices",
         "end_header",
     ]
-    for (x, y, z) in verts_mm:
-        lines.append(
-            f"{x / MM_PER_M:.6f} {y / MM_PER_M:.6f} {z / MM_PER_M:.6f}"
-        )
+    for x, y, z in verts_mm:
+        lines.append(f"{x / MM_PER_M:.6f} {y / MM_PER_M:.6f} {z / MM_PER_M:.6f}")
     for face in faces:
         lines.append(f"{len(face)} " + " ".join(str(i) for i in face))
     path = OUT / filename
@@ -129,6 +155,7 @@ def write_arrow_ply(
     at runtime."""
     # Delegate to the runtime arrow generator (one source of truth).
     from src.geometries import arrow_ply_bytes
+
     total_length = shaft_length_mm + tip_length_mm
     ply_bytes = arrow_ply_bytes(
         length_mm=total_length,
@@ -149,27 +176,33 @@ def write_arrow_ply(
     # v[1..sides]: shaft bottom ring at z=0, radius shaft_radius.
     for i in range(sides):
         theta = 2 * math.pi * i / sides
-        verts.append((
-            shaft_radius_mm * math.cos(theta),
-            shaft_radius_mm * math.sin(theta),
-            0.0,
-        ))
+        verts.append(
+            (
+                shaft_radius_mm * math.cos(theta),
+                shaft_radius_mm * math.sin(theta),
+                0.0,
+            )
+        )
     # v[1+sides..2*sides]: shaft top ring at z=shaft_length, narrow.
     for i in range(sides):
         theta = 2 * math.pi * i / sides
-        verts.append((
-            shaft_radius_mm * math.cos(theta),
-            shaft_radius_mm * math.sin(theta),
-            shaft_length_mm,
-        ))
+        verts.append(
+            (
+                shaft_radius_mm * math.cos(theta),
+                shaft_radius_mm * math.sin(theta),
+                shaft_length_mm,
+            )
+        )
     # v[1+2*sides..3*sides]: cone base ring at z=shaft_length, wide.
     for i in range(sides):
         theta = 2 * math.pi * i / sides
-        verts.append((
-            tip_radius_mm * math.cos(theta),
-            tip_radius_mm * math.sin(theta),
-            shaft_length_mm,
-        ))
+        verts.append(
+            (
+                tip_radius_mm * math.cos(theta),
+                tip_radius_mm * math.sin(theta),
+                shaft_length_mm,
+            )
+        )
     # v[apex_idx]: cone apex at z=shaft_length+tip_length.
     apex_idx = 1 + 3 * sides
     verts.append((0.0, 0.0, shaft_length_mm + tip_length_mm))
@@ -210,6 +243,7 @@ def write_arrow_ply(
 
 
 # ---------- binary STL cube ----------
+
 
 def write_bunny_stl(target_height_mm: float = 90.0) -> Path:
     """Stanford bunny → centered, upright, binary STL in meters.
@@ -262,14 +296,12 @@ def write_bunny_stl(target_height_mm: float = 90.0) -> Path:
     cz_mm = min(zs)
 
     # Pre-translate vertices, in mm.
-    centered = [
-        (x - cx_mm, y - cy_mm, z - cz_mm) for (x, y, z) in scaled
-    ]
+    centered = [(x - cx_mm, y - cy_mm, z - cz_mm) for (x, y, z) in scaled]
 
     # --- 4. + 5. Compute face normals and write binary STL.
     buf = bytearray(80)
     buf += struct.pack("<I", len(BUNNY_FACES))
-    for (i0, i1, i2) in BUNNY_FACES:
+    for i0, i1, i2 in BUNNY_FACES:
         v0 = centered[i0]
         v1 = centered[i1]
         v2 = centered[i2]
@@ -290,7 +322,7 @@ def write_bunny_stl(target_height_mm: float = 90.0) -> Path:
             ny /= length
             nz /= length
         buf += struct.pack("<fff", nx, ny, nz)
-        for (x, y, z) in (v0, v1, v2):
+        for x, y, z in (v0, v1, v2):
             buf += struct.pack("<fff", x / MM_PER_M, y / MM_PER_M, z / MM_PER_M)
         buf += struct.pack("<H", 0)
     path = OUT / "bunny.stl"
@@ -308,29 +340,38 @@ def write_cube_stl(side_mm: float = 200.0) -> Path:
     s = (side_mm / MM_PER_M) / 2.0
     # 8 corners.
     v = [
-        (-s, -s, -s), ( s, -s, -s), ( s,  s, -s), (-s,  s, -s),  # bottom
-        (-s, -s,  s), ( s, -s,  s), ( s,  s,  s), (-s,  s,  s),  # top
+        (-s, -s, -s),
+        (s, -s, -s),
+        (s, s, -s),
+        (-s, s, -s),  # bottom
+        (-s, -s, s),
+        (s, -s, s),
+        (s, s, s),
+        (-s, s, s),  # top
     ]
     # 12 triangles (2 per face), face normal, three vertex indices.
     tris = [
-        ((0, 0, -1), 0, 2, 1), ((0, 0, -1), 0, 3, 2),  # -Z
-        ((0, 0,  1), 4, 5, 6), ((0, 0,  1), 4, 6, 7),  # +Z
-        ((0, -1, 0), 0, 1, 5), ((0, -1, 0), 0, 5, 4),  # -Y
-        ((0,  1, 0), 2, 3, 7), ((0,  1, 0), 2, 7, 6),  # +Y
-        ((-1, 0, 0), 0, 4, 7), ((-1, 0, 0), 0, 7, 3),  # -X
-        (( 1, 0, 0), 1, 2, 6), (( 1, 0, 0), 1, 6, 5),  # +X
+        ((0, 0, -1), 0, 2, 1),
+        ((0, 0, -1), 0, 3, 2),  # -Z
+        ((0, 0, 1), 4, 5, 6),
+        ((0, 0, 1), 4, 6, 7),  # +Z
+        ((0, -1, 0), 0, 1, 5),
+        ((0, -1, 0), 0, 5, 4),  # -Y
+        ((0, 1, 0), 2, 3, 7),
+        ((0, 1, 0), 2, 7, 6),  # +Y
+        ((-1, 0, 0), 0, 4, 7),
+        ((-1, 0, 0), 0, 7, 3),  # -X
+        ((1, 0, 0), 1, 2, 6),
+        ((1, 0, 0), 1, 6, 5),  # +X
     ]
     buf = bytearray(80)  # header (zeros)
     buf += struct.pack("<I", len(tris))
-    for (n, a, b, c) in tris:
+    for n, a, b, c in tris:
         nx, ny, nz = n
         ax, ay, az = v[a]
         bx, by, bz = v[b]
         cx, cy, cz = v[c]
-        buf += struct.pack("<12fH", nx, ny, nz,
-                           ax, ay, az,
-                           bx, by, bz,
-                           cx, cy, cz, 0)
+        buf += struct.pack("<12fH", nx, ny, nz, ax, ay, az, bx, by, bz, cx, cy, cz, 0)
     path = OUT / "cube.stl"
     path.write_bytes(buf)
     return path
@@ -338,10 +379,15 @@ def write_cube_stl(side_mm: float = 200.0) -> Path:
 
 # ---------- binary PCD helix ----------
 
-def write_helix_pcd(steps: int = 2400, height_mm: float = 400.0,
-                    radius_mm: float = 90.0, turns: float = 4.0,
-                    tube_ring_count: int = 6,
-                    tube_radius_mm: float = 8.0) -> Path:
+
+def write_helix_pcd(
+    steps: int = 2400,
+    height_mm: float = 400.0,
+    radius_mm: float = 90.0,
+    turns: float = 4.0,
+    tube_ring_count: int = 6,
+    tube_radius_mm: float = 8.0,
+) -> Path:
     """Vertical helix of colored points in PCDBinary format.
 
     Rendered as a **tube** of points: at each of ``steps`` positions
@@ -539,7 +585,7 @@ def write_colorful_sphere_ply(
     # mildly with latitude so the poles are recognizable without
     # going pure black/white.
     colors: list = []
-    for (x, y, z) in verts_mm:
+    for x, y, z in verts_mm:
         # Normalize to unit sphere for spherical coordinates.
         r = math.sqrt(x * x + y * y + z * z) or 1.0
         nx, ny, nz = x / r, y / r, z / r
@@ -598,7 +644,7 @@ def write_colorful_sphere_faces_ply(
     verts_mm, faces = _subdivision_icosphere(subdivisions, radius_mm)
     # One RGB per face, derived from the face centroid's longitude.
     face_colors: list = []
-    for (i0, i1, i2) in faces:
+    for i0, i1, i2 in faces:
         cx = (verts_mm[i0][0] + verts_mm[i1][0] + verts_mm[i2][0]) / 3.0
         cy = (verts_mm[i0][1] + verts_mm[i1][1] + verts_mm[i2][1]) / 3.0
         hue = (math.atan2(cy, cx) + math.pi) / (2 * math.pi)
@@ -620,7 +666,7 @@ def write_colorful_sphere_faces_ply(
         "end_header",
     ]
     lines = list(header)
-    for (x, y, z) in verts_mm:
+    for x, y, z in verts_mm:
         lines.append(f"{x / 1000.0:.6f} {y / 1000.0:.6f} {z / 1000.0:.6f}")
     for (i0, i1, i2), (r, g, b) in zip(faces, face_colors):
         lines.append(f"3 {i0} {i1} {i2} {r} {g} {b}")
@@ -666,7 +712,7 @@ def write_uv_sphere_ply(
     # Per-vertex UV from spherical coords: s = longitude / 2π + 0.5;
     # t = (latitude / π) + 0.5. Both in [0, 1].
     uvs: list = []
-    for (x, y, z) in verts_mm:
+    for x, y, z in verts_mm:
         r = math.sqrt(x * x + y * y + z * z) or 1.0
         nz = z / r
         s = (math.atan2(y, x) + math.pi) / (2 * math.pi)
@@ -690,10 +736,9 @@ def write_uv_sphere_ply(
     lines = list(header)
     for (x, y, z), (s, t) in zip(verts_mm, uvs):
         lines.append(
-            f"{x / 1000.0:.6f} {y / 1000.0:.6f} {z / 1000.0:.6f} "
-            f"{s:.6f} {t:.6f}"
+            f"{x / 1000.0:.6f} {y / 1000.0:.6f} {z / 1000.0:.6f} {s:.6f} {t:.6f}"
         )
-    for (i0, i1, i2) in faces:
+    for i0, i1, i2 in faces:
         lines.append(f"3 {i0} {i1} {i2}")
     path = OUT / "uv_sphere.ply"
     path.write_bytes(("\n".join(lines) + "\n").encode("ascii"))
@@ -794,6 +839,7 @@ def write_torus_ply(
     fully reproducible. Centered at origin, ring in the XY plane,
     axis of symmetry along +Z."""
     from src.geometries import _ply_ascii_bytes
+
     verts = []
     for i in range(major_segments):
         u = 2 * math.pi * i / major_segments
@@ -839,6 +885,7 @@ def write_teapot_ply(samples_per_patch: int = 6) -> Path:
     primitives."""
     from src.geometries import _ply_ascii_bytes
     from scripts.teapot_data import TEAPOT_PATCHES, TEAPOT_CONTROL_POINTS
+
     # Per-patch evaluation grid.
     s_count = samples_per_patch
     inv = 1.0 / (s_count - 1)
@@ -847,10 +894,7 @@ def write_teapot_ply(samples_per_patch: int = 6) -> Path:
     all_faces = []
     for patch in TEAPOT_PATCHES:
         # patch is a 4×4 grid of vertex INDICES into TEAPOT_CONTROL_POINTS.
-        cp = [
-            [TEAPOT_CONTROL_POINTS[idx] for idx in row]
-            for row in patch
-        ]
+        cp = [[TEAPOT_CONTROL_POINTS[idx] for idx in row] for row in patch]
         # Evaluate the Bezier surface on the (s, t) grid.
         patch_verts = []
         for si in range(s_count):
@@ -1005,7 +1049,9 @@ def text_to_ply(text: str, height_mm: float, depth_mm: float = LABEL_DEPTH_MM) -
     # Because the camera at +Y looking back at -Y sees world-X
     # mirrored on screen, the world-X reversal cancels out — text
     # reads left-to-right from the default camera angle.
-    mesh.apply_transform(trimesh.transformations.rotation_matrix(math.pi / 2, [1, 0, 0]))
+    mesh.apply_transform(
+        trimesh.transformations.rotation_matrix(math.pi / 2, [1, 0, 0])
+    )
     mesh.apply_transform(trimesh.transformations.rotation_matrix(math.pi, [0, 0, 1]))
 
     # Center on (X, Z); rest Y on 0 so the host item's pose lifts the

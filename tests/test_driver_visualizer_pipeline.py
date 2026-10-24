@@ -42,7 +42,10 @@ async def _make_visualizer(name="vis") -> PlaygroundVisualizer:
 
 
 async def _make_driver(
-    vis_name="vis", recipe="marching_boxes", tick_hz=10.0, namespace="",
+    vis_name="vis",
+    recipe="marching_boxes",
+    tick_hz=10.0,
+    namespace="",
 ) -> PlaygroundDriver:
     d = PlaygroundDriver.__new__(PlaygroundDriver)
     PlaygroundDriver.__init__(d, "drv")
@@ -62,6 +65,7 @@ async def _make_driver(
 
 # ---- validation -------------------------------------------------------
 
+
 def test_driver_validate_requires_visualizer():
     with pytest.raises(Exception, match="'visualizer' is required"):
         PlaygroundDriver.validate_config(_config({"recipe": "marching_boxes"}))
@@ -69,26 +73,44 @@ def test_driver_validate_requires_visualizer():
 
 def test_driver_validate_rejects_unknown_recipe():
     with pytest.raises(Exception, match="unknown recipe"):
-        PlaygroundDriver.validate_config(_config({
-            "visualizer": "vis", "recipe": "made_up",
-        }))
+        PlaygroundDriver.validate_config(
+            _config(
+                {
+                    "visualizer": "vis",
+                    "recipe": "made_up",
+                }
+            )
+        )
 
 
 def test_driver_validate_rejects_invalid_tick_hz():
     with pytest.raises(Exception, match="tick_hz"):
-        PlaygroundDriver.validate_config(_config({
-            "visualizer": "vis", "recipe": "marching_boxes", "tick_hz": 100.0,
-        }))
+        PlaygroundDriver.validate_config(
+            _config(
+                {
+                    "visualizer": "vis",
+                    "recipe": "marching_boxes",
+                    "tick_hz": 100.0,
+                }
+            )
+        )
 
 
 def test_driver_validate_accepts_good_config():
-    deps_req, deps_opt = PlaygroundDriver.validate_config(_config({
-        "visualizer": "vis", "recipe": "marching_boxes", "tick_hz": 5.0,
-    }))
+    deps_req, deps_opt = PlaygroundDriver.validate_config(
+        _config(
+            {
+                "visualizer": "vis",
+                "recipe": "marching_boxes",
+                "tick_hz": 5.0,
+            }
+        )
+    )
     assert (list(deps_req), list(deps_opt)) == ([], [])
 
 
 # ---- reconfigure / registry lookup -----------------------------------
+
 
 async def test_driver_fails_when_visualizer_not_registered():
     d = PlaygroundDriver.__new__(PlaygroundDriver)
@@ -144,6 +166,7 @@ async def test_driver_uses_in_process_reference_not_grpc_stub():
 
 # ---- namespace --------------------------------------------------------
 
+
 async def test_driver_namespace_prefixes_labels_on_visualizer():
     vis = await _make_visualizer()
     d = await _make_driver(namespace="ns1")
@@ -167,6 +190,7 @@ async def test_two_drivers_with_namespaces_coexist():
 
 
 # ---- DoCommand surface ------------------------------------------------
+
 
 async def test_driver_info_command():
     vis = await _make_visualizer()
@@ -201,6 +225,7 @@ async def test_driver_close_clears_visualizer_state():
 
 # ---- reconfigure clears prior scene ----------------------------------
 
+
 async def test_driver_reconfigure_clears_prior_recipe_labels():
     """Switching recipes via reconfigure should REMOVE the prior
     recipe's labels from the visualizer. Without this, both
@@ -212,11 +237,17 @@ async def test_driver_reconfigure_clears_prior_recipe_labels():
     assert not any(l.startswith("pulse_") for l in vis._state)
 
     # Reconfigure to a different recipe.
-    d.reconfigure(_config({
-        "visualizer": "vis",
-        "recipe": "pulsing_spheres",
-        "tick_hz": 20.0,
-    }, name="drv"), {})
+    d.reconfigure(
+        _config(
+            {
+                "visualizer": "vis",
+                "recipe": "pulsing_spheres",
+                "tick_hz": 20.0,
+            },
+            name="drv",
+        ),
+        {},
+    )
     await asyncio.sleep(0.05)
 
     # Prior recipe's labels should be gone; new recipe's labels present.

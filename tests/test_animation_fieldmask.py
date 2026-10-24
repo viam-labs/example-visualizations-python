@@ -5,6 +5,7 @@ These strings must match exactly what rdk/services/worldstatestore/fake/
 moving_geos_world.go emits, or the viewer silently ignores the update.
 The test suite locks in the paths as constants so a typo can't slip in.
 """
+
 from src.animation import (
     PATH_BOX_DIMS_X,
     PATH_BOX_DIMS_Y,

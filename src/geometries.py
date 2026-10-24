@@ -79,11 +79,13 @@ def build_pose(pose: Mapping[str, Any]) -> Pose:
 def build_box(dims_mm: Mapping[str, Any], label: str) -> Geometry:
     return Geometry(
         label=label,
-        box=RectangularPrism(dims_mm=Vector3(
-            x=float(dims_mm["x"]),
-            y=float(dims_mm["y"]),
-            z=float(dims_mm["z"]),
-        )),
+        box=RectangularPrism(
+            dims_mm=Vector3(
+                x=float(dims_mm["x"]),
+                y=float(dims_mm["y"]),
+                z=float(dims_mm["z"]),
+            )
+        ),
     )
 
 

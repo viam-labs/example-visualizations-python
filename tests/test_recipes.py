@@ -29,12 +29,19 @@ from viam_visuals import Scene
 
 # ---- registry ---------------------------------------------------------
 
+
 def test_recipes_registry_contains_all_recipes():
     assert set(RECIPES) == {
-        "marching_boxes", "pulsing_spheres",
-        "all_primitives", "detections_overlay",
-        "coordinate_frames_arm", "trajectory_runner", "lifecycle_garden",
-        "force_vector", "breathing_shapes", "color_cycling",
+        "marching_boxes",
+        "pulsing_spheres",
+        "all_primitives",
+        "detections_overlay",
+        "coordinate_frames_arm",
+        "trajectory_runner",
+        "lifecycle_garden",
+        "force_vector",
+        "breathing_shapes",
+        "color_cycling",
         "all",
     }
 
@@ -46,6 +53,7 @@ def test_recipes_have_matching_names():
 
 # ---- all_primitives ---------------------------------------------------
 
+
 def test_all_primitives_initial_adds_one_of_each_shape():
     scene = Scene()
     events = AllPrimitives().initial(scene)
@@ -53,8 +61,7 @@ def test_all_primitives_initial_adds_one_of_each_shape():
     assert all(e.kind == "added" for e in events)
     # Confirm every shape type is represented.
     types = {e.item_dict["type"] for e in events}
-    assert types == {"box", "sphere", "capsule", "point",
-                     "arrow", "mesh", "pointcloud"}
+    assert types == {"box", "sphere", "capsule", "point", "arrow", "mesh", "pointcloud"}
 
 
 def test_all_primitives_labels_are_unique_and_prefixed():
@@ -62,8 +69,13 @@ def test_all_primitives_labels_are_unique_and_prefixed():
     AllPrimitives().initial(scene)
     labels = scene.labels()
     assert labels == [
-        "demo_arrow", "demo_box", "demo_bunny", "demo_capsule",
-        "demo_pcd", "demo_point", "demo_sphere",
+        "demo_arrow",
+        "demo_box",
+        "demo_bunny",
+        "demo_capsule",
+        "demo_pcd",
+        "demo_point",
+        "demo_sphere",
     ]
 
 
@@ -91,6 +103,7 @@ def test_all_primitives_pointcloud_carries_asset_path():
 
 
 # ---- detections_overlay ----------------------------------------------
+
 
 def test_detections_overlay_initial_is_empty():
     """Recipe seeds nothing; first tick adds the detections so the
@@ -121,8 +134,7 @@ def test_detections_overlay_subsequent_tick_updates_in_place():
     assert all(e.kind == "updated" for e in events)
     # Pose paths should appear in every UPDATED.
     for e in events:
-        assert any(p.startswith("poseInObserverFrame.pose.")
-                   for p in e.paths)
+        assert any(p.startswith("poseInObserverFrame.pose.") for p in e.paths)
 
 
 def test_detections_overlay_no_event_when_pose_unchanged():
@@ -130,8 +142,8 @@ def test_detections_overlay_no_event_when_pose_unchanged():
     tick's diff is empty, so no UPDATED events fire."""
     recipe = DetectionsOverlay()
     scene = Scene()
-    recipe.tick(scene, 0.5)               # adds
-    events = recipe.tick(scene, 0.5)      # same t — no change
+    recipe.tick(scene, 0.5)  # adds
+    events = recipe.tick(scene, 0.5)  # same t — no change
     assert events == []
 
 
@@ -170,6 +182,7 @@ def test_detections_overlay_orbit_circles_origin():
 
 # ---- coordinate_frames_arm -------------------------------------------
 
+
 def test_coordinate_frames_arm_initial_installs_frames_and_arm():
     scene = Scene()
     events = CoordinateFramesArm().initial(scene)
@@ -194,18 +207,17 @@ def test_coordinate_frames_arm_chained_parent_frames():
     scene = Scene()
     CoordinateFramesArm().initial(scene)
     chain = [
-        ("arm_upper",   "arm_shoulder"),
-        ("arm_elbow",   "arm_upper"),
+        ("arm_upper", "arm_shoulder"),
+        ("arm_elbow", "arm_upper"),
         ("arm_forearm", "arm_elbow"),
-        ("arm_wrist",   "arm_forearm"),
+        ("arm_wrist", "arm_forearm"),
     ]
     for child, expected_parent in chain:
         v = scene.get(child)
         assert v is not None, f"{child!r} missing from scene"
         # The composite expansion preserves parent_frame on each visual.
         assert v.parent_frame == expected_parent, (
-            f"{child!r}.parent_frame = {v.parent_frame!r}; "
-            f"expected {expected_parent!r}"
+            f"{child!r}.parent_frame = {v.parent_frame!r}; expected {expected_parent!r}"
         )
 
 
@@ -232,6 +244,7 @@ def test_coordinate_frames_arm_no_event_when_t_unchanged():
 
 # ---- trajectory_runner -----------------------------------------------
 
+
 def test_trajectory_runner_initial_installs_plan_and_runner():
     scene = Scene()
     events = TrajectoryRunner().initial(scene)
@@ -245,9 +258,7 @@ def test_trajectory_runner_initial_installs_plan_and_runner():
         assert f"trajectory_wp_{i}_axis_x" in scene.labels()
     assert "trajectory_runner" in scene.labels()
     # 4 segments connecting 5 waypoints.
-    n_segs = sum(
-        1 for l in scene.labels() if l.startswith("trajectory_path_seg_")
-    )
+    n_segs = sum(1 for l in scene.labels() if l.startswith("trajectory_path_seg_"))
     assert n_segs == 4
 
 
@@ -283,13 +294,17 @@ def test_trajectory_runner_orientation_interpolates_between_waypoints():
     n_segs = len(recipe.waypoints)
     seg_dt = recipe.LAP_PERIOD_S / n_segs
     recipe.tick(scene, seg_dt * 0.5)  # mid wp0→wp1
-    o1 = (scene.get("trajectory_runner").pose.ox,
-          scene.get("trajectory_runner").pose.oy,
-          scene.get("trajectory_runner").pose.oz)
+    o1 = (
+        scene.get("trajectory_runner").pose.ox,
+        scene.get("trajectory_runner").pose.oy,
+        scene.get("trajectory_runner").pose.oz,
+    )
     recipe.tick(scene, seg_dt * 1.5)  # mid wp1→wp2
-    o2 = (scene.get("trajectory_runner").pose.ox,
-          scene.get("trajectory_runner").pose.oy,
-          scene.get("trajectory_runner").pose.oz)
+    o2 = (
+        scene.get("trajectory_runner").pose.ox,
+        scene.get("trajectory_runner").pose.oy,
+        scene.get("trajectory_runner").pose.oz,
+    )
     # The two orientations should be visibly different because the
     # waypoints have different orientations.
     assert o1 != o2, f"orientation didn't change between segments: {o1} vs {o2}"
@@ -335,7 +350,8 @@ def test_trajectory_runner_end_of_lap_matches_last_waypoint():
     last = recipe.waypoints[-1]
     assert abs(runner.pose.x - last.x) < 5.0, (
         f"runner x={runner.pose.x} should be near last wp x={last.x}, "
-        f"not interpolating back toward wp0")
+        f"not interpolating back toward wp0"
+    )
     assert abs(runner.pose.y - last.y) < 5.0
     assert abs(runner.pose.z - last.z) < 5.0
 
@@ -355,6 +371,7 @@ def test_trajectory_runner_at_lap_boundary_snaps_to_wp0():
 
 
 # ---- lifecycle_garden ------------------------------------------------
+
 
 def test_lifecycle_garden_initial_is_empty():
     scene = Scene()
@@ -388,7 +405,12 @@ def test_lifecycle_garden_label_versions_bump_across_cycles():
     # Tick during plot 0's gone phase (local_t in [3.2, 4.0)) so it's
     # REMOVED, then tick after the wrap (back into appear) so it's
     # re-ADDED with a fresh version.
-    gone_t = LifecycleGarden.APPEAR_S + LifecycleGarden.ALIVE_S + LifecycleGarden.DISAPPEAR_S + 0.1
+    gone_t = (
+        LifecycleGarden.APPEAR_S
+        + LifecycleGarden.ALIVE_S
+        + LifecycleGarden.DISAPPEAR_S
+        + 0.1
+    )
     recipe.tick(scene, gone_t)
     recipe.tick(scene, LifecycleGarden.CYCLE_S + 0.1)
     versions_after_second = list(recipe._version)
@@ -406,7 +428,12 @@ def test_lifecycle_garden_re_add_uses_fresh_label():
     recipe.tick(scene, 0.1)
     first_labels = {l for l in scene.labels() if l.startswith("garden_0_v")}
     # Walk through the gone phase explicitly so the recipe REMOVEs.
-    gone_t = LifecycleGarden.APPEAR_S + LifecycleGarden.ALIVE_S + LifecycleGarden.DISAPPEAR_S + 0.1
+    gone_t = (
+        LifecycleGarden.APPEAR_S
+        + LifecycleGarden.ALIVE_S
+        + LifecycleGarden.DISAPPEAR_S
+        + 0.1
+    )
     recipe.tick(scene, gone_t)
     # Now back into appear — recipe ADDs with fresh version.
     recipe.tick(scene, LifecycleGarden.CYCLE_S + 0.1)
@@ -434,6 +461,7 @@ def test_lifecycle_garden_color_changes_through_phases():
 
 
 # ---- trajectory_runner orientation -----------------------------------
+
 
 def test_trajectory_runner_tick_emits_orientation_paths():
     """Runner should face along the current segment direction —
@@ -468,6 +496,7 @@ def test_trajectory_runner_orientation_lerps_from_waypoint_orientations():
 
 # ---- force_vector recipe ---------------------------------------------
 
+
 def test_force_vector_initial_installs_arrow():
     scene = Scene()
     events = ForceVector().initial(scene)
@@ -494,6 +523,7 @@ def test_force_vector_orientation_precesses():
     orientation vector onto the XY plane should have rotated 90°
     from t = 0."""
     import math
+
     recipe = ForceVector()
     scene = Scene()
     recipe.initial(scene)
@@ -509,6 +539,7 @@ def test_force_vector_orientation_precesses():
 
 
 # ---- breathing_shapes recipe -----------------------------------------
+
 
 def test_breathing_shapes_initial_is_empty():
     scene = Scene()
@@ -562,14 +593,17 @@ def test_breathing_shapes_label_versions_bump_per_step():
 
 # ---- color_cycling recipe --------------------------------------------
 
+
 def test_color_cycling_initial_is_empty():
     from src.recipes import ColorCycling
+
     scene = Scene()
     assert ColorCycling().initial(scene) == []
 
 
 def test_color_cycling_first_tick_adds_shapes():
     from src.recipes import ColorCycling
+
     recipe = ColorCycling()
     scene = Scene()
     recipe.initial(scene)
@@ -580,6 +614,7 @@ def test_color_cycling_first_tick_adds_shapes():
 
 def test_color_cycling_step_change_rotates_labels():
     from src.recipes import ColorCycling
+
     recipe = ColorCycling()
     scene = Scene()
     recipe.tick(scene, 0.0)
@@ -592,6 +627,7 @@ def test_color_cycling_step_change_rotates_labels():
 
 
 # ---- y_origin parameter ----------------------------------------------
+
 
 def test_y_origin_shifts_marching_boxes():
     """Each recipe accepts a y_origin parameter (default 0). The
@@ -628,20 +664,21 @@ def test_y_origin_shifts_trajectory_waypoints():
 
 # ---- all recipe ------------------------------------------------------
 
+
 def test_all_recipe_runs_every_sub_recipe():
     scene = Scene()
     AllRecipe().initial(scene)
     # Every sub-recipe's labels should appear (composite expansions
     # included). Spot-check one label from each sub.
     expected = [
-        "march_0",                   # marching_boxes
-        "pulse_0",                   # pulsing_spheres
-        "demo_box",                  # all_primitives
-        "frame_0",                   # coordinate_frames_arm
-        "arm_shoulder",              # coordinate_frames_arm
-        "trajectory_wp_0",           # trajectory_runner waypoint frame
-        "trajectory_runner",         # trajectory_runner runner
-        "force_vector",              # force_vector
+        "march_0",  # marching_boxes
+        "pulse_0",  # pulsing_spheres
+        "demo_box",  # all_primitives
+        "frame_0",  # coordinate_frames_arm
+        "arm_shoulder",  # coordinate_frames_arm
+        "trajectory_wp_0",  # trajectory_runner waypoint frame
+        "trajectory_runner",  # trajectory_runner runner
+        "force_vector",  # force_vector
     ]
     for label in expected:
         assert label in scene.labels(), f"{label!r} missing from `all` scene"
@@ -692,6 +729,7 @@ def test_all_recipe_subs_get_distinct_y_origins():
 
 # ---- driver round-trip ------------------------------------------------
 
+
 @pytest.mark.parametrize("recipe_name", ["all_primitives", "detections_overlay"])
 def test_recipe_drives_visualizer_through_apply_events(recipe_name):
     """Smoke test: feed each recipe's tick output through
@@ -717,19 +755,28 @@ def test_recipe_drives_visualizer_through_apply_events(recipe_name):
     # Initial.
     initial = recipe.initial(scene)
     import asyncio
+
     if initial:
-        asyncio.run(vis.do_command({
-            "command": "apply_events",
-            "events": events_to_wire(initial),
-        }))
+        asyncio.run(
+            vis.do_command(
+                {
+                    "command": "apply_events",
+                    "events": events_to_wire(initial),
+                }
+            )
+        )
 
     # One tick.
     tick_events = recipe.tick(scene, 0.5)
     if tick_events:
-        asyncio.run(vis.do_command({
-            "command": "apply_events",
-            "events": events_to_wire(tick_events),
-        }))
+        asyncio.run(
+            vis.do_command(
+                {
+                    "command": "apply_events",
+                    "events": events_to_wire(tick_events),
+                }
+            )
+        )
 
     # Visualizer state should match scene's expected size.
     if recipe_name == "all_primitives":

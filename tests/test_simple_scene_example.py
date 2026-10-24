@@ -5,6 +5,7 @@ Bypasses ``SimpleSceneExample.new()`` (which expects a framework-
 supplied ComponentConfig) and exercises reconfigure / tick /
 build_geometry directly with bare instances.
 """
+
 from __future__ import annotations
 
 import math
@@ -30,9 +31,13 @@ def test_reconfigure_installs_all_items():
     s = _bare_service()
     s.reconfigure(_stub_config(), {})
     expected = {
-        "demo_box", "demo_sphere", "demo_capsule",  # statics
-        "moving_box",                                # 4-channel animated
-        "pivot", "pivot_child_sphere", "pivot_child_box",  # hierarchical
+        "demo_box",
+        "demo_sphere",
+        "demo_capsule",  # statics
+        "moving_box",  # 4-channel animated
+        "pivot",
+        "pivot_child_sphere",
+        "pivot_child_box",  # hierarchical
     }
     assert set(s.scene.labels()) == expected
     assert set(s._state.keys()) == expected
@@ -44,8 +49,8 @@ def test_pivot_children_use_pivot_as_parent_frame():
     for label in ("pivot_child_sphere", "pivot_child_box"):
         item = s._state[label]["item"]
         assert item["parent_frame"] == "pivot", (
-            f"{label} should be parented to 'pivot', got "
-            f"{item.get('parent_frame')!r}")
+            f"{label} should be parented to 'pivot', got {item.get('parent_frame')!r}"
+        )
 
 
 def test_scene_tick_rotates_pivot():

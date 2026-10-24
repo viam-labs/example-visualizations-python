@@ -24,6 +24,7 @@ the same process and the framework's dependency-injection stub
 would just add latency. If the visualizer isn't found in the
 registry at reconfigure time, the driver fails fast.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -58,7 +59,8 @@ class PlaygroundDriver(Generic, EasyResource):
 
     @classmethod
     def validate_config(
-        cls, config: ComponentConfig,
+        cls,
+        config: ComponentConfig,
     ) -> Tuple[Sequence[str], Sequence[str]]:
         attrs = struct_to_dict(config.attributes) if config.attributes else {}
 
@@ -207,11 +209,13 @@ class PlaygroundDriver(Generic, EasyResource):
     async def _send_events(self, events) -> None:
         if not events:
             return
-        await self._send_command({
-            "command": "apply_events",
-            "namespace": self._namespace,
-            "events": events_to_wire(events),
-        })
+        await self._send_command(
+            {
+                "command": "apply_events",
+                "namespace": self._namespace,
+                "events": events_to_wire(events),
+            }
+        )
 
     async def _send_command(self, command: Mapping[str, ValueTypes]) -> None:
         # Direct method call — same process as the visualizer.

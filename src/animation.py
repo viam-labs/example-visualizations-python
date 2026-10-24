@@ -52,6 +52,7 @@ Modes (all parameters in mm and seconds):
 The animation module is purely functional; the service threads the
 elapsed time and base pose in. Tests can pin t to known values.
 """
+
 import math
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 
@@ -77,8 +78,17 @@ PATH_BOX_DIMS_Y = "physicalObject.geometryType.value.dimsMm.y"
 PATH_BOX_DIMS_Z = "physicalObject.geometryType.value.dimsMm.z"
 
 SUPPORTED_MODES = (
-    "none", "orbit", "oscillate", "spin", "swing", "pulse", "trajectory",
-    "force_vector", "breathe", "flicker", "lifecycle",
+    "none",
+    "orbit",
+    "oscillate",
+    "spin",
+    "swing",
+    "pulse",
+    "trajectory",
+    "force_vector",
+    "breathe",
+    "flicker",
+    "lifecycle",
 )
 SUPPORTED_AXES = ("x", "y", "z")
 
@@ -245,7 +255,9 @@ def compute_tick(
             if box_axis in ("x", "y", "z"):
                 new_dims[box_axis] = max(0.1, new_dims[box_axis] + delta)
                 paths = [
-                    {"x": PATH_BOX_DIMS_X, "y": PATH_BOX_DIMS_Y, "z": PATH_BOX_DIMS_Z}[box_axis],
+                    {"x": PATH_BOX_DIMS_X, "y": PATH_BOX_DIMS_Y, "z": PATH_BOX_DIMS_Z}[
+                        box_axis
+                    ],
                 ]
             else:
                 new_dims["x"] = max(0.1, new_dims["x"] + delta)
@@ -300,8 +312,12 @@ def compute_tick(
             new_pose["ox"], new_pose["oy"], new_pose["oz"] = 0.0, 0.0, 1.0
         new_pose["theta"] = _lerp(a.get("theta", 0.0), b.get("theta", 0.0), alpha)
         paths = [
-            PATH_X, PATH_Y, PATH_Z,
-            PATH_OX, PATH_OY, PATH_OZ,
+            PATH_X,
+            PATH_Y,
+            PATH_Z,
+            PATH_OX,
+            PATH_OY,
+            PATH_OZ,
             PATH_THETA,
         ]
         return new_pose, new_geom, paths, None
@@ -344,7 +360,9 @@ def compute_tick(
         paths = [
             PATH_CAPSULE_LENGTH,
             PATH_SPHERE_RADIUS,
-            PATH_OX, PATH_OY, PATH_OZ,
+            PATH_OX,
+            PATH_OY,
+            PATH_OZ,
             PATH_THETA,
             PATH_METADATA_COLOR,
         ]
@@ -408,11 +426,16 @@ def compute_tick(
             opacity = 0.0
             in_scene = False
         paths = [PATH_METADATA_COLOR, PATH_METADATA_OPACITY]
-        return new_pose, new_geom, paths, {
-            "_in_scene": in_scene,
-            "color": color,
-            "opacity": opacity,
-        }
+        return (
+            new_pose,
+            new_geom,
+            paths,
+            {
+                "_in_scene": in_scene,
+                "color": color,
+                "opacity": opacity,
+            },
+        )
 
     if mode == "flicker":
         # True scene-graph mutation — the entity is actually REMOVED

@@ -163,6 +163,7 @@ A recipe is two methods:
 ```python
 from viam_visuals import Scene, SceneEvent, Box, Pose
 
+
 class MyRecipe:
     name = "my_recipe"
 
@@ -371,6 +372,7 @@ renderer" is clean, but the runtime cost is essentially zero.
 
   ```python
   import trimesh
+
   trimesh.load("model.glb").export("model.ply")
   ```
 

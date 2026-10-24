@@ -57,6 +57,7 @@ Configure as a ``rdk:service:world_state_store`` service with model
 ``viam:example-visualizations-python:simple-scene-example``. No
 attributes are required — the scene is hardcoded.
 """
+
 from __future__ import annotations
 
 import math
@@ -136,7 +137,8 @@ class SimpleSceneExample(viz.SceneServiceBase):
 
     @classmethod
     def validate_config(
-        cls, config: ComponentConfig,
+        cls,
+        config: ComponentConfig,
     ) -> Tuple[Sequence[str], Sequence[str]]:
         """No dependencies, no required attributes."""
         return [], []
@@ -228,7 +230,7 @@ class SimpleSceneExample(viz.SceneServiceBase):
         # REMOVE + re-ADD with a fresh UUID). Snap to bounded step
         # counts so the respawn rate doesn't pin to tick_hz; see
         # viam_visuals.snap_step.
-        hue = viz.snap_step((t / 6) % 1.0, 24)             # 24 hues / 6 s
+        hue = viz.snap_step((t / 6) % 1.0, 24)  # 24 hues / 6 s
         self.moving_box.color = viz.hsv_to_rgb(hue)
         op_raw = 0.3 + 0.7 * (1 + math.sin(2 * math.pi * t / 3)) / 2
         self.moving_box.opacity = viz.snap_step(op_raw, 12, lo=0.3, hi=1.0)
@@ -239,7 +241,9 @@ class SimpleSceneExample(viz.SceneServiceBase):
         # the parent transform automatically, so they orbit around
         # the pivot without needing their own per-tick updates.
         self.pivot.pose = viz.Pose.at(
-            x=-700, y=0, z=300,
+            x=-700,
+            y=0,
+            z=300,
             theta=(t * 60) % 360,  # 60° per second
         )
 

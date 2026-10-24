@@ -5,6 +5,7 @@ pose, base geometry, and a time, it returns a new pose / geom + the
 field-mask paths to emit. These tests pin t to phase-aligned values
 (t=0, t=T/4, t=T/2, t=3T/4) so the expected outputs are exact, not
 approximate."""
+
 import math
 
 import pytest
@@ -17,10 +18,19 @@ from src.animation import (
 )
 
 
-BASE_POSE = {"x": 0.0, "y": 0.0, "z": 0.0, "ox": 0.0, "oy": 0.0, "oz": 1.0, "theta": 0.0}
+BASE_POSE = {
+    "x": 0.0,
+    "y": 0.0,
+    "z": 0.0,
+    "ox": 0.0,
+    "oy": 0.0,
+    "oz": 1.0,
+    "theta": 0.0,
+}
 
 
 # ---------- is_animated ----------
+
 
 def test_is_animated_false_for_none_mode():
     assert is_animated({"animation": {"mode": "none"}}) is False
@@ -37,6 +47,7 @@ def test_is_animated_true_for_any_non_none_mode():
 
 # ---------- none ----------
 
+
 def test_none_returns_base_unchanged_and_no_paths():
     pose, geom, paths, _ = compute_tick(
         {"type": "box", "animation": {"mode": "none"}},
@@ -51,9 +62,13 @@ def test_none_returns_base_unchanged_and_no_paths():
 
 # ---------- orbit ----------
 
+
 def test_orbit_at_t_zero_lands_on_positive_x_axis():
     pose, _, paths, _ = compute_tick(
-        {"type": "sphere", "animation": {"mode": "orbit", "radius_mm": 200, "period_s": 4}},
+        {
+            "type": "sphere",
+            "animation": {"mode": "orbit", "radius_mm": 200, "period_s": 4},
+        },
         BASE_POSE,
         {"radius_mm": 50},
         t=0.0,
@@ -65,7 +80,10 @@ def test_orbit_at_t_zero_lands_on_positive_x_axis():
 
 def test_orbit_at_quarter_period_lands_on_positive_y_axis():
     pose, _, _, _ = compute_tick(
-        {"type": "sphere", "animation": {"mode": "orbit", "radius_mm": 200, "period_s": 4}},
+        {
+            "type": "sphere",
+            "animation": {"mode": "orbit", "radius_mm": 200, "period_s": 4},
+        },
         BASE_POSE,
         {"radius_mm": 50},
         t=1.0,  # T/4
@@ -78,7 +96,10 @@ def test_orbit_composes_onto_base_pose():
     """Orbit motion adds to the base x/y, so an item starting at
     (1000, 0, 500) orbits around (1000, 0, 500), not the origin."""
     pose, _, _, _ = compute_tick(
-        {"type": "sphere", "animation": {"mode": "orbit", "radius_mm": 100, "period_s": 4}},
+        {
+            "type": "sphere",
+            "animation": {"mode": "orbit", "radius_mm": 100, "period_s": 4},
+        },
         {"x": 1000, "y": 0, "z": 500},
         {"radius_mm": 50},
         t=0.0,
@@ -90,9 +111,13 @@ def test_orbit_composes_onto_base_pose():
 
 # ---------- oscillate ----------
 
+
 def test_oscillate_default_axis_is_y():
     pose, _, paths, _ = compute_tick(
-        {"type": "box", "animation": {"mode": "oscillate", "amplitude_mm": 100, "period_s": 4}},
+        {
+            "type": "box",
+            "animation": {"mode": "oscillate", "amplitude_mm": 100, "period_s": 4},
+        },
         BASE_POSE,
         {"dims_mm": {"x": 100, "y": 100, "z": 100}},
         t=1.0,  # T/4 -> sin = 1, max excursion
@@ -105,9 +130,15 @@ def test_oscillate_default_axis_is_y():
 
 def test_oscillate_axis_x_moves_only_x():
     pose, _, paths, _ = compute_tick(
-        {"type": "box", "animation": {
-            "mode": "oscillate", "axis": "x", "amplitude_mm": 250, "period_s": 4,
-        }},
+        {
+            "type": "box",
+            "animation": {
+                "mode": "oscillate",
+                "axis": "x",
+                "amplitude_mm": 250,
+                "period_s": 4,
+            },
+        },
         BASE_POSE,
         {"dims_mm": {"x": 100, "y": 100, "z": 100}},
         t=1.0,
@@ -119,9 +150,15 @@ def test_oscillate_axis_x_moves_only_x():
 
 def test_oscillate_axis_z_moves_only_z():
     pose, _, paths, _ = compute_tick(
-        {"type": "box", "animation": {
-            "mode": "oscillate", "axis": "z", "amplitude_mm": 50, "period_s": 4,
-        }},
+        {
+            "type": "box",
+            "animation": {
+                "mode": "oscillate",
+                "axis": "z",
+                "amplitude_mm": 50,
+                "period_s": 4,
+            },
+        },
         BASE_POSE,
         {"dims_mm": {"x": 100, "y": 100, "z": 100}},
         t=1.0,
@@ -134,9 +171,14 @@ def test_oscillate_zero_at_t_zero_and_half_period():
     """sin(0)=0 and sin(pi)=0, so amplitude is zero at t=0 and t=T/2."""
     for t in (0.0, 2.0):
         pose, _, _, _ = compute_tick(
-            {"type": "box", "animation": {
-                "mode": "oscillate", "amplitude_mm": 100, "period_s": 4,
-            }},
+            {
+                "type": "box",
+                "animation": {
+                    "mode": "oscillate",
+                    "amplitude_mm": 100,
+                    "period_s": 4,
+                },
+            },
             BASE_POSE,
             {"dims_mm": {"x": 100, "y": 100, "z": 100}},
             t=t,
@@ -145,6 +187,7 @@ def test_oscillate_zero_at_t_zero_and_half_period():
 
 
 # ---------- spin ----------
+
 
 def test_spin_at_quarter_period_is_90_degrees():
     pose, _, paths, _ = compute_tick(
@@ -169,12 +212,16 @@ def test_spin_wraps_modulo_360():
 
 # ---------- swing ----------
 
+
 def test_swing_at_t_zero_is_at_base_theta():
     """At t=0, sin(0)=0, so swing yields base_theta unchanged. Joints
     starting "at rest" should be at their configured angle, not at
     an extreme."""
     pose, _, paths, _ = compute_tick(
-        {"type": "capsule", "animation": {"mode": "swing", "amplitude_deg": 60, "period_s": 4}},
+        {
+            "type": "capsule",
+            "animation": {"mode": "swing", "amplitude_deg": 60, "period_s": 4},
+        },
         {"x": 0, "y": 0, "z": 0, "ox": 0, "oy": 1, "oz": 0, "theta": 30},
         {"radius_mm": 20, "length_mm": 100},
         t=0.0,
@@ -187,7 +234,10 @@ def test_swing_at_quarter_period_reaches_max_amplitude():
     """At t=T/4, sin(pi/2)=1, full amplitude reached. The amplitude
     is added to base theta, not the absolute angle."""
     pose, _, _, _ = compute_tick(
-        {"type": "capsule", "animation": {"mode": "swing", "amplitude_deg": 60, "period_s": 4}},
+        {
+            "type": "capsule",
+            "animation": {"mode": "swing", "amplitude_deg": 60, "period_s": 4},
+        },
         {"x": 0, "y": 0, "z": 0, "ox": 0, "oy": 0, "oz": 1, "theta": 30},
         {"radius_mm": 20, "length_mm": 100},
         t=1.0,
@@ -198,7 +248,10 @@ def test_swing_at_quarter_period_reaches_max_amplitude():
 def test_swing_at_three_quarter_period_reaches_negative_amplitude():
     """At t=3T/4, sin(3pi/2)=-1, theta = base - amplitude."""
     pose, _, _, _ = compute_tick(
-        {"type": "capsule", "animation": {"mode": "swing", "amplitude_deg": 45, "period_s": 8}},
+        {
+            "type": "capsule",
+            "animation": {"mode": "swing", "amplitude_deg": 45, "period_s": 8},
+        },
         {"x": 0, "y": 0, "z": 0, "ox": 0, "oy": 0, "oz": 1, "theta": 0},
         {"radius_mm": 20, "length_mm": 100},
         t=6.0,
@@ -210,7 +263,10 @@ def test_swing_preserves_translation_and_orientation_vector():
     """Like spin, swing should only modulate theta; translation and
     (ox, oy, oz) pass through."""
     pose, _, _, _ = compute_tick(
-        {"type": "box", "animation": {"mode": "swing", "amplitude_deg": 60, "period_s": 4}},
+        {
+            "type": "box",
+            "animation": {"mode": "swing", "amplitude_deg": 60, "period_s": 4},
+        },
         {"x": 100, "y": 200, "z": 300, "ox": 0, "oy": 1, "oz": 0, "theta": 0},
         {"dims_mm": {"x": 50, "y": 50, "z": 50}},
         t=1.0,
@@ -220,6 +276,7 @@ def test_swing_preserves_translation_and_orientation_vector():
 
 
 # ---------- spin (continued) ----------
+
 
 def test_spin_preserves_translation_and_orientation_vector():
     pose, _, _, _ = compute_tick(
@@ -234,9 +291,13 @@ def test_spin_preserves_translation_and_orientation_vector():
 
 # ---------- pulse ----------
 
+
 def test_pulse_on_sphere_modulates_radius():
     _, geom, paths, _ = compute_tick(
-        {"type": "sphere", "animation": {"mode": "pulse", "amplitude_mm": 20, "period_s": 4}},
+        {
+            "type": "sphere",
+            "animation": {"mode": "pulse", "amplitude_mm": 20, "period_s": 4},
+        },
         BASE_POSE,
         {"radius_mm": 50},
         t=1.0,  # T/4 -> sin = 1, max bulge
@@ -250,7 +311,10 @@ def test_pulse_clamps_radius_above_zero():
     drive the radius negative. The viewer would reject a negative
     radius, so we clamp."""
     _, geom, _, _ = compute_tick(
-        {"type": "sphere", "animation": {"mode": "pulse", "amplitude_mm": 100, "period_s": 4}},
+        {
+            "type": "sphere",
+            "animation": {"mode": "pulse", "amplitude_mm": 100, "period_s": 4},
+        },
         BASE_POSE,
         {"radius_mm": 50},
         t=3.0,  # 3T/4 -> sin = -1, max contraction; would be -50mm
@@ -260,7 +324,10 @@ def test_pulse_clamps_radius_above_zero():
 
 def test_pulse_on_capsule_modulates_both_radius_and_length():
     _, geom, paths, _ = compute_tick(
-        {"type": "capsule", "animation": {"mode": "pulse", "amplitude_mm": 30, "period_s": 4}},
+        {
+            "type": "capsule",
+            "animation": {"mode": "pulse", "amplitude_mm": 30, "period_s": 4},
+        },
         BASE_POSE,
         {"radius_mm": 50, "length_mm": 200},
         t=1.0,
@@ -275,7 +342,10 @@ def test_pulse_on_capsule_modulates_both_radius_and_length():
 
 def test_pulse_on_box_modulates_all_three_dims():
     _, geom, paths, _ = compute_tick(
-        {"type": "box", "animation": {"mode": "pulse", "amplitude_mm": 50, "period_s": 4}},
+        {
+            "type": "box",
+            "animation": {"mode": "pulse", "amplitude_mm": 50, "period_s": 4},
+        },
         BASE_POSE,
         {"dims_mm": {"x": 100, "y": 200, "z": 300}},
         t=1.0,
@@ -296,7 +366,10 @@ def test_pulse_on_unsupported_type_is_noop():
     silently corrupting the message."""
     for t in ("point", "mesh", "pointcloud"):
         _, geom, paths, _ = compute_tick(
-            {"type": t, "animation": {"mode": "pulse", "amplitude_mm": 25, "period_s": 4}},
+            {
+                "type": t,
+                "animation": {"mode": "pulse", "amplitude_mm": 25, "period_s": 4},
+            },
             BASE_POSE,
             {"radius_mm": 50},
             t=1.0,
@@ -308,11 +381,12 @@ def test_pulse_on_unsupported_type_is_noop():
 
 # ---------- trajectory ----------
 
+
 def _trajectory_waypoints():
     """Three-waypoint sample: position-only along Y axis, identity
     orientation throughout. Easy to reason about analytically."""
     return [
-        {"x": 0, "y":   0, "z": 0, "ox": 0, "oy": 0, "oz": 1, "theta": 0},
+        {"x": 0, "y": 0, "z": 0, "ox": 0, "oy": 0, "oz": 1, "theta": 0},
         {"x": 0, "y": 200, "z": 0, "ox": 0, "oy": 0, "oz": 1, "theta": 0},
         {"x": 0, "y": 400, "z": 0, "ox": 0, "oy": 0, "oz": 1, "theta": 0},
     ]
@@ -320,12 +394,15 @@ def _trajectory_waypoints():
 
 def test_trajectory_at_t_zero_is_at_first_waypoint():
     pose, _, paths, _ = compute_tick(
-        {"type": "sphere", "animation": {
-            "mode": "trajectory",
-            "waypoints": _trajectory_waypoints(),
-            "duration_s": 4.0,
-            "loop": True,
-        }},
+        {
+            "type": "sphere",
+            "animation": {
+                "mode": "trajectory",
+                "waypoints": _trajectory_waypoints(),
+                "duration_s": 4.0,
+                "loop": True,
+            },
+        },
         BASE_POSE,
         {"radius_mm": 50},
         t=0.0,
@@ -349,11 +426,14 @@ def test_trajectory_at_midway_through_first_segment():
     """duration=4, 2 segments → 2s per segment. At t=1.0 we should
     be halfway through segment 0: y between waypoints 0 and 1."""
     pose, _, _, _ = compute_tick(
-        {"type": "sphere", "animation": {
-            "mode": "trajectory",
-            "waypoints": _trajectory_waypoints(),
-            "duration_s": 4.0,
-        }},
+        {
+            "type": "sphere",
+            "animation": {
+                "mode": "trajectory",
+                "waypoints": _trajectory_waypoints(),
+                "duration_s": 4.0,
+            },
+        },
         BASE_POSE,
         {"radius_mm": 50},
         t=1.0,
@@ -365,11 +445,14 @@ def test_trajectory_at_end_of_first_segment_hits_waypoint_one():
     """At t=2.0 (= duration/2), we've finished segment 0 and just
     reached waypoint 1."""
     pose, _, _, _ = compute_tick(
-        {"type": "sphere", "animation": {
-            "mode": "trajectory",
-            "waypoints": _trajectory_waypoints(),
-            "duration_s": 4.0,
-        }},
+        {
+            "type": "sphere",
+            "animation": {
+                "mode": "trajectory",
+                "waypoints": _trajectory_waypoints(),
+                "duration_s": 4.0,
+            },
+        },
         BASE_POSE,
         {"radius_mm": 50},
         t=2.0,
@@ -380,12 +463,15 @@ def test_trajectory_at_end_of_first_segment_hits_waypoint_one():
 def test_trajectory_loops_back_to_start():
     """With loop=True, at t=duration we wrap back to waypoint 0."""
     pose, _, _, _ = compute_tick(
-        {"type": "sphere", "animation": {
-            "mode": "trajectory",
-            "waypoints": _trajectory_waypoints(),
-            "duration_s": 4.0,
-            "loop": True,
-        }},
+        {
+            "type": "sphere",
+            "animation": {
+                "mode": "trajectory",
+                "waypoints": _trajectory_waypoints(),
+                "duration_s": 4.0,
+                "loop": True,
+            },
+        },
         BASE_POSE,
         {"radius_mm": 50},
         t=4.0,  # == duration → wraps to t=0
@@ -396,12 +482,15 @@ def test_trajectory_loops_back_to_start():
 def test_trajectory_no_loop_pins_at_final_waypoint():
     """With loop=False, after duration the entity stays at waypoint N-1."""
     pose, _, _, _ = compute_tick(
-        {"type": "sphere", "animation": {
-            "mode": "trajectory",
-            "waypoints": _trajectory_waypoints(),
-            "duration_s": 4.0,
-            "loop": False,
-        }},
+        {
+            "type": "sphere",
+            "animation": {
+                "mode": "trajectory",
+                "waypoints": _trajectory_waypoints(),
+                "duration_s": 4.0,
+                "loop": False,
+            },
+        },
         BASE_POSE,
         {"radius_mm": 50},
         t=10.0,
@@ -414,13 +503,34 @@ def test_trajectory_interpolates_orientation_vector():
     through, the entity's orientation vector should be the lerp of
     the two, normalized."""
     wps = [
-        {"x": 0, "y": 0, "z": 0, "ox": 1, "oy": 0, "oz": 0, "theta": 0},  # local +Z along world +X
-        {"x": 0, "y": 0, "z": 0, "ox": 0, "oy": 0, "oz": 1, "theta": 0},  # local +Z along world +Z
+        {
+            "x": 0,
+            "y": 0,
+            "z": 0,
+            "ox": 1,
+            "oy": 0,
+            "oz": 0,
+            "theta": 0,
+        },  # local +Z along world +X
+        {
+            "x": 0,
+            "y": 0,
+            "z": 0,
+            "ox": 0,
+            "oy": 0,
+            "oz": 1,
+            "theta": 0,
+        },  # local +Z along world +Z
     ]
     pose, _, _, _ = compute_tick(
-        {"type": "sphere", "animation": {
-            "mode": "trajectory", "waypoints": wps, "duration_s": 2.0,
-        }},
+        {
+            "type": "sphere",
+            "animation": {
+                "mode": "trajectory",
+                "waypoints": wps,
+                "duration_s": 2.0,
+            },
+        },
         BASE_POSE,
         {"radius_mm": 50},
         t=1.0,
@@ -436,19 +546,23 @@ def test_trajectory_interpolates_orientation_vector():
 
 # ---------- force_vector ----------
 
+
 def test_force_vector_modulates_length_radius_orientation_and_emits_color():
     """All four attributes change simultaneously: length, radius,
     orientation vector, and color override. The mode is designed
     for the arrow primitive."""
     base_geom = {"length_mm": 200, "radius_mm": 10}
     pose, geom, paths, meta = compute_tick(
-        {"type": "arrow", "animation": {
-            "mode": "force_vector",
-            "period_s": 4.0,
-            "length_amplitude_mm": 60,
-            "radius_amplitude_mm": 4,
-            "tilt_deg": 45,
-        }},
+        {
+            "type": "arrow",
+            "animation": {
+                "mode": "force_vector",
+                "period_s": 4.0,
+                "length_amplitude_mm": 60,
+                "radius_amplitude_mm": 4,
+                "tilt_deg": 45,
+            },
+        },
         BASE_POSE,
         base_geom,
         t=1.0,  # T/4 → sin = 1 → max length
@@ -480,9 +594,13 @@ def test_force_vector_modulates_length_radius_orientation_and_emits_color():
 def test_force_vector_color_cycles_through_hue():
     """At t=0 hue=0 (red), at t=period_s hue wraps to 0 again. At
     t=period_s/3 hue=1/3 (green-ish)."""
-    item = {"type": "arrow", "animation": {
-        "mode": "force_vector", "period_s": 6.0,
-    }}
+    item = {
+        "type": "arrow",
+        "animation": {
+            "mode": "force_vector",
+            "period_s": 6.0,
+        },
+    }
     base_geom = {"length_mm": 200, "radius_mm": 10}
     # t=0 → hue 0 → red dominant.
     _, _, _, meta0 = compute_tick(item, BASE_POSE, base_geom, t=0.0)
@@ -497,9 +615,14 @@ def test_force_vector_color_cycles_through_hue():
 def test_force_vector_orientation_traces_a_cone():
     """At any t, the orientation vector should be a unit vector with
     |oz| = cos(tilt). The tip path is a circle at altitude cos(tilt)."""
-    item = {"type": "arrow", "animation": {
-        "mode": "force_vector", "period_s": 4.0, "tilt_deg": 30,
-    }}
+    item = {
+        "type": "arrow",
+        "animation": {
+            "mode": "force_vector",
+            "period_s": 4.0,
+            "tilt_deg": 30,
+        },
+    }
     base_geom = {"length_mm": 200, "radius_mm": 10}
     expected_oz = math.cos(math.radians(30))
     for t in (0.0, 0.5, 1.0, 2.5, 3.7):
@@ -511,15 +634,21 @@ def test_force_vector_orientation_traces_a_cone():
 
 # ---------- pulse with axis param (box single-dim stretching) ----------
 
+
 def test_pulse_box_axis_z_modulates_only_z_dim():
     """With axis='z', only dimsMm.z changes — the box stretches
     along Z while X and Y stay fixed. Use this for "length grows
     over time" without making the box bloat in all directions."""
     _, geom, paths, _ = compute_tick(
-        {"type": "box", "animation": {
-            "mode": "pulse", "axis": "z",
-            "amplitude_mm": 100, "period_s": 4,
-        }},
+        {
+            "type": "box",
+            "animation": {
+                "mode": "pulse",
+                "axis": "z",
+                "amplitude_mm": 100,
+                "period_s": 4,
+            },
+        },
         BASE_POSE,
         {"dims_mm": {"x": 100, "y": 100, "z": 100}},
         t=1.0,  # T/4 → max excursion
@@ -536,9 +665,14 @@ def test_pulse_box_default_axis_all_keeps_isotropic_behavior():
     on a box modulates all three dims simultaneously — the prior
     behavior."""
     _, geom, _, _ = compute_tick(
-        {"type": "box", "animation": {
-            "mode": "pulse", "amplitude_mm": 50, "period_s": 4,
-        }},
+        {
+            "type": "box",
+            "animation": {
+                "mode": "pulse",
+                "amplitude_mm": 50,
+                "period_s": 4,
+            },
+        },
         BASE_POSE,
         {"dims_mm": {"x": 100, "y": 100, "z": 100}},
         t=1.0,
@@ -550,12 +684,19 @@ def test_pulse_box_default_axis_all_keeps_isotropic_behavior():
 
 # ---------- breathe ----------
 
+
 def test_breathe_oscillates_opacity_around_base():
     """Opacity = base + amplitude · sin(2π t / period). At t=T/4
     we hit the max excursion; clamped to [0, 1]."""
-    item = {"type": "capsule", "opacity": 0.7, "animation": {
-        "mode": "breathe", "amplitude": 0.3, "period_s": 4,
-    }}
+    item = {
+        "type": "capsule",
+        "opacity": 0.7,
+        "animation": {
+            "mode": "breathe",
+            "amplitude": 0.3,
+            "period_s": 4,
+        },
+    }
     base_geom = {"radius_mm": 50, "length_mm": 200}
     _, _, paths, meta = compute_tick(item, BASE_POSE, base_geom, t=1.0)
     assert meta is not None
@@ -566,9 +707,15 @@ def test_breathe_oscillates_opacity_around_base():
 def test_breathe_clamps_opacity_below_zero():
     """At t=3T/4, sin = -1, so opacity = base - amplitude. Clamp
     keeps it ≥ 0."""
-    item = {"type": "capsule", "opacity": 0.2, "animation": {
-        "mode": "breathe", "amplitude": 0.4, "period_s": 4,
-    }}
+    item = {
+        "type": "capsule",
+        "opacity": 0.2,
+        "animation": {
+            "mode": "breathe",
+            "amplitude": 0.4,
+            "period_s": 4,
+        },
+    }
     base_geom = {"radius_mm": 50, "length_mm": 200}
     _, _, _, meta = compute_tick(item, BASE_POSE, base_geom, t=3.0)
     # 0.2 - 0.4 = -0.2 → clamp to 0.
@@ -577,14 +724,20 @@ def test_breathe_clamps_opacity_below_zero():
 
 # ---------- flicker ----------
 
+
 def test_flicker_signals_scene_membership_not_opacity():
     """Flicker emits ``_in_scene`` so the service can fire real
     REMOVED/ADDED events. We pin the schema here so a regression
     back to opacity-only (where the entity stayed in the scene but
     just went transparent) fails CI."""
-    item = {"type": "sphere", "animation": {
-        "mode": "flicker", "period_s": 4.0, "duty_cycle": 0.5,
-    }}
+    item = {
+        "type": "sphere",
+        "animation": {
+            "mode": "flicker",
+            "period_s": 4.0,
+            "duty_cycle": 0.5,
+        },
+    }
     base_geom = {"radius_mm": 30}
     # t=0: phase=0 < 0.5 → in scene.
     _, _, paths_on, meta_on = compute_tick(item, BASE_POSE, base_geom, t=0.0)
@@ -603,12 +756,21 @@ def test_flicker_phase_offset_shifts_the_cycle():
     """phase_offset_s lets a row of items with the same period
     flicker out-of-phase, producing a wave of removals/insertions."""
     base_geom = {"radius_mm": 30}
-    item_a = {"type": "sphere", "animation": {
-        "mode": "flicker", "period_s": 4.0,
-    }}
-    item_b = {"type": "sphere", "animation": {
-        "mode": "flicker", "period_s": 4.0, "phase_offset_s": 2.0,
-    }}
+    item_a = {
+        "type": "sphere",
+        "animation": {
+            "mode": "flicker",
+            "period_s": 4.0,
+        },
+    }
+    item_b = {
+        "type": "sphere",
+        "animation": {
+            "mode": "flicker",
+            "period_s": 4.0,
+            "phase_offset_s": 2.0,
+        },
+    }
     # At t=0: A is in-scene (phase 0), B is out (phase 0.5).
     _, _, _, meta_a = compute_tick(item_a, BASE_POSE, base_geom, t=0.0)
     _, _, _, meta_b = compute_tick(item_b, BASE_POSE, base_geom, t=0.0)
@@ -617,6 +779,7 @@ def test_flicker_phase_offset_shifts_the_cycle():
 
 
 # ---------- lifecycle ----------
+
 
 def test_lifecycle_phases_emit_convention_colors_and_opacity():
     """Pin each phase of the lifecycle convention to its (color,
@@ -629,11 +792,17 @@ def test_lifecycle_phases_emit_convention_colors_and_opacity():
         LIFECYCLE_OPACITY_APPEARING,
         LIFECYCLE_OPACITY_DISAPPEARING,
     )
-    item = {"type": "box", "animation": {
-        "mode": "lifecycle",
-        "appear_s": 1.0, "alive_s": 2.0,
-        "disappear_s": 1.0, "gone_s": 2.0,
-    }}
+
+    item = {
+        "type": "box",
+        "animation": {
+            "mode": "lifecycle",
+            "appear_s": 1.0,
+            "alive_s": 2.0,
+            "disappear_s": 1.0,
+            "gone_s": 2.0,
+        },
+    }
     base_geom = {"dims_mm": {"x": 100, "y": 100, "z": 100}}
     # t=0.5 → appearing.
     _, _, _, meta = compute_tick(item, BASE_POSE, base_geom, t=0.5)
@@ -654,11 +823,16 @@ def test_lifecycle_phases_emit_convention_colors_and_opacity():
 
 
 def test_lifecycle_loops_back_to_appearing_after_full_period():
-    item = {"type": "box", "animation": {
-        "mode": "lifecycle",
-        "appear_s": 1.0, "alive_s": 1.0,
-        "disappear_s": 1.0, "gone_s": 1.0,
-    }}
+    item = {
+        "type": "box",
+        "animation": {
+            "mode": "lifecycle",
+            "appear_s": 1.0,
+            "alive_s": 1.0,
+            "disappear_s": 1.0,
+            "gone_s": 1.0,
+        },
+    }
     base_geom = {"dims_mm": {"x": 100, "y": 100, "z": 100}}
     _, _, _, meta0 = compute_tick(item, BASE_POSE, base_geom, t=0.5)
     # Full period = 4s, t=4.5 should be equivalent to t=0.5 (appearing).
@@ -671,25 +845,39 @@ def test_lifecycle_phase_offset_shifts_starting_phase():
     phase_offset_s land in different phases at the same wall-clock
     time. This is what the demo preset uses to stagger 5 boxes
     through all four phases simultaneously."""
-    common = {"appear_s": 1.0, "alive_s": 2.0,
-              "disappear_s": 1.0, "gone_s": 2.0}
+    common = {"appear_s": 1.0, "alive_s": 2.0, "disappear_s": 1.0, "gone_s": 2.0}
     item_a = {"type": "box", "animation": dict(mode="lifecycle", **common)}
-    item_b = {"type": "box", "animation": dict(
-        mode="lifecycle", phase_offset_s=2.0, **common,
-    )}
+    item_b = {
+        "type": "box",
+        "animation": dict(
+            mode="lifecycle",
+            phase_offset_s=2.0,
+            **common,
+        ),
+    }
     base_geom = {"dims_mm": {"x": 100, "y": 100, "z": 100}}
     _, _, _, meta_a = compute_tick(item_a, BASE_POSE, base_geom, t=0.5)
     _, _, _, meta_b = compute_tick(item_b, BASE_POSE, base_geom, t=0.5)
     # A is at 0.5s → appearing. B is at 2.5s → alive (past appear=1+0.5*alive).
     from src.animation import LIFECYCLE_COLOR_APPEARING, LIFECYCLE_COLOR_ALIVE
+
     assert meta_a["color"] == LIFECYCLE_COLOR_APPEARING
     assert meta_b["color"] == LIFECYCLE_COLOR_ALIVE
 
 
 def test_supported_modes_constant():
     assert set(SUPPORTED_MODES) == {
-        "none", "orbit", "oscillate", "spin", "swing", "pulse", "trajectory",
-        "force_vector", "breathe", "flicker", "lifecycle",
+        "none",
+        "orbit",
+        "oscillate",
+        "spin",
+        "swing",
+        "pulse",
+        "trajectory",
+        "force_vector",
+        "breathe",
+        "flicker",
+        "lifecycle",
     }
 
 

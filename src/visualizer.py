@@ -29,6 +29,7 @@ See README.md's "Driver + visualizer quickstart" section for the
 user-facing how-to, and CLAUDE.md's "Three-model split" for the
 architectural rationale.
 """
+
 from __future__ import annotations
 
 from typing import List, Mapping, Sequence, Tuple
@@ -55,7 +56,8 @@ class PlaygroundVisualizer(SceneSprites, EasyResource):
 
     @classmethod
     def validate_config(
-        cls, config: ComponentConfig,
+        cls,
+        config: ComponentConfig,
     ) -> Tuple[Sequence[str], Sequence[str]]:
         """Visualizer rejects ``items`` and ``preset`` — those belong
         on the driver side. Accepts the same ``tick_hz``,

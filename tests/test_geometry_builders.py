@@ -1,4 +1,5 @@
 """Unit tests for src/geometries.py — the pure proto builders."""
+
 from pathlib import Path
 
 import pytest
@@ -79,10 +80,12 @@ def test_build_metadata_opacity_packs_as_base64_alpha_byte():
 
 
 def test_build_metadata_opacity_endpoints():
-    assert struct_to_dict(build_metadata(opacity=0.0))["opacities"] == \
-        _b64.b64encode(bytes([0])).decode("ascii")
-    assert struct_to_dict(build_metadata(opacity=1.0))["opacities"] == \
-        _b64.b64encode(bytes([255])).decode("ascii")
+    assert struct_to_dict(build_metadata(opacity=0.0))["opacities"] == _b64.b64encode(
+        bytes([0])
+    ).decode("ascii")
+    assert struct_to_dict(build_metadata(opacity=1.0))["opacities"] == _b64.b64encode(
+        bytes([255])
+    ).decode("ascii")
 
 
 def test_build_metadata_color_and_opacity_together():
@@ -165,6 +168,7 @@ def test_build_metadata_color_missing_channels_default_to_zero():
 
 # ---------- build_pose ----------
 
+
 def test_build_pose_default_is_identity():
     p = build_pose({})
     assert (p.x, p.y, p.z) == (0.0, 0.0, 0.0)
@@ -173,7 +177,9 @@ def test_build_pose_default_is_identity():
 
 
 def test_build_pose_reads_xyz_and_orientation():
-    p = build_pose({"x": 100, "y": -50, "z": 25, "ox": 0, "oy": 1, "oz": 0, "theta": 90})
+    p = build_pose(
+        {"x": 100, "y": -50, "z": 25, "ox": 0, "oy": 1, "oz": 0, "theta": 90}
+    )
     assert (p.x, p.y, p.z) == (100.0, -50.0, 25.0)
     assert (p.o_x, p.o_y, p.o_z, p.theta) == (0.0, 1.0, 0.0, 90.0)
 
@@ -187,6 +193,7 @@ def test_build_pose_handles_partial_orientation_without_clobbering_intent():
 
 # ---------- build_box ----------
 
+
 def test_build_box_carries_dims_and_label():
     g = build_box({"x": 100, "y": 200, "z": 50}, label="my_box")
     assert g.label == "my_box"
@@ -197,6 +204,7 @@ def test_build_box_carries_dims_and_label():
 
 # ---------- build_sphere ----------
 
+
 def test_build_sphere_carries_radius_and_label():
     g = build_sphere(75.0, label="ball")
     assert g.label == "ball"
@@ -204,6 +212,7 @@ def test_build_sphere_carries_radius_and_label():
 
 
 # ---------- build_capsule ----------
+
 
 def test_build_capsule_carries_radius_length_and_label():
     g = build_capsule(40.0, 200.0, label="pill")
@@ -214,11 +223,13 @@ def test_build_capsule_carries_radius_length_and_label():
 
 # ---------- build_point ----------
 
+
 def test_build_point_emits_visible_marker_not_zero_radius():
     """RDK convention says a point is a radius-0 sphere, but the viewer
     skips zero-radius geometries — leaving the user with nothing to
     see. We use a small but visible marker radius instead."""
     from src.geometries import POINT_MARKER_RADIUS_MM
+
     g = build_point(label="dot")
     assert g.label == "dot"
     assert g.sphere.radius_mm == POINT_MARKER_RADIUS_MM
@@ -229,10 +240,12 @@ def test_point_marker_is_small_enough_to_read_as_a_point():
     """The marker should be visible but small enough that it reads as
     a point rather than a sphere. Pin a sensible upper bound."""
     from src.geometries import POINT_MARKER_RADIUS_MM
+
     assert 1.0 <= POINT_MARKER_RADIUS_MM <= 20.0
 
 
 # ---------- build_arrow ----------
+
 
 def test_build_arrow_emits_a_ply_mesh():
     """The arrow primitive is procedural mesh — caller doesn't need to
@@ -284,6 +297,7 @@ def test_arrow_ply_bytes_points_along_local_plus_z():
 
 # ---------- build_mesh ----------
 
+
 def test_build_mesh_embeds_bytes_and_requires_ply():
     """The viewer only renders PLY. STL must be converted via
     stl_to_ply before reaching build_mesh."""
@@ -302,25 +316,29 @@ def test_build_mesh_rejects_non_ply_content_type():
 
 # ---------- stl_to_ply ----------
 
+
 def _build_minimal_stl_bytes(triangles):
     """Build a binary STL containing the given list of triangles, each
     a 3-tuple of (x,y,z) tuples. Header 80 bytes, count uint32, then
     per-tri: 12 zero bytes (normal) + 36 bytes (3 vertices) + 2 bytes."""
     import struct as _s
+
     buf = bytearray(80)
     buf += _s.pack("<I", len(triangles))
     for tri in triangles:
         buf += _s.pack("<fff", 0.0, 0.0, 0.0)  # normal
-        for (x, y, z) in tri:
+        for x, y, z in tri:
             buf += _s.pack("<fff", x, y, z)
         buf += _s.pack("<H", 0)  # attribute
     return bytes(buf)
 
 
 def test_stl_to_ply_one_triangle_roundtrip():
-    stl = _build_minimal_stl_bytes([
-        ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
-    ])
+    stl = _build_minimal_stl_bytes(
+        [
+            ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
+        ]
+    )
     ply = stl_to_ply(stl).decode("ascii")
     assert ply.startswith("ply\n")
     assert "format ascii 1.0" in ply
@@ -354,12 +372,14 @@ def test_stl_to_ply_rejects_short_input():
 def test_stl_to_ply_rejects_truncated_input():
     """Header claims 5 triangles but only one is present."""
     import struct as _s
+
     buf = bytearray(80) + _s.pack("<I", 5) + b"\x00" * 50  # only 1 tri
     with pytest.raises(ValueError, match="truncated"):
         stl_to_ply(bytes(buf))
 
 
 # ---------- load_mesh_bytes_as_ply ----------
+
 
 def test_load_mesh_bytes_as_ply_passes_ply_through():
     ply_in = b"ply\nformat ascii 1.0\nend_header\n"
@@ -368,14 +388,17 @@ def test_load_mesh_bytes_as_ply_passes_ply_through():
 
 
 def test_load_mesh_bytes_as_ply_converts_stl():
-    stl = _build_minimal_stl_bytes([
-        ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
-    ])
+    stl = _build_minimal_stl_bytes(
+        [
+            ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
+        ]
+    )
     out = load_mesh_bytes_as_ply(stl, "asset.stl")
     assert out.startswith(b"ply\n")
 
 
 # ---------- extract_ply_vertex_colors ----------
+
 
 def test_extract_ply_vertex_colors_on_uncolored_ply():
     """An ASCII PLY without color properties returns None — no
@@ -408,7 +431,9 @@ def test_extract_ply_vertex_colors_on_colored_ply():
         b"0.0 0.1 0.0 0 0 255\n"
     )
     assert extract_ply_vertex_colors(colored) == [
-        (255, 0, 0), (0, 255, 0), (0, 0, 255),
+        (255, 0, 0),
+        (0, 255, 0),
+        (0, 0, 255),
     ]
 
 
@@ -434,6 +459,7 @@ def test_extract_ply_vertex_colors_on_actual_colorful_sphere():
     """End-to-end: the shipped colorful_sphere.ply asset has
     per-vertex colors. The extractor should pick them up."""
     from pathlib import Path
+
     path = Path(__file__).resolve().parent.parent / "assets" / "colorful_sphere.ply"
     if not path.exists():
         pytest.skip("colorful_sphere.ply not generated; run `make assets`")
@@ -448,6 +474,7 @@ def test_extract_ply_vertex_colors_on_actual_colorful_sphere():
 
 # ---------- build_pointcloud ----------
 
+
 def test_build_pointcloud_embeds_bytes():
     g = build_pointcloud(b"PCDDATA", label="cloud")
     assert g.label == "cloud"
@@ -455,6 +482,7 @@ def test_build_pointcloud_embeds_bytes():
 
 
 # ---------- read_asset ----------
+
 
 def test_read_asset_resolves_relative_to_module_dir(tmp_path):
     asset = tmp_path / "thing.bin"
@@ -478,23 +506,30 @@ def test_read_asset_raises_when_missing(tmp_path):
 
 # ---------- infer_mesh_content_type ----------
 
-@pytest.mark.parametrize("path,expected", [
-    ("bunny.ply", "ply"),
-    ("cube.stl", "stl"),
-    ("/abs/path/foo.PLY", "ply"),
-    ("/abs/path/foo.Stl", "stl"),
-])
+
+@pytest.mark.parametrize(
+    "path,expected",
+    [
+        ("bunny.ply", "ply"),
+        ("cube.stl", "stl"),
+        ("/abs/path/foo.PLY", "ply"),
+        ("/abs/path/foo.Stl", "stl"),
+    ],
+)
 def test_infer_mesh_content_type_accepts_known_extensions(path, expected):
     assert infer_mesh_content_type(path) == expected
 
 
-@pytest.mark.parametrize("path", [
-    "model.gltf",
-    "model.glb",
-    "model.obj",
-    "model.fbx",
-    "model",  # no extension
-])
+@pytest.mark.parametrize(
+    "path",
+    [
+        "model.gltf",
+        "model.glb",
+        "model.obj",
+        "model.fbx",
+        "model",  # no extension
+    ],
+)
 def test_infer_mesh_content_type_rejects_unknown(path):
     with pytest.raises(ValueError, match="not supported"):
         infer_mesh_content_type(path)
@@ -502,9 +537,16 @@ def test_infer_mesh_content_type_rejects_unknown(path):
 
 # ---------- module surface sanity ----------
 
+
 def test_supported_types_constant_covers_all_builders():
     assert set(SUPPORTED_TYPES) == {
-        "box", "sphere", "capsule", "point", "arrow", "mesh", "pointcloud",
+        "box",
+        "sphere",
+        "capsule",
+        "point",
+        "arrow",
+        "mesh",
+        "pointcloud",
     }
 
 
@@ -518,12 +560,14 @@ def test_supported_mesh_content_types_is_lowercase():
 
 # ---------- chunked PCD helpers ----------
 
+
 def _fake_pcd(n_points: int) -> bytes:
     """Build a minimal but valid binary PCD blob with `n_points`
     points, matching the FFFI / 16-byte-stride format the helix asset
     uses. Used by chunked-delivery tests so they don't depend on the
     real asset's exact point count."""
     import struct
+
     header = (
         "VERSION .7\n"
         "FIELDS x y z rgb\n"
@@ -537,8 +581,7 @@ def _fake_pcd(n_points: int) -> bytes:
         "DATA binary\n"
     ).encode("ascii")
     body = b"".join(
-        struct.pack("<fffI", float(i), 0.0, 0.0, i)
-        for i in range(n_points)
+        struct.pack("<fffI", float(i), 0.0, 0.0, i) for i in range(n_points)
     )
     return header + body
 
@@ -590,6 +633,7 @@ def test_build_pcd_chunk_out_of_range_raises():
 
 
 # ---------- build_metadata with chunks ----------
+
 
 def test_build_metadata_with_chunks_adds_chunks_substruct():
     md = build_metadata(

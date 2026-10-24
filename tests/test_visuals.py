@@ -21,6 +21,7 @@ from viam_visuals import (
 
 # ---------- Pose ---------------------------------------------------------
 
+
 def test_pose_identity_is_default():
     p = Pose.identity()
     assert p.x == 0 and p.y == 0 and p.z == 0
@@ -31,8 +32,7 @@ def test_pose_identity_is_default():
 def test_pose_at_sets_position():
     p = Pose.at(x=100, y=-50, z=25)
     d = p.to_dict()
-    assert d == {"x": 100, "y": -50, "z": 25,
-                 "ox": 0, "oy": 0, "oz": 1.0, "theta": 0}
+    assert d == {"x": 100, "y": -50, "z": 25, "ox": 0, "oy": 0, "oz": 1.0, "theta": 0}
 
 
 def test_pose_dataclass_full_constructor():
@@ -44,15 +44,28 @@ def test_pose_dataclass_full_constructor():
 
 # ---------- Box ----------------------------------------------------------
 
+
 def test_box_dict_matches_hand_written_shape():
-    b = Box("demo_box", pose=Pose.at(x=-1600),
-            dims_mm=(150, 150, 150), color=(230, 25, 75), opacity=1.0)
+    b = Box(
+        "demo_box",
+        pose=Pose.at(x=-1600),
+        dims_mm=(150, 150, 150),
+        color=(230, 25, 75),
+        opacity=1.0,
+    )
     d = b.to_dict()
     # Field-by-field — order doesn't matter for dict equality.
     assert d["type"] == "box"
     assert d["label"] == "demo_box"
-    assert d["pose"] == {"x": -1600, "y": 0, "z": 0,
-                         "ox": 0, "oy": 0, "oz": 1.0, "theta": 0}
+    assert d["pose"] == {
+        "x": -1600,
+        "y": 0,
+        "z": 0,
+        "ox": 0,
+        "oy": 0,
+        "oz": 1.0,
+        "theta": 0,
+    }
     assert d["dims_mm"] == {"x": 150.0, "y": 150.0, "z": 150.0}
     assert d["color"] == {"r": 230, "g": 25, "b": 75}
     assert d["opacity"] == 1.0
@@ -73,6 +86,7 @@ def test_box_rejects_wrong_dims_arity():
 
 # ---------- Sphere -------------------------------------------------------
 
+
 def test_sphere_dict_matches():
     s = Sphere("demo_sphere", radius_mm=90, color=(60, 180, 75), opacity=1.0)
     d = s.to_dict()
@@ -88,9 +102,11 @@ def test_sphere_rejects_non_positive_radius():
 
 # ---------- Capsule ------------------------------------------------------
 
+
 def test_capsule_dict_matches():
-    c = Capsule("demo_capsule", radius_mm=50, length_mm=200,
-                color=(0, 130, 200), opacity=1.0)
+    c = Capsule(
+        "demo_capsule", radius_mm=50, length_mm=200, color=(0, 130, 200), opacity=1.0
+    )
     d = c.to_dict()
     assert d["type"] == "capsule"
     assert d["radius_mm"] == 50.0
@@ -106,6 +122,7 @@ def test_capsule_rejects_non_positive_dims():
 
 # ---------- Point --------------------------------------------------------
 
+
 def test_point_dict_has_no_shape_fields():
     p = Point("demo_point", color=(255, 225, 25), opacity=1.0)
     d = p.to_dict()
@@ -116,9 +133,11 @@ def test_point_dict_has_no_shape_fields():
 
 # ---------- Arrow --------------------------------------------------------
 
+
 def test_arrow_dict_matches():
-    a = Arrow("demo_arrow", length_mm=220, radius_mm=12,
-              color=(145, 30, 180), opacity=1.0)
+    a = Arrow(
+        "demo_arrow", length_mm=220, radius_mm=12, color=(145, 30, 180), opacity=1.0
+    )
     d = a.to_dict()
     assert d["type"] == "arrow"
     assert d["length_mm"] == 220.0
@@ -134,9 +153,11 @@ def test_arrow_rejects_non_positive_dims():
 
 # ---------- Mesh ---------------------------------------------------------
 
+
 def test_mesh_basic():
-    m = Mesh("demo_bunny", mesh_path="assets/bunny.stl",
-             color=(245, 130, 49), opacity=1.0)
+    m = Mesh(
+        "demo_bunny", mesh_path="assets/bunny.stl", color=(245, 130, 49), opacity=1.0
+    )
     d = m.to_dict()
     assert d["type"] == "mesh"
     assert d["mesh_path"] == "assets/bunny.stl"
@@ -144,8 +165,13 @@ def test_mesh_basic():
 
 
 def test_mesh_raw_stl_flag_propagates():
-    m = Mesh("demo_bunny_raw_stl", mesh_path="assets/bunny.stl",
-            raw_stl=True, color=(245, 130, 49), opacity=1.0)
+    m = Mesh(
+        "demo_bunny_raw_stl",
+        mesh_path="assets/bunny.stl",
+        raw_stl=True,
+        color=(245, 130, 49),
+        opacity=1.0,
+    )
     d = m.to_dict()
     assert d["raw_stl"] is True
 
@@ -157,9 +183,9 @@ def test_mesh_requires_path():
 
 # ---------- PointCloud ---------------------------------------------------
 
+
 def test_pointcloud_basic():
-    pc = PointCloud("demo_pointcloud", pointcloud_path="assets/helix.pcd",
-                    opacity=1.0)
+    pc = PointCloud("demo_pointcloud", pointcloud_path="assets/helix.pcd", opacity=1.0)
     d = pc.to_dict()
     assert d["type"] == "pointcloud"
     assert d["pointcloud_path"] == "assets/helix.pcd"
@@ -169,8 +195,13 @@ def test_pointcloud_basic():
 
 
 def test_pointcloud_chunked_flags_propagate():
-    pc = PointCloud("demo_chunked", pointcloud_path="assets/helix.pcd",
-                    chunked=True, chunk_size=2000, opacity=1.0)
+    pc = PointCloud(
+        "demo_chunked",
+        pointcloud_path="assets/helix.pcd",
+        chunked=True,
+        chunk_size=2000,
+        opacity=1.0,
+    )
     d = pc.to_dict()
     assert d["chunked"] is True
     assert d["chunk_size"] == 2000
@@ -182,6 +213,7 @@ def test_pointcloud_rejects_bad_chunk_size():
 
 
 # ---------- Cross-cutting -------------------------------------------------
+
 
 def test_opacity_out_of_range_rejected():
     b = Box("x", dims_mm=(1, 1, 1), opacity=1.5)
@@ -196,8 +228,7 @@ def test_color_tuple_or_dict_both_accepted():
 
 
 def test_animation_passthrough_when_set():
-    s = Sphere("x", radius_mm=10,
-               animation={"mode": "spin", "rpm": 15})
+    s = Sphere("x", radius_mm=10, animation={"mode": "spin", "rpm": 15})
     d = s.to_dict()
     assert d["animation"] == {"mode": "spin", "rpm": 15}
 
@@ -234,12 +265,20 @@ def test_label_required():
 
 # ---------- Pose accepts dict for back-compat ---------------------------
 
+
 def test_pose_as_dict_accepted():
     s = Sphere("x", radius_mm=10, pose={"x": 100, "y": 50})
     d = s.to_dict()
     # Missing keys fill from identity.
-    assert d["pose"] == {"x": 100.0, "y": 50.0, "z": 0.0,
-                         "ox": 0.0, "oy": 0.0, "oz": 1.0, "theta": 0.0}
+    assert d["pose"] == {
+        "x": 100.0,
+        "y": 50.0,
+        "z": 0.0,
+        "ox": 0.0,
+        "oy": 0.0,
+        "oz": 1.0,
+        "theta": 0.0,
+    }
 
 
 # ---------- Animation classes -------------------------------------------
@@ -269,7 +308,9 @@ def test_spin_emits_period():
 
 def test_swing_emits_amplitude_and_period():
     assert Swing(amplitude_deg=75, period_s=8).to_dict() == {
-        "mode": "swing", "amplitude_deg": 75.0, "period_s": 8.0,
+        "mode": "swing",
+        "amplitude_deg": 75.0,
+        "period_s": 8.0,
     }
 
 
@@ -285,8 +326,12 @@ def test_oscillate_rejects_bad_axis():
 
 def test_oscillate_round_trip():
     d = Oscillate(axis="x", amplitude_mm=-10.0, period_s=3).to_dict()
-    assert d == {"mode": "oscillate", "axis": "x",
-                 "amplitude_mm": -10.0, "period_s": 3.0}
+    assert d == {
+        "mode": "oscillate",
+        "axis": "x",
+        "amplitude_mm": -10.0,
+        "period_s": 3.0,
+    }
 
 
 def test_orbit_round_trip():
@@ -301,8 +346,7 @@ def test_pulse_no_axis():
 
 def test_pulse_with_axis():
     d = Pulse(amplitude_mm=100, period_s=4, axis="z").to_dict()
-    assert d == {"mode": "pulse", "amplitude_mm": 100.0,
-                 "period_s": 4.0, "axis": "z"}
+    assert d == {"mode": "pulse", "amplitude_mm": 100.0, "period_s": 4.0, "axis": "z"}
 
 
 def test_breathe_round_trip():
@@ -315,8 +359,12 @@ def test_flicker_default_keeps_uuid_rotation_on():
     # rotate_uuid_on_readd default True → omitted (compact dict).
     # phase_offset_s is always emitted because preset tests read it
     # unconditionally.
-    assert d == {"mode": "flicker", "period_s": 4.0,
-                 "duty_cycle": 0.55, "phase_offset_s": 0.0}
+    assert d == {
+        "mode": "flicker",
+        "period_s": 4.0,
+        "duty_cycle": 0.55,
+        "phase_offset_s": 0.0,
+    }
 
 
 def test_flicker_rotate_false_propagates():
@@ -325,16 +373,28 @@ def test_flicker_rotate_false_propagates():
 
 
 def test_lifecycle_round_trip():
-    d = Lifecycle(appear_s=1.0, alive_s=2.0, disappear_s=1.0,
-                  gone_s=2.0, phase_offset_s=1.5).to_dict()
-    assert d == {"mode": "lifecycle", "appear_s": 1.0, "alive_s": 2.0,
-                 "disappear_s": 1.0, "gone_s": 2.0, "phase_offset_s": 1.5}
+    d = Lifecycle(
+        appear_s=1.0, alive_s=2.0, disappear_s=1.0, gone_s=2.0, phase_offset_s=1.5
+    ).to_dict()
+    assert d == {
+        "mode": "lifecycle",
+        "appear_s": 1.0,
+        "alive_s": 2.0,
+        "disappear_s": 1.0,
+        "gone_s": 2.0,
+        "phase_offset_s": 1.5,
+    }
 
 
 def test_force_vector_round_trip():
-    d = ForceVector(period_s=5.0, length_amplitude_mm=80,
-                    radius_amplitude_mm=5, tilt_deg=45,
-                    precession_speed=1.0, color_speed=0.7).to_dict()
+    d = ForceVector(
+        period_s=5.0,
+        length_amplitude_mm=80,
+        radius_amplitude_mm=5,
+        tilt_deg=45,
+        precession_speed=1.0,
+        color_speed=0.7,
+    ).to_dict()
     assert d["mode"] == "force_vector"
     assert d["tilt_deg"] == 45.0
 
@@ -447,8 +507,9 @@ def test_bounding_box_wireframe_returns_12_capsules():
 
 
 def test_arrow_from_to_computes_length_and_orientation():
-    a = Arrow.from_to("force", Pose.at(x=0, y=0, z=0),
-                      Pose.at(x=3, y=4, z=0), radius_mm=5)
+    a = Arrow.from_to(
+        "force", Pose.at(x=0, y=0, z=0), Pose.at(x=3, y=4, z=0), radius_mm=5
+    )
     # Length = 5, orientation = (3/5, 4/5, 0).
     assert a.length_mm == 5.0
     d = a.to_dict()

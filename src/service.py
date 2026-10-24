@@ -22,6 +22,7 @@ default :meth:`SceneServiceBase.scene_tick` calls each Visual's
 hook is kept only for the items-config code path (where items
 arrive as wire-format dicts that don't carry typed Animation specs).
 """
+
 from pathlib import Path
 from typing import Any, List, Mapping, Optional, Sequence, Tuple
 
@@ -48,12 +49,14 @@ MODULE_DIR = Path(__file__).resolve().parent.parent
 ATTR_PRESET = "preset"
 ATTR_ITEMS = "items"
 
+
 class SceneSprites(SceneServiceBase, EasyResource):
     """Playground WorldStateStore — publishes every supported geometry
     primitive to the Viam 3D scene viewer."""
 
     MODEL = Model(
-        ModelFamily("viam", "example-visualizations-python"), "standalone-playground",
+        ModelFamily("viam", "example-visualizations-python"),
+        "standalone-playground",
     )
     DEFAULT_PRESET = "all"
 
@@ -146,7 +149,8 @@ class SceneSprites(SceneServiceBase, EasyResource):
             items = [dict(it) for it in raw_items]
             self.reconfigure_with(
                 items,
-                tick_hz=tick_hz, uuid_strategy=uuid_strategy,
+                tick_hz=tick_hz,
+                uuid_strategy=uuid_strategy,
                 parent_frame=parent_frame,
             )
             return
@@ -161,14 +165,16 @@ class SceneSprites(SceneServiceBase, EasyResource):
         preset_name = attrs.get(ATTR_PRESET, self.DEFAULT_PRESET)
         if preset_name is None or str(preset_name) == "":
             self.set_scene(
-                tick_hz=tick_hz, uuid_strategy=uuid_strategy,
+                tick_hz=tick_hz,
+                uuid_strategy=uuid_strategy,
                 parent_frame=parent_frame,
             )
             return
         visuals = list(presets_mod.load(str(preset_name)))
         self.set_scene(
             *visuals,
-            tick_hz=tick_hz, uuid_strategy=uuid_strategy,
+            tick_hz=tick_hz,
+            uuid_strategy=uuid_strategy,
             parent_frame=parent_frame,
         )
 
@@ -248,14 +254,10 @@ class SceneSprites(SceneServiceBase, EasyResource):
                         target = s
                         break
             if target is None:
-                raise Exception(
-                    "get_entity_chunk requires a valid 'label' or 'uuid'"
-                )
+                raise Exception("get_entity_chunk requires a valid 'label' or 'uuid'")
             cstate = target.get("chunked_state")
             if cstate is None:
-                raise Exception(
-                    f"entity {target['item']['label']!r} is not chunked"
-                )
+                raise Exception(f"entity {target['item']['label']!r} is not chunked")
             chunk_pcd = build_pcd_chunk(
                 cstate["header_bytes"],
                 cstate["body_bytes"],
@@ -264,6 +266,7 @@ class SceneSprites(SceneServiceBase, EasyResource):
                 chunk_size_points=cstate["chunk_size_points"],
             )
             import base64
+
             return {
                 "label": target["item"]["label"],
                 "chunk_index": chunk_index,
@@ -277,6 +280,7 @@ class SceneSprites(SceneServiceBase, EasyResource):
 #
 # Lives at module scope so validate_config (a classmethod) and the
 # instance-level validate_item_extra can both call it.
+
 
 def _validate_item(item: Mapping[str, Any], index: int) -> None:
     """Validate one item dict. Raises with index-prefixed messages so
@@ -307,9 +311,7 @@ def _validate_item(item: Mapping[str, Any], index: int) -> None:
             )
         for j, wp in enumerate(wps):
             if not isinstance(wp, Mapping):
-                raise Exception(
-                    f"{where} animation.waypoints[{j}] must be a dict"
-                )
+                raise Exception(f"{where} animation.waypoints[{j}] must be a dict")
     color = item.get("color")
     if color is not None:
         for ch in ("r", "g", "b"):
@@ -376,7 +378,10 @@ def _validate_item(item: Mapping[str, Any], index: int) -> None:
             raise Exception(f"{where} pointcloud 'chunked' must be a bool")
         if "chunk_size" in item:
             cs = item["chunk_size"]
-            if not (isinstance(cs, int) or (isinstance(cs, float) and cs.is_integer())) or int(cs) <= 0:
+            if (
+                not (isinstance(cs, int) or (isinstance(cs, float) and cs.is_integer()))
+                or int(cs) <= 0
+            ):
                 raise Exception(
                     f"{where} pointcloud 'chunk_size' must be a positive integer"
                 )

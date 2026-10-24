@@ -9,6 +9,7 @@ import viam_visuals as viz
 
 # ---- spin_pose --------------------------------------------------------
 
+
 def test_spin_pose_at_t_zero_is_zero_theta():
     p = viz.spin_pose(viz.Pose.at(x=10), period_s=3.0, t=0.0)
     assert p.theta == 0.0
@@ -38,6 +39,7 @@ def test_spin_pose_preserves_position():
 
 
 # ---- orbit_pose -------------------------------------------------------
+
 
 def test_orbit_pose_z_axis_at_t_zero_lands_on_positive_x():
     # phase=0 → cos=1, sin=0 → +X offset only.
@@ -69,6 +71,7 @@ def test_orbit_pose_unknown_axis_raises():
 
 # ---- oscillate_pose ---------------------------------------------------
 
+
 def test_oscillate_pose_at_t_zero_is_base():
     base = viz.Pose.at(x=10, y=20, z=30)
     p = viz.oscillate_pose(base, period_s=4.0, amplitude_mm=50.0, t=0.0)
@@ -82,16 +85,21 @@ def test_oscillate_pose_default_axis_is_y():
 
 
 def test_oscillate_pose_axis_x():
-    p = viz.oscillate_pose(viz.Pose.at(), period_s=4.0, amplitude_mm=50.0, t=1.0, axis="x")
+    p = viz.oscillate_pose(
+        viz.Pose.at(), period_s=4.0, amplitude_mm=50.0, t=1.0, axis="x"
+    )
     assert abs(p.x - 50.0) < 1e-9
 
 
 def test_oscillate_pose_axis_z():
-    p = viz.oscillate_pose(viz.Pose.at(), period_s=4.0, amplitude_mm=50.0, t=1.0, axis="z")
+    p = viz.oscillate_pose(
+        viz.Pose.at(), period_s=4.0, amplitude_mm=50.0, t=1.0, axis="z"
+    )
     assert abs(p.z - 50.0) < 1e-9
 
 
 # ---- swing_pose -------------------------------------------------------
+
 
 def test_swing_pose_at_t_zero_is_base_theta():
     p = viz.swing_pose(viz.Pose.at(theta=30), period_s=4.0, amplitude_deg=45.0, t=0.0)
@@ -110,6 +118,7 @@ def test_swing_pose_preserves_position():
 
 
 # ---- pulse_range -----------------------------------------------------
+
 
 def test_pulse_range_at_t_zero_is_midpoint():
     # sin(0) = 0 → returns the midpoint.
@@ -134,6 +143,7 @@ def test_pulse_range_handles_negative_amplitude_via_reversed_args():
 
 
 # ---- trajectory_pose -------------------------------------------------
+
 
 def test_trajectory_pose_at_t_zero_is_first_waypoint():
     wps = [viz.Pose.at(x=0), viz.Pose.at(x=100), viz.Pose.at(x=200)]

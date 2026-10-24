@@ -10,6 +10,7 @@ geometry 1000× too big — which has happened once already (0.0.1).
 These tests parse the shipped asset files directly and assert the
 vertex / point magnitudes are in the expected (meter-scale) range.
 """
+
 import re
 import struct
 from pathlib import Path
@@ -66,8 +67,7 @@ def test_arrow_ply_vertices_are_in_meters_not_millimeters():
         "file should be in METERS — RDK reader multiplies by 1000."
     )
     assert max_mag > 0.05, (
-        f"arrow.ply vertices unexpectedly tiny (max={max_mag}); "
-        "expected ≳0.05 m"
+        f"arrow.ply vertices unexpectedly tiny (max={max_mag}); expected ≳0.05 m"
     )
 
 
@@ -119,7 +119,7 @@ def test_bunny_stl_vertices_are_in_meters_not_millimeters():
     for _ in range(num_tris):
         offset += 12  # skip normal
         for _v in range(3):
-            x, y, z = struct.unpack("<fff", data[offset:offset + 12])
+            x, y, z = struct.unpack("<fff", data[offset : offset + 12])
             offset += 12
             max_mag = max(max_mag, abs(x), abs(y), abs(z))
         offset += 2  # skip attribute byte count
@@ -143,9 +143,11 @@ def test_bunny_stl_is_centered_on_xy_axes():
     for _ in range(num_tris):
         offset += 12  # skip normal
         for _v in range(3):
-            x, y, z = struct.unpack("<fff", data[offset:offset + 12])
+            x, y, z = struct.unpack("<fff", data[offset : offset + 12])
             offset += 12
-            xs.append(x); ys.append(y); zs.append(z)
+            xs.append(x)
+            ys.append(y)
+            zs.append(z)
         offset += 2
     cx = 0.5 * (min(xs) + max(xs))
     cy = 0.5 * (min(ys) + max(ys))
@@ -165,13 +167,13 @@ def test_helix_pcd_points_are_in_meters_not_millimeters():
     marker = b"DATA binary\n"
     idx = data.find(marker)
     assert idx >= 0, "expected binary PCD"
-    body = data[idx + len(marker):]
+    body = data[idx + len(marker) :]
     # Each point is 16 bytes (fff + uint32 RGB).
     n_points = len(body) // 16
     assert n_points > 0
     max_mag = 0.0
     for i in range(n_points):
-        x, y, z, _rgb = struct.unpack("<fffI", body[i * 16:(i + 1) * 16])
+        x, y, z, _rgb = struct.unpack("<fffI", body[i * 16 : (i + 1) * 16])
         max_mag = max(max_mag, abs(x), abs(y), abs(z))
     assert max_mag < 1.0, (
         f"PCD point magnitudes look mm-scaled (max={max_mag}); "
