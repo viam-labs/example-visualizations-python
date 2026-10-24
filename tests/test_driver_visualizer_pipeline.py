@@ -182,8 +182,8 @@ async def test_two_drivers_with_namespaces_coexist():
     d2 = await _make_driver(recipe="pulsing_spheres", namespace="b")
     # 5 march_ from a, 3 pulse_ from b = 8 total.
     assert len(vis._state) == 8
-    assert any(l.startswith("a/march_") for l in vis._state)
-    assert any(l.startswith("b/pulse_") for l in vis._state)
+    assert any(label.startswith("a/march_") for label in vis._state)
+    assert any(label.startswith("b/pulse_") for label in vis._state)
     await d1.close()
     await d2.close()
 
@@ -192,7 +192,7 @@ async def test_two_drivers_with_namespaces_coexist():
 
 
 async def test_driver_info_command():
-    vis = await _make_visualizer()
+    await _make_visualizer()
     d = await _make_driver()
     info = await d.do_command({"command": "info"})
     assert info["visualizer"] == "vis"
@@ -204,7 +204,7 @@ async def test_driver_info_command():
 
 
 async def test_driver_recipes_command_lists_known_recipes():
-    vis = await _make_visualizer()
+    await _make_visualizer()
     d = await _make_driver()
     out = await d.do_command({"command": "recipes"})
     assert "marching_boxes" in out["recipes"]
@@ -216,10 +216,10 @@ async def test_driver_close_clears_visualizer_state():
     vis = await _make_visualizer()
     d = await _make_driver(namespace="cleanup_test")
     # 5 boxes added.
-    assert any(l.startswith("cleanup_test/") for l in vis._state)
+    assert any(label.startswith("cleanup_test/") for label in vis._state)
     await d.close()
     # After close, our labels should be gone (other namespaces untouched).
-    assert not any(l.startswith("cleanup_test/") for l in vis._state)
+    assert not any(label.startswith("cleanup_test/") for label in vis._state)
 
 
 # ---- reconfigure clears prior scene ----------------------------------
@@ -232,8 +232,8 @@ async def test_driver_reconfigure_clears_prior_recipe_labels():
     vis = await _make_visualizer()
     d = await _make_driver(recipe="marching_boxes")
     # MarchingBoxes installs 5 march_* labels.
-    assert any(l.startswith("march_") for l in vis._state)
-    assert not any(l.startswith("pulse_") for l in vis._state)
+    assert any(label.startswith("march_") for label in vis._state)
+    assert not any(label.startswith("pulse_") for label in vis._state)
 
     # Reconfigure to a different recipe.
     d.reconfigure(
@@ -250,10 +250,10 @@ async def test_driver_reconfigure_clears_prior_recipe_labels():
     await asyncio.sleep(0.05)
 
     # Prior recipe's labels should be gone; new recipe's labels present.
-    assert not any(l.startswith("march_") for l in vis._state), (
+    assert not any(label.startswith("march_") for label in vis._state), (
         f"march_* labels still present after recipe switch: {list(vis._state)}"
     )
-    assert any(l.startswith("pulse_") for l in vis._state), (
+    assert any(label.startswith("pulse_") for label in vis._state), (
         f"pulse_* labels missing after recipe switch: {list(vis._state)}"
     )
     await d.close()

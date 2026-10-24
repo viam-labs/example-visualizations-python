@@ -35,9 +35,6 @@ verifying against the RDK readers — putting raw mm in a PLY file
 makes the renderer draw it 1000× too big.
 """
 
-# Conversion factor for file output. Everything that hits disk gets
-# divided by this; everything inside the helpers stays in mm.
-MM_PER_M = 1000.0
 import colorsys
 import math
 import re
@@ -45,6 +42,10 @@ import struct
 import sys
 from pathlib import Path
 from typing import Set
+
+# Conversion factor for file output. Everything that hits disk gets
+# divided by this; everything inside the helpers stays in mm.
+MM_PER_M = 1000.0
 
 # Allow `from src.geometries import ...` when running this script
 # from anywhere (including via `make assets`).

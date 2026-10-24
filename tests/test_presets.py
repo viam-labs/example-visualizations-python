@@ -349,7 +349,7 @@ def test_orientation_vectors_covers_x_y_z_and_theta_demo():
     assert "frame_+X" in labels
     assert "frame_+Y" in labels
     assert "frame_+Z" in labels
-    assert any("theta" in l.lower() for l in labels)
+    assert any("theta" in label.lower() for label in labels)
 
 
 # ---------- reference_frame_demo ----------

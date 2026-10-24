@@ -254,7 +254,9 @@ def test_trajectory_runner_initial_installs_plan_and_runner():
         assert f"trajectory_wp_{i}_axis_x" in scene.labels()
     assert "trajectory_runner" in scene.labels()
     # 4 segments connecting 5 waypoints.
-    n_segs = sum(1 for l in scene.labels() if l.startswith("trajectory_path_seg_"))
+    n_segs = sum(
+        1 for label in scene.labels() if label.startswith("trajectory_path_seg_")
+    )
     assert n_segs == 4
 
 
@@ -422,7 +424,7 @@ def test_lifecycle_garden_re_add_uses_fresh_label():
     scene = Scene()
     # ADD plot 0 v1 in appear phase.
     recipe.tick(scene, 0.1)
-    first_labels = {l for l in scene.labels() if l.startswith("garden_0_v")}
+    first_labels = {label for label in scene.labels() if label.startswith("garden_0_v")}
     # Walk through the gone phase explicitly so the recipe REMOVEs.
     gone_t = (
         LifecycleGarden.APPEAR_S
@@ -433,7 +435,7 @@ def test_lifecycle_garden_re_add_uses_fresh_label():
     recipe.tick(scene, gone_t)
     # Now back into appear — recipe ADDs with fresh version.
     recipe.tick(scene, LifecycleGarden.CYCLE_S + 0.1)
-    new_labels = {l for l in scene.labels() if l.startswith("garden_0_v")}
+    new_labels = {label for label in scene.labels() if label.startswith("garden_0_v")}
     # New labels shouldn't include the previously-removed ones.
     assert not (first_labels & new_labels), (
         f"reused stale labels {first_labels & new_labels}"
@@ -448,11 +450,15 @@ def test_lifecycle_garden_color_changes_through_phases():
     scene = Scene()
     # Plot 0 starts at appear (local_t=0 with no phase offset).
     recipe.tick(scene, 0.0)
-    plot0 = next(scene.get(l) for l in scene.labels() if l.startswith("garden_0_v"))
+    plot0 = next(
+        scene.get(label) for label in scene.labels() if label.startswith("garden_0_v")
+    )
     assert plot0.color == recipe.COLOR_APPEAR
     # Step into alive phase.
     recipe.tick(scene, LifecycleGarden.APPEAR_S + 0.1)
-    plot0 = next(scene.get(l) for l in scene.labels() if l.startswith("garden_0_v"))
+    plot0 = next(
+        scene.get(label) for label in scene.labels() if label.startswith("garden_0_v")
+    )
     assert plot0.color == recipe.COLOR_ALIVE
 
 
@@ -709,10 +715,10 @@ def test_all_recipe_tick_animates_all_sub_recipes():
     # all_primitives is static; the rest produce at least one event.
     labels_in_events = {e.label for e in events}
     # Confirm at least one event from each animated sub.
-    assert any(l.startswith("march_") for l in labels_in_events)
-    assert any(l.startswith("pulse_") for l in labels_in_events)
-    assert any(l.startswith("det_") for l in labels_in_events)
-    assert any(l.startswith("trajectory") for l in labels_in_events)
+    assert any(label.startswith("march_") for label in labels_in_events)
+    assert any(label.startswith("pulse_") for label in labels_in_events)
+    assert any(label.startswith("det_") for label in labels_in_events)
+    assert any(label.startswith("trajectory") for label in labels_in_events)
 
 
 def test_all_recipe_subs_get_distinct_y_origins():
