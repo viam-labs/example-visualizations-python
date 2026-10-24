@@ -1,5 +1,14 @@
 """Unit tests for src/geometries.py — the pure proto builders."""
 
+# ---------- build_metadata ----------
+#
+# Schema MUST match viamrobotics/visualization::draw/transform.go::MetadataToStruct
+# and protos/draw/v1/metadata.proto. The library ALWAYS emits all five
+# keys (colors, color_format, opacities, show_axes_helper, invisible);
+# omitting any of them makes the viewer skip the entity entirely. This
+# bit us at 0.0.9 when point clouds went invisible because we'd
+# stopped emitting `colors` for items without a user-set color.
+import base64 as _b64
 from pathlib import Path
 
 import pytest
@@ -26,18 +35,6 @@ from src.geometries import (
     read_asset,
     stl_to_ply,
 )
-
-
-# ---------- build_metadata ----------
-#
-# Schema MUST match viamrobotics/visualization::draw/transform.go::MetadataToStruct
-# and protos/draw/v1/metadata.proto. The library ALWAYS emits all five
-# keys (colors, color_format, opacities, show_axes_helper, invisible);
-# omitting any of them makes the viewer skip the entity entirely. This
-# bit us at 0.0.9 when point clouds went invisible because we'd
-# stopped emitting `colors` for items without a user-set color.
-
-import base64 as _b64
 
 
 def _all_required_keys_present(d):

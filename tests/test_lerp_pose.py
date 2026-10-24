@@ -11,9 +11,8 @@ quaternion SLERP does not.
 import math
 
 import pytest
-
 from viam_visuals import Pose, lerp_pose
-from viam_visuals.pose import _ov_to_quat, _quat_to_ov, _slerp_quat
+from viam_visuals.pose import _ov_to_quat, _quat_to_ov
 
 
 def _rotate_vec_by_quat(q, v):

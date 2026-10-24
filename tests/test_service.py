@@ -6,22 +6,19 @@ SimpleNamespace mocks for any framework-supplied inputs.
 """
 
 import asyncio
-from types import SimpleNamespace
 
 import pytest
 from viam.proto.app.robot import ComponentConfig
 from viam.proto.service.worldstatestore import (
-    StreamTransformChangesResponse,
     TransformChangeType,
 )
 from viam.utils import dict_to_struct
-
-from src.service import SceneSprites
 from viam_visuals import (
     DEFAULT_PARENT_FRAME,
     DEFAULT_TICK_HZ,
-    DEFAULT_UUID_STRATEGY,
 )
+
+from src.service import SceneSprites
 
 
 def _bare_service(strategy="stable", parent_frame=DEFAULT_PARENT_FRAME):

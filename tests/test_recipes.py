@@ -7,9 +7,8 @@ returned SceneEvent shapes + the resulting Scene state.
 
 from __future__ import annotations
 
-import math
-
 import pytest
+from viam_visuals import Scene
 
 from src.recipes import (
     RECIPES,
@@ -21,11 +20,8 @@ from src.recipes import (
     ForceVector,
     LifecycleGarden,
     MarchingBoxes,
-    PulsingSpheres,
     TrajectoryRunner,
 )
-from viam_visuals import Scene
-
 
 # ---- registry ---------------------------------------------------------
 
@@ -522,7 +518,6 @@ def test_force_vector_orientation_precesses():
     """At t = T/4 of the precession period, the projection of the
     orientation vector onto the XY plane should have rotated 90°
     from t = 0."""
-    import math
 
     recipe = ForceVector()
     scene = Scene()
@@ -735,9 +730,10 @@ def test_recipe_drives_visualizer_through_apply_events(recipe_name):
     """Smoke test: feed each recipe's tick output through
     events_to_wire and apply_events, confirm the visualizer state
     matches what the Scene says."""
+    from viam_visuals import events_to_wire, registry
+
     from src.driver import PlaygroundDriver  # noqa: F401 (sanity import)
     from src.visualizer import PlaygroundVisualizer
-    from viam_visuals import events_to_wire, registry
 
     # Clear in-process registry to avoid test pollution.
     for n in registry.names():

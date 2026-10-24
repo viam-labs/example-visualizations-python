@@ -4,8 +4,6 @@ the driver→visualizer pipeline depends on."""
 from __future__ import annotations
 
 import pytest
-
-from src.service import SceneSprites
 from viam_visuals import (
     DEFAULT_PARENT_FRAME,
     DEFAULT_TICK_HZ,
@@ -16,6 +14,8 @@ from viam_visuals import (
     Sphere,
     events_to_wire,
 )
+
+from src.service import SceneSprites
 
 
 def _bare_service():

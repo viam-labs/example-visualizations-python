@@ -17,7 +17,6 @@ from src.animation import (
     is_animated,
 )
 
-
 BASE_POSE = {
     "x": 0.0,
     "y": 0.0,
@@ -859,7 +858,7 @@ def test_lifecycle_phase_offset_shifts_starting_phase():
     _, _, _, meta_a = compute_tick(item_a, BASE_POSE, base_geom, t=0.5)
     _, _, _, meta_b = compute_tick(item_b, BASE_POSE, base_geom, t=0.5)
     # A is at 0.5s → appearing. B is at 2.5s → alive (past appear=1+0.5*alive).
-    from src.animation import LIFECYCLE_COLOR_APPEARING, LIFECYCLE_COLOR_ALIVE
+    from src.animation import LIFECYCLE_COLOR_ALIVE, LIFECYCLE_COLOR_APPEARING
 
     assert meta_a["color"] == LIFECYCLE_COLOR_APPEARING
     assert meta_b["color"] == LIFECYCLE_COLOR_ALIVE

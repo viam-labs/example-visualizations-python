@@ -8,13 +8,13 @@ mutation logic.
 """
 
 import pytest
-
-from src.service import SceneSprites
 from viam_visuals import (
     DEFAULT_PARENT_FRAME,
     DEFAULT_TICK_HZ,
     DEFAULT_UUID_STRATEGY,
 )
+
+from src.service import SceneSprites
 
 
 def _bare_service():

@@ -36,11 +36,9 @@ from viam.proto.app.robot import ComponentConfig
 from viam.resource.easy_resource import EasyResource
 from viam.resource.types import Model, ModelFamily
 from viam.utils import ValueTypes, struct_to_dict
-
 from viam_visuals import Scene, events_to_wire, registry
 
 from .recipes import RECIPES, Recipe
-
 
 DEFAULT_TICK_HZ = 30.0
 MAX_TICK_HZ = 30.0

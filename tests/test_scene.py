@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from viam_visuals import (
     ADDED,
     REMOVED,
@@ -16,7 +15,6 @@ from viam_visuals import (
     Scene,
     Sphere,
 )
-
 
 # ---- add ---------------------------------------------------------------
 

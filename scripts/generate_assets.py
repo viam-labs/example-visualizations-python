@@ -44,7 +44,7 @@ import re
 import struct
 import sys
 from pathlib import Path
-from typing import Optional, Set
+from typing import Set
 
 # Allow `from src.geometries import ...` when running this script
 # from anywhere (including via `make assets`).
@@ -272,7 +272,7 @@ def write_bunny_stl(target_height_mm: float = 90.0) -> Path:
     ~3,674 triangles × 50 bytes + 84-byte header ≈ 184 KB binary —
     plenty of resolution for the bunny silhouette to read smoothly,
     well within reasonable module-tarball size."""
-    from scripts.bunny_data import BUNNY_POSITIONS, BUNNY_FACES
+    from scripts.bunny_data import BUNNY_FACES, BUNNY_POSITIONS
 
     # --- 1. Rotate source Y-up to Z-up while still in unit scale.
     rotated = [(x, -z, y) for (x, y, z) in BUNNY_POSITIONS]
@@ -883,8 +883,8 @@ def write_teapot_ply(samples_per_patch: int = 6) -> Path:
     canonical teapot's Y-up convention is rotated so its axis of
     symmetry lies along +Z to match the rest of this module's
     primitives."""
+    from scripts.teapot_data import TEAPOT_CONTROL_POINTS, TEAPOT_PATCHES
     from src.geometries import _ply_ascii_bytes
-    from scripts.teapot_data import TEAPOT_PATCHES, TEAPOT_CONTROL_POINTS
 
     # Per-patch evaluation grid.
     s_count = samples_per_patch
@@ -1070,7 +1070,10 @@ def _collect_label_texts() -> "tuple[Set[str], Set[str]]":
     # Import lazily so this script doesn't load the full presets
     # module unless write_label_plys() is being called.
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    # Mirror src/presets.py::_should_label so we only bake PLYs for
+    # labels the runtime will actually reference.
     from src.presets import (
+        _should_label,  # noqa: WPS433
         chunked_pcd_demo,
         force_vector_demo,
         frame_composition,
@@ -1080,10 +1083,6 @@ def _collect_label_texts() -> "tuple[Set[str], Set[str]]":
         primitives,
         trajectory_preview,
     )
-
-    # Mirror src/presets.py::_should_label so we only bake PLYs for
-    # labels the runtime will actually reference.
-    from src.presets import _should_label  # noqa: WPS433
 
     item_labels: Set[str] = set()
     for fn in (

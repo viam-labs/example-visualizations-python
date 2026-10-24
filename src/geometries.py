@@ -23,8 +23,8 @@ from viam.proto.common import (
     Capsule,
     Geometry,
     Mesh,
-    Pose,
     PointCloud,
+    Pose,
     RectangularPrism,
     Sphere,
     Vector3,
@@ -36,25 +36,28 @@ from viam.proto.common import (
 from viam_visuals._internal.constants import (
     POINT_MARKER_RADIUS_MM,
     RENDERER_MESH_CONTENT_TYPE,
-    SUPPORTED_MESH_CONTENT_TYPES,
+    SUPPORTED_MESH_CONTENT_TYPES,  # noqa: F401
 )
 from viam_visuals._internal.mesh import (
     arrow_ply_bytes,
-    extract_ply_vertex_colors,
-    infer_mesh_content_type,
-    load_mesh_bytes_as_ply,
-    ply_ascii_bytes as _ply_ascii_bytes,
-    stl_to_ply,
+    extract_ply_vertex_colors,  # noqa: F401
+    infer_mesh_content_type,  # noqa: F401
+    load_mesh_bytes_as_ply,  # noqa: F401
+    stl_to_ply,  # noqa: F401
+)
+from viam_visuals._internal.mesh import (
+    ply_ascii_bytes as _ply_ascii_bytes,  # noqa: F401
 )
 from viam_visuals._internal.metadata import (
-    build_metadata,
-    clamp_u8 as _clamp_u8,
+    build_metadata,  # noqa: F401
+)
+from viam_visuals._internal.metadata import (
+    clamp_u8 as _clamp_u8,  # noqa: F401
 )
 from viam_visuals._internal.pcd import (
-    build_pcd_chunk,
-    parse_pcd_binary,
+    build_pcd_chunk,  # noqa: F401
+    parse_pcd_binary,  # noqa: F401
 )
-
 
 SUPPORTED_TYPES = ("box", "sphere", "capsule", "point", "arrow", "mesh", "pointcloud")
 

@@ -12,20 +12,42 @@ import math
 
 import pytest
 
-from src.animation import SUPPORTED_AXES, SUPPORTED_MODES
+from src.animation import SUPPORTED_MODES
 from src.geometries import SUPPORTED_TYPES
 from src.presets import (
     PRESET_NAMES,
+)
+from src.presets import (
     PRESETS as _PRESETS_VISUALS,
-    primitives as _primitives,
+)
+from src.presets import (
     color_wheel as _color_wheel,
+)
+from src.presets import (
     force_vector_demo as _force_vector_demo,
+)
+from src.presets import (
     frame_composition as _frame_composition,
+)
+from src.presets import (
     geometry_morph as _geometry_morph,
+)
+from src.presets import (
     load as _load,
+)
+from src.presets import (
     orientation_vectors as _orientation_vectors,
+)
+from src.presets import (
+    primitives as _primitives,
+)
+from src.presets import (
     reference_frame_demo as _reference_frame_demo,
+)
+from src.presets import (
     robot_arm as _robot_arm,
+)
+from src.presets import (
     trajectory_preview as _trajectory_preview,
 )
 

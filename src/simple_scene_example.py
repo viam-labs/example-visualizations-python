@@ -63,15 +63,13 @@ from __future__ import annotations
 import math
 from typing import Any, Mapping, Sequence, Tuple
 
+import viam_visuals as viz
 from viam.proto.app.robot import ComponentConfig
 from viam.proto.common import Geometry, ResourceName
 from viam.resource.base import ResourceBase
 from viam.resource.registry import Registry, ResourceCreatorRegistration
 from viam.resource.types import Model, ModelFamily
 from viam.services.worldstatestore import WorldStateStore
-
-import viam_visuals as viz
-
 
 MODEL = Model(
     ModelFamily("viam", "example-visualizations-python"),

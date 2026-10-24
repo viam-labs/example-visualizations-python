@@ -24,23 +24,20 @@ arrive as wire-format dicts that don't carry typed Animation specs).
 """
 
 from pathlib import Path
-from typing import Any, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Mapping, Optional, Sequence, Tuple
 
 from viam.proto.app.robot import ComponentConfig
-from viam.proto.common import Geometry
-from viam.proto.common import ResourceName
+from viam.proto.common import Geometry, ResourceName
 from viam.resource.base import ResourceBase
 from viam.resource.easy_resource import EasyResource
 from viam.resource.types import Model, ModelFamily
 from viam.utils import ValueTypes, struct_to_dict
-
-from viam_visuals import SceneServiceBase, VALID_STRATEGIES
+from viam_visuals import SceneServiceBase
 from viam_visuals._internal.pcd import build_pcd_chunk
 
 from . import animation as anim_mod
 from . import geometries
 from . import presets as presets_mod
-
 
 # Module directory — the parent of src/.
 MODULE_DIR = Path(__file__).resolve().parent.parent

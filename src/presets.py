@@ -55,7 +55,6 @@ from viam_visuals import (
     normalize_pose,
 )
 
-
 # Label sizing — must match scripts/generate_assets.py.
 ITEM_LABEL_HEIGHT_MM = 25.0
 ROW_LABEL_HEIGHT_MM = 70.0

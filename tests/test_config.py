@@ -9,9 +9,9 @@ distinct error message.
 import pytest
 from viam.proto.app.robot import ComponentConfig
 from viam.utils import dict_to_struct
+from viam_visuals import VALID_STRATEGIES as UUID_STRATEGIES
 
 from src.service import SceneSprites
-from viam_visuals import VALID_STRATEGIES as UUID_STRATEGIES
 
 
 def _cfg(attrs):

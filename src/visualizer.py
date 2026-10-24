@@ -32,13 +32,12 @@ architectural rationale.
 
 from __future__ import annotations
 
-from typing import List, Mapping, Sequence, Tuple
+from typing import Sequence, Tuple
 
 from viam.proto.app.robot import ComponentConfig
 from viam.resource.easy_resource import EasyResource
 from viam.resource.types import Model, ModelFamily
 from viam.utils import struct_to_dict
-
 from viam_visuals import VALID_STRATEGIES, registry
 
 from .service import SceneSprites

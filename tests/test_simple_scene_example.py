@@ -8,12 +8,8 @@ build_geometry directly with bare instances.
 
 from __future__ import annotations
 
-import math
 from types import SimpleNamespace
 
-import pytest
-
-import viam_visuals as viz
 from src.simple_scene_example import SimpleSceneExample
 
 

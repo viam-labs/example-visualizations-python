@@ -6,15 +6,14 @@ directly (no gRPC)."""
 from __future__ import annotations
 
 import asyncio
-import time
 
 import pytest
-from google.protobuf.struct_pb2 import Struct, Value
+from google.protobuf.struct_pb2 import Struct
 from viam.proto.app.robot import ComponentConfig
+from viam_visuals import registry
 
 from src.driver import PlaygroundDriver
 from src.visualizer import PlaygroundVisualizer
-from viam_visuals import registry
 
 
 def _config(attrs: dict, name: str = "test") -> ComponentConfig:

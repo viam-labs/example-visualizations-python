@@ -54,8 +54,7 @@ elapsed time and base pose in. Tests can pin t to known values.
 """
 
 import math
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
-
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 # Field-mask paths used in the UPDATED event. The official
 # worldstatestore guide says these should be snake_case proto field

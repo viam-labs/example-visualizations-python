@@ -5,7 +5,6 @@ the service layer accepts unchanged, plus construction-time
 validation rejects bad params before they reach the wire."""
 
 import pytest
-
 from viam_visuals import (
     Arrow,
     Box,
@@ -15,9 +14,7 @@ from viam_visuals import (
     PointCloud,
     Pose,
     Sphere,
-    Visual,
 )
-
 
 # ---------- Pose ---------------------------------------------------------
 
@@ -430,7 +427,6 @@ def test_visual_accepts_animation_dict_passthrough():
 
 from viam_visuals import (  # noqa: E402
     BoundingBox,
-    Composite,
     CoordinateFrame,
     Line,
 )

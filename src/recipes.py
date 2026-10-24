@@ -28,7 +28,6 @@ from viam_visuals import (
     Box,
     Capsule,
     CoordinateFrame,
-    Line,
     Mesh,
     Point,
     PointCloud,

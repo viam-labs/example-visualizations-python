@@ -1,11 +1,7 @@
 """Tests for the imperative pose-composing animation helpers."""
 
-import math
-
 import pytest
-
 import viam_visuals as viz
-
 
 # ---- spin_pose --------------------------------------------------------
 

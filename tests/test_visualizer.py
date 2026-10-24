@@ -5,9 +5,9 @@ from __future__ import annotations
 import pytest
 from google.protobuf.struct_pb2 import Struct, Value
 from viam.proto.app.robot import ComponentConfig
+from viam_visuals import registry
 
 from src.visualizer import PlaygroundVisualizer
-from viam_visuals import registry
 
 
 def _config(attrs: dict) -> ComponentConfig:

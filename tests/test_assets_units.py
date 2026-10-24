@@ -11,7 +11,6 @@ These tests parse the shipped asset files directly and assert the
 vertex / point magnitudes are in the expected (meter-scale) range.
 """
 
-import re
 import struct
 from pathlib import Path
 
