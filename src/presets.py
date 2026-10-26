@@ -25,6 +25,7 @@ lives only as children of the spinning anchor inside
 ``frame_composition``; static-ring demand was low enough that the
 duplicate didn't earn its keep.
 """
+
 import colorsys
 import math
 import re
@@ -54,7 +55,6 @@ from viam_visuals import (
     normalize_pose,
 )
 
-
 # Label sizing — must match scripts/generate_assets.py.
 ITEM_LABEL_HEIGHT_MM = 25.0
 ROW_LABEL_HEIGHT_MM = 70.0
@@ -69,11 +69,11 @@ ROW_LABEL_Z_OFFSET_MM = 0.0
 # hash of the label text so the same label always gets the same
 # color across reconfigure cycles.
 ITEM_LABEL_COLORS = (
-    {"r": 50,  "g": 50,  "b": 50},   # near-black
-    {"r": 90,  "g": 30,  "b": 90},   # dark plum
-    {"r": 30,  "g": 70,  "b": 50},   # dark teal-green
-    {"r": 110, "g": 60,  "b": 30},   # dark sienna
-    {"r": 30,  "g": 50,  "b": 100},  # dark navy
+    {"r": 50, "g": 50, "b": 50},  # near-black
+    {"r": 90, "g": 30, "b": 90},  # dark plum
+    {"r": 30, "g": 70, "b": 50},  # dark teal-green
+    {"r": 110, "g": 60, "b": 30},  # dark sienna
+    {"r": 30, "g": 50, "b": 100},  # dark navy
 )
 # Row labels stay one consistent color so the row-name pattern is
 # visually distinct from the item-label cycle.
@@ -138,11 +138,12 @@ def _label_for(
         x=float(base["x"]),
         y=float(base["y"]),
         z=float(base["z"]) + z_offset_mm,
-        ox=0.0, oy=0.0, oz=1.0, theta=0.0,
+        ox=0.0,
+        oy=0.0,
+        oz=1.0,
+        theta=0.0,
     )
-    color = ITEM_LABEL_COLORS[
-        sum(ord(c) for c in target_label) % len(ITEM_LABEL_COLORS)
-    ]
+    color = ITEM_LABEL_COLORS[sum(ord(c) for c in target_label) % len(ITEM_LABEL_COLORS)]
     return Mesh(
         label=f"label_{target_label}",
         pose=pose,
@@ -209,28 +210,22 @@ def primitives() -> List[Visual]:
     class surface and ``LIBRARY_PLAN.md`` for the design context."""
     sp = PRIMITIVE_ROW_SPACING_MM
     visuals = [
-        Box("demo_box", pose=Pose.at(x=-4 * sp),
-            dims_mm=(150, 150, 150),
-            color=(230, 25, 75), opacity=1.0),
-        Sphere("demo_sphere", pose=Pose.at(x=-3 * sp),
-               radius_mm=90, color=(60, 180, 75), opacity=1.0),
-        Capsule("demo_capsule", pose=Pose.at(x=-2 * sp),
-                radius_mm=50, length_mm=200,
-                color=(0, 130, 200), opacity=1.0),
-        Point("demo_point", pose=Pose.at(x=-1 * sp),
-              color=(255, 225, 25), opacity=1.0),
+        Box("demo_box", pose=Pose.at(x=-4 * sp), dims_mm=(150, 150, 150), color=(230, 25, 75), opacity=1.0),
+        Sphere("demo_sphere", pose=Pose.at(x=-3 * sp), radius_mm=90, color=(60, 180, 75), opacity=1.0),
+        Capsule("demo_capsule", pose=Pose.at(x=-2 * sp), radius_mm=50, length_mm=200, color=(0, 130, 200), opacity=1.0),
+        Point("demo_point", pose=Pose.at(x=-1 * sp), color=(255, 225, 25), opacity=1.0),
         # Procedural mesh, asymmetric — direction is unambiguous
         # unlike a capsule.
-        Arrow("demo_arrow", pose=Pose.at(x=0),
-              length_mm=220, radius_mm=12,
-              color=(145, 30, 180), opacity=1.0),
-        Mesh("demo_icosahedron", pose=Pose.at(x=1 * sp),
-             mesh_path="assets/icosahedron.ply",
-             color=(240, 50, 230), opacity=1.0),
+        Arrow("demo_arrow", pose=Pose.at(x=0), length_mm=220, radius_mm=12, color=(145, 30, 180), opacity=1.0),
+        Mesh(
+            "demo_icosahedron",
+            pose=Pose.at(x=1 * sp),
+            mesh_path="assets/icosahedron.ply",
+            color=(240, 50, 230),
+            opacity=1.0,
+        ),
         # STL → PLY conversion at construction time; works.
-        Mesh("demo_bunny", pose=Pose.at(x=2 * sp),
-             mesh_path="assets/bunny.stl",
-             color=(245, 130, 49), opacity=1.0),
+        Mesh("demo_bunny", pose=Pose.at(x=2 * sp), mesh_path="assets/bunny.stl", color=(245, 130, 49), opacity=1.0),
         # Same STL, shipped raw with content_type="stl" (bypassing
         # stl_to_ply via raw_stl=True). Bug-demo for the viz team:
         # the proto/RDK contract says STL on the wire should work
@@ -238,55 +233,61 @@ def primitives() -> List[Visual]:
         # accepts "stl"), but the viewer drops it silently. Empty
         # space immediately right of the working twin.
         # See LESSONS.md::mesh-formats.
-        Mesh("demo_bunny_raw_stl", pose=Pose.at(x=3 * sp),
-             mesh_path="assets/bunny.stl", raw_stl=True,
-             color=(245, 130, 49), opacity=1.0),
-        Mesh("demo_torus", pose=Pose.at(x=4 * sp),
-             mesh_path="assets/torus.ply",
-             color=(70, 240, 240), opacity=1.0),
-        Mesh("demo_teapot", pose=Pose.at(x=5 * sp),
-             mesh_path="assets/teapot.ply",
-             color=(60, 180, 75), opacity=1.0),
+        Mesh(
+            "demo_bunny_raw_stl",
+            pose=Pose.at(x=3 * sp),
+            mesh_path="assets/bunny.stl",
+            raw_stl=True,
+            color=(245, 130, 49),
+            opacity=1.0,
+        ),
+        Mesh("demo_torus", pose=Pose.at(x=4 * sp), mesh_path="assets/torus.ply", color=(70, 240, 240), opacity=1.0),
+        Mesh("demo_teapot", pose=Pose.at(x=5 * sp), mesh_path="assets/teapot.ply", color=(60, 180, 75), opacity=1.0),
         # MESH version of the colored sphere. PLY w/ per-vertex
         # `property uchar red/green/blue`; service transcodes to
         # metadata.colors, but the viewer collapses N colors to one
         # uniform tint (the first color). Bug-demo: no `color` so
         # the embedded vertex colors are the only color source.
         # See LESSONS.md::mesh-metadata-colors-only-uses-first-color.
-        Mesh("demo_colorful_sphere_mesh", pose=Pose.at(x=6 * sp),
-             mesh_path="assets/colorful_sphere.ply", opacity=1.0),
+        Mesh("demo_colorful_sphere_mesh", pose=Pose.at(x=6 * sp), mesh_path="assets/colorful_sphere.ply", opacity=1.0),
         # PER-FACE colors variant — `property uchar r/g/b` on
         # `element face` instead of `element vertex`. Untested;
         # bug-demo asks "does the renderer treat per-FACE colors
         # differently from per-vertex?".
-        Mesh("demo_colorful_sphere_faces_mesh", pose=Pose.at(x=7 * sp),
-             mesh_path="assets/colorful_sphere_faces.ply", opacity=1.0),
+        Mesh(
+            "demo_colorful_sphere_faces_mesh",
+            pose=Pose.at(x=7 * sp),
+            mesh_path="assets/colorful_sphere_faces.ply",
+            opacity=1.0,
+        ),
         # UV-mapped sphere with `property float s/t` per vertex +
         # `comment TextureFile uv_sphere.png`. commonpb.Mesh has no
         # texture-bytes slot so no image ships; bug-demo asks what
         # the viewer does when it receives PLY UV props at all.
-        Mesh("demo_uv_sphere_mesh", pose=Pose.at(x=8 * sp),
-             mesh_path="assets/uv_sphere.ply", opacity=1.0),
+        Mesh("demo_uv_sphere_mesh", pose=Pose.at(x=8 * sp), mesh_path="assets/uv_sphere.ply", opacity=1.0),
         # POINT CLOUD version — works because the viewer reads PCD
         # per-point RGB when metadata.colors is absent. Direct
         # comparison with the three mesh siblings to the left.
         # See LESSONS.md::pcd-colors-precedence.
-        PointCloud("demo_colorful_sphere", pose=Pose.at(x=9 * sp),
-                   pointcloud_path="assets/colorful_sphere.pcd",
-                   opacity=1.0),
+        PointCloud(
+            "demo_colorful_sphere", pose=Pose.at(x=9 * sp), pointcloud_path="assets/colorful_sphere.pcd", opacity=1.0
+        ),
         # No `color` on purpose: metadata.colors would override the
         # PCD's per-point RGB. See LESSONS.md::pcd-colors-precedence.
-        PointCloud("demo_pointcloud", pose=Pose.at(x=10 * sp),
-                   pointcloud_path="assets/helix.pcd",
-                   opacity=1.0),
+        PointCloud("demo_pointcloud", pose=Pose.at(x=10 * sp), pointcloud_path="assets/helix.pcd", opacity=1.0),
         # Chunked-delivery sibling of the helix above. Initial
         # Transform ships first 2000 points inline; rest via the
         # `get_entity_chunk` DoCommand. Sits next to the un-chunked
         # twin so any visual difference is obvious at a glance.
         # See LESSONS.md::chunked-delivery-schema.
-        PointCloud("demo_pointcloud_chunked", pose=Pose.at(x=11 * sp),
-                   pointcloud_path="assets/helix.pcd",
-                   opacity=1.0, chunked=True, chunk_size=2000),
+        PointCloud(
+            "demo_pointcloud_chunked",
+            pose=Pose.at(x=11 * sp),
+            pointcloud_path="assets/helix.pcd",
+            opacity=1.0,
+            chunked=True,
+            chunk_size=2000,
+        ),
     ]
     return visuals
 
@@ -300,14 +301,15 @@ def color_wheel(count: int = 10, ring_radius_mm: float = 300.0) -> List[Visual]:
         hue = i / count
         r, g, b = colorsys.hsv_to_rgb(hue, 1.0, 1.0)
         angle = 2 * math.pi * i / count
-        visuals.append(Sphere(
-            f"wheel_{i:02d}",
-            pose=Pose.at(x=ring_radius_mm * math.cos(angle),
-                         y=ring_radius_mm * math.sin(angle)),
-            radius_mm=60,
-            color=(int(255 * r), int(255 * g), int(255 * b)),
-            opacity=1.0,
-        ))
+        visuals.append(
+            Sphere(
+                f"wheel_{i:02d}",
+                pose=Pose.at(x=ring_radius_mm * math.cos(angle), y=ring_radius_mm * math.sin(angle)),
+                radius_mm=60,
+                color=(int(255 * r), int(255 * g), int(255 * b)),
+                opacity=1.0,
+            )
+        )
     return visuals
 
 
@@ -350,60 +352,99 @@ def robot_arm() -> List[Visual]:
     visuals = [
         # Base — stout capsule, swings on Z (real bases sweep through
         # their work envelope, never rotate continuously).
-        Capsule("arm_base", pose=Pose.at(z=BASE_HEIGHT / 2),
-                radius_mm=LINK_RADIUS * 1.6, length_mm=BASE_HEIGHT,
-                color=(70, 70, 75), opacity=1.0,
-                animation=Swing(amplitude_deg=75.0, period_s=8)),
+        Capsule(
+            "arm_base",
+            pose=Pose.at(z=BASE_HEIGHT / 2),
+            radius_mm=LINK_RADIUS * 1.6,
+            length_mm=BASE_HEIGHT,
+            color=(70, 70, 75),
+            opacity=1.0,
+            animation=Swing(amplitude_deg=75.0, period_s=8),
+        ),
         # Shoulder joint — sphere at top of base. OY=1 tips the
         # shoulder's local +Z into world +Y so the upper arm reaches
         # forward, and sweeps as the base swings.
-        Sphere("arm_shoulder", parent_frame="arm_base",
-               pose=Pose.at(z=BASE_HEIGHT / 2 + LINK_RADIUS, ox=0, oy=1, oz=0),
-               radius_mm=JOINT_RADIUS, color=JOINT_COLOR, opacity=1.0),
+        Sphere(
+            "arm_shoulder",
+            parent_frame="arm_base",
+            pose=Pose.at(z=BASE_HEIGHT / 2 + LINK_RADIUS, ox=0, oy=1, oz=0),
+            radius_mm=JOINT_RADIUS,
+            color=JOINT_COLOR,
+            opacity=1.0,
+        ),
         # Upper arm extends out of the shoulder along its local +Z.
-        Capsule("arm_upper", parent_frame="arm_shoulder",
-                pose=Pose.at(z=UPPER_LENGTH / 2),
-                radius_mm=LINK_RADIUS, length_mm=UPPER_LENGTH,
-                color=(100, 130, 200), opacity=1.0),
+        Capsule(
+            "arm_upper",
+            parent_frame="arm_shoulder",
+            pose=Pose.at(z=UPPER_LENGTH / 2),
+            radius_mm=LINK_RADIUS,
+            length_mm=UPPER_LENGTH,
+            color=(100, 130, 200),
+            opacity=1.0,
+        ),
         # Elbow — bounded RoM (real elbows don't spin around).
-        Sphere("arm_elbow", parent_frame="arm_upper",
-               pose=Pose.at(z=UPPER_LENGTH / 2 + LINK_RADIUS,
-                            ox=0, oy=1, oz=0, theta=-60),
-               radius_mm=JOINT_RADIUS * 0.8,
-               color=JOINT_COLOR, opacity=1.0,
-               animation=Swing(amplitude_deg=50.0, period_s=5)),
+        Sphere(
+            "arm_elbow",
+            parent_frame="arm_upper",
+            pose=Pose.at(z=UPPER_LENGTH / 2 + LINK_RADIUS, ox=0, oy=1, oz=0, theta=-60),
+            radius_mm=JOINT_RADIUS * 0.8,
+            color=JOINT_COLOR,
+            opacity=1.0,
+            animation=Swing(amplitude_deg=50.0, period_s=5),
+        ),
         # Forearm from elbow outward.
-        Capsule("arm_forearm", parent_frame="arm_elbow",
-                pose=Pose.at(z=FOREARM_LENGTH / 2),
-                radius_mm=LINK_RADIUS * 0.85, length_mm=FOREARM_LENGTH,
-                color=(100, 180, 110), opacity=1.0),
+        Capsule(
+            "arm_forearm",
+            parent_frame="arm_elbow",
+            pose=Pose.at(z=FOREARM_LENGTH / 2),
+            radius_mm=LINK_RADIUS * 0.85,
+            length_mm=FOREARM_LENGTH,
+            color=(100, 180, 110),
+            opacity=1.0,
+        ),
         # Wrist swings on its local Z (= forearm direction) so the
         # tool ROLLS about the forearm. The 2-finger claw below makes
         # the roll visible — a symmetric end-effector would hide it.
-        Sphere("arm_wrist", parent_frame="arm_forearm",
-               pose=Pose.at(z=FOREARM_LENGTH / 2 + LINK_RADIUS * 0.6),
-               radius_mm=JOINT_RADIUS * 0.65,
-               color=JOINT_COLOR, opacity=1.0,
-               animation=Swing(amplitude_deg=90.0, period_s=6)),
+        Sphere(
+            "arm_wrist",
+            parent_frame="arm_forearm",
+            pose=Pose.at(z=FOREARM_LENGTH / 2 + LINK_RADIUS * 0.6),
+            radius_mm=JOINT_RADIUS * 0.65,
+            color=JOINT_COLOR,
+            opacity=1.0,
+            animation=Swing(amplitude_deg=90.0, period_s=6),
+        ),
         # Claw palm — flat box mounted on the wrist; rotates with it.
-        Box("claw_palm", parent_frame="arm_wrist",
+        Box(
+            "claw_palm",
+            parent_frame="arm_wrist",
             pose=Pose.at(z=JOINT_RADIUS * 0.6 + PALM_THICKNESS / 2),
             dims_mm=(70.0, 28.0, PALM_THICKNESS),
-            color=CLAW_COLOR, opacity=1.0),
+            color=CLAW_COLOR,
+            opacity=1.0,
+        ),
         # Left finger — offset to -X of the palm; oscillates in X.
         # Negative amplitude means "low time" = open (further from
         # center); both fingers in phase so they open/close together.
-        Box("claw_left_finger", parent_frame="claw_palm",
+        Box(
+            "claw_left_finger",
+            parent_frame="claw_palm",
             pose=Pose.at(x=-22.0, z=PALM_THICKNESS / 2 + FINGER_LENGTH / 2),
             dims_mm=(FINGER_THICKNESS, FINGER_THICKNESS, FINGER_LENGTH),
-            color=CLAW_COLOR, opacity=1.0,
-            animation=Oscillate(axis="x", amplitude_mm=-10.0, period_s=3)),
+            color=CLAW_COLOR,
+            opacity=1.0,
+            animation=Oscillate(axis="x", amplitude_mm=-10.0, period_s=3),
+        ),
         # Right finger — mirror motion (positive amplitude).
-        Box("claw_right_finger", parent_frame="claw_palm",
+        Box(
+            "claw_right_finger",
+            parent_frame="claw_palm",
             pose=Pose.at(x=22.0, z=PALM_THICKNESS / 2 + FINGER_LENGTH / 2),
             dims_mm=(FINGER_THICKNESS, FINGER_THICKNESS, FINGER_LENGTH),
-            color=CLAW_COLOR, opacity=1.0,
-            animation=Oscillate(axis="x", amplitude_mm=10.0, period_s=3)),
+            color=CLAW_COLOR,
+            opacity=1.0,
+            animation=Oscillate(axis="x", amplitude_mm=10.0, period_s=3),
+        ),
     ]
     return visuals
 
@@ -427,22 +468,23 @@ def orientation_vectors() -> List[Visual]:
     HOST_COLOR = (220, 220, 220)
     HOST_OPACITY = 0.35
 
-    def _frame(label: str, x: float, ox: float, oy: float, oz: float,
-               theta: float = 0.0) -> Sphere:
-        return Sphere(label,
-                      pose=Pose.at(x=x, ox=ox, oy=oy, oz=oz, theta=theta),
-                      radius_mm=HOST_RADIUS_MM,
-                      color=HOST_COLOR,
-                      opacity=HOST_OPACITY,
-                      show_axes_helper=True)
+    def _frame(label: str, x: float, ox: float, oy: float, oz: float, theta: float = 0.0) -> Sphere:
+        return Sphere(
+            label,
+            pose=Pose.at(x=x, ox=ox, oy=oy, oz=oz, theta=theta),
+            radius_mm=HOST_RADIUS_MM,
+            color=HOST_COLOR,
+            opacity=HOST_OPACITY,
+            show_axes_helper=True,
+        )
 
     s = 1.0 / math.sqrt(2.0)
     visuals = [
         _frame("frame_+Z", x=-2 * sp, ox=0, oy=0, oz=1),
-        _frame("frame_+X", x=-sp,    ox=1, oy=0, oz=0),
-        _frame("frame_+Y", x=0,       ox=0, oy=1, oz=0),
+        _frame("frame_+X", x=-sp, ox=1, oy=0, oz=0),
+        _frame("frame_+Y", x=0, ox=0, oy=1, oz=0),
         # 45° in XY plane — local +Z lies between world +X and +Y.
-        _frame("frame_+XY", x=sp,     ox=s, oy=s, oz=0),
+        _frame("frame_+XY", x=sp, ox=s, oy=s, oz=0),
         # +Z axis with theta=45 — same orientation vector as frame_+Z
         # but rotated 45° about it. The axes-helper triad should
         # visibly rotate around Z: the +X and +Y arrows of the helper
@@ -494,43 +536,63 @@ def reference_frame_demo() -> List[Visual]:
     # the axes inherit motion through the parent-frame chain.
     # show_axes_helper=True draws the viewer's built-in XYZ helper at
     # the anchor's origin alongside the explicit colored capsules.
-    visuals.extend(CoordinateFrame(
-        "spinning_frame", pose=Pose.identity(),
-        size_mm=200.0, axis_radius_mm=12.0, anchor_radius_mm=12.0,
-        show_axes_helper=True, animation=Spin(period_s=6),
-    ))
-    visuals.extend([
-        # Mesh — orbits with the frame AND spins on its own axis at a
-        # different rate, so the chained composition is visible.
-        # Offset 700 mm out to keep clear of the axes triad and the
-        # 220 mm hub-radius color wheel.
-        Mesh("spinning_frame_attached_mesh", parent_frame="spinning_frame",
-             pose=Pose.at(x=700),
-             mesh_path="assets/icosahedron.ply",
-             color=(240, 200, 50), opacity=1.0,
-             animation=Spin(period_s=2)),
-        # Wheel hub — invisible intermediate parent. Identity
-        # orientation puts the ring in the hub's local XY plane; the
-        # hub spins on its local Z so the ring rotates around its
-        # own perpendicular axis.
-        #
-        # Parented to the mesh → orbits with mesh + anchor; the hub
-        # adds its own spin on top.
-        #
-        # Tiny radius + opacity 0 keeps the hub invisible. We avoid
-        # ``invisible: True`` because we haven't verified the viewer
-        # keeps an invisible parent's frame in the composition tree.
-        Sphere("spinning_frame_wheel_hub",
-               parent_frame="spinning_frame_attached_mesh",
-               pose=Pose.identity(),
-               radius_mm=4, color=(255, 255, 255), opacity=0.0,
-               animation=Spin(period_s=10)),
-    ])
+    visuals.extend(
+        CoordinateFrame(
+            "spinning_frame",
+            pose=Pose.identity(),
+            size_mm=200.0,
+            axis_radius_mm=12.0,
+            anchor_radius_mm=12.0,
+            show_axes_helper=True,
+            animation=Spin(period_s=6),
+        )
+    )
+    visuals.extend(
+        [
+            # Mesh — orbits with the frame AND spins on its own axis at a
+            # different rate, so the chained composition is visible.
+            # Offset 700 mm out to keep clear of the axes triad and the
+            # 220 mm hub-radius color wheel.
+            Mesh(
+                "spinning_frame_attached_mesh",
+                parent_frame="spinning_frame",
+                pose=Pose.at(x=700),
+                mesh_path="assets/icosahedron.ply",
+                color=(240, 200, 50),
+                opacity=1.0,
+                animation=Spin(period_s=2),
+            ),
+            # Wheel hub — invisible intermediate parent. Identity
+            # orientation puts the ring in the hub's local XY plane; the
+            # hub spins on its local Z so the ring rotates around its
+            # own perpendicular axis.
+            #
+            # Parented to the mesh → orbits with mesh + anchor; the hub
+            # adds its own spin on top.
+            #
+            # Tiny radius + opacity 0 keeps the hub invisible. We avoid
+            # ``invisible: True`` because we haven't verified the viewer
+            # keeps an invisible parent's frame in the composition tree.
+            Sphere(
+                "spinning_frame_wheel_hub",
+                parent_frame="spinning_frame_attached_mesh",
+                pose=Pose.identity(),
+                radius_mm=4,
+                color=(255, 255, 255),
+                opacity=0.0,
+                animation=Spin(period_s=10),
+            ),
+        ]
+    )
     # Color wheel children — 10 hue-swept spheres orbiting the hub.
-    visuals.extend(_color_wheel_visuals(
-        "spinning_frame_wheel_hub", count=10,
-        ring_radius_mm=220.0, sphere_radius_mm=24.0,
-    ))
+    visuals.extend(
+        _color_wheel_visuals(
+            "spinning_frame_wheel_hub",
+            count=10,
+            ring_radius_mm=220.0,
+            sphere_radius_mm=24.0,
+        )
+    )
     return visuals
 
 
@@ -554,16 +616,16 @@ def _color_wheel_visuals(
         hue = i / count
         r, g, b = colorsys.hsv_to_rgb(hue, 1.0, 1.0)
         angle = 2 * math.pi * i / count
-        out.append(Sphere(
-            f"{parent_label}_wheel_{i:02d}",
-            parent_frame=parent_label,
-            pose=Pose.at(x=ring_radius_mm * math.cos(angle),
-                         y=ring_radius_mm * math.sin(angle),
-                         z=z_mm),
-            radius_mm=sphere_radius_mm,
-            color=(int(255 * r), int(255 * g), int(255 * b)),
-            opacity=1.0,
-        ))
+        out.append(
+            Sphere(
+                f"{parent_label}_wheel_{i:02d}",
+                parent_frame=parent_label,
+                pose=Pose.at(x=ring_radius_mm * math.cos(angle), y=ring_radius_mm * math.sin(angle), z=z_mm),
+                radius_mm=sphere_radius_mm,
+                color=(int(255 * r), int(255 * g), int(255 * b)),
+                opacity=1.0,
+            )
+        )
     return out
 
 
@@ -592,8 +654,10 @@ def _offset_base_items(
                 x=float(base["x"]) + (delta if axis == "x" else 0.0),
                 y=float(base["y"]) + (delta if axis == "y" else 0.0),
                 z=float(base["z"]) + (delta if axis == "z" else 0.0),
-                ox=float(base["ox"]), oy=float(base["oy"]),
-                oz=float(base["oz"]), theta=float(base["theta"]),
+                ox=float(base["ox"]),
+                oy=float(base["oy"]),
+                oz=float(base["oz"]),
+                theta=float(base["theta"]),
             )
             it.pose = new_pose
             # Shift Trajectory waypoints in lockstep.
@@ -735,39 +799,53 @@ def trajectory_preview() -> List[Visual]:
     # visible per-segment rotation on top of the tangent-aligned
     # facing.
     positions = [
-        {"x":    0, "y":    0, "z":    0, "theta":   0},
-        {"x":  300, "y":  150, "z":  200, "theta": 120},
-        {"x":  500, "y":  300, "z":  300, "theta": 240},
-        {"x":  700, "y":  150, "z":  200, "theta": 120},
-        {"x": 1000, "y":    0, "z":    0, "theta":   0},
+        {"x": 0, "y": 0, "z": 0, "theta": 0},
+        {"x": 300, "y": 150, "z": 200, "theta": 120},
+        {"x": 500, "y": 300, "z": 300, "theta": 240},
+        {"x": 700, "y": 150, "z": 200, "theta": 120},
+        {"x": 1000, "y": 0, "z": 0, "theta": 0},
     ]
     waypoints = _waypoints_with_tangent_orientations(positions)
     visuals: List[Any] = []
 
     # Waypoint markers — small translucent spheres with axes helpers.
     for i, wp in enumerate(waypoints):
-        visuals.append(Sphere(
-            f"traj_wp_{i:02d}", pose=wp,
-            radius_mm=18, color=(200, 200, 220), opacity=0.45,
-            show_axes_helper=True,
-        ))
+        visuals.append(
+            Sphere(
+                f"traj_wp_{i:02d}",
+                pose=wp,
+                radius_mm=18,
+                color=(200, 200, 220),
+                opacity=0.45,
+                show_axes_helper=True,
+            )
+        )
 
     # Polyline connecting the waypoints — composite expands into a
     # capsule chain (label format: "traj_seg_NN").
-    visuals.extend(Line(
-        "traj", points=waypoints, width_mm=10,
-        color=(100, 130, 240), opacity=0.95,
-    ))
+    visuals.extend(
+        Line(
+            "traj",
+            points=waypoints,
+            width_mm=10,
+            color=(100, 130, 240),
+            opacity=0.95,
+        )
+    )
 
     # The "runner" — moving frame that walks the trajectory and
     # passes through each waypoint with the interpolated rotation.
-    visuals.append(Sphere(
-        "traj_runner", pose=waypoints[0],
-        radius_mm=28, color=(230, 40, 80), opacity=0.9,
-        show_axes_helper=True,
-        animation=Trajectory(waypoints=[dict(wp) for wp in waypoints],
-                             duration_s=12.0, loop=True),
-    ))
+    visuals.append(
+        Sphere(
+            "traj_runner",
+            pose=waypoints[0],
+            radius_mm=28,
+            color=(230, 40, 80),
+            opacity=0.9,
+            show_axes_helper=True,
+            animation=Trajectory(waypoints=[dict(wp) for wp in waypoints], duration_s=12.0, loop=True),
+        )
+    )
     return visuals
 
 
@@ -790,24 +868,44 @@ def geometry_morph() -> List[Visual]:
     slot_x = 0.0
 
     # Pulsing sphere — radius animates by ±35 mm.
-    visuals.append(Sphere("morph_pulse_sphere", pose=Pose.at(x=slot_x),
-                          radius_mm=70, color=(230, 60, 100), opacity=1.0,
-                          animation=Pulse(amplitude_mm=35, period_s=3)))
+    visuals.append(
+        Sphere(
+            "morph_pulse_sphere",
+            pose=Pose.at(x=slot_x),
+            radius_mm=70,
+            color=(230, 60, 100),
+            opacity=1.0,
+            animation=Pulse(amplitude_mm=35, period_s=3),
+        )
+    )
     slot_x += 350
 
     # Box stretching along Z only (length).
-    visuals.append(Box("morph_stretch_box", pose=Pose.at(x=slot_x),
-                       dims_mm=(100, 100, 150),
-                       color=(100, 180, 230), opacity=1.0,
-                       animation=Pulse(amplitude_mm=100, period_s=4, axis="z")))
+    visuals.append(
+        Box(
+            "morph_stretch_box",
+            pose=Pose.at(x=slot_x),
+            dims_mm=(100, 100, 150),
+            color=(100, 180, 230),
+            opacity=1.0,
+            animation=Pulse(amplitude_mm=100, period_s=4, axis="z"),
+        )
+    )
     slot_x += 350
 
     # Capsule breathing in opacity (1.5 s so the change is obvious;
     # at 4 s the cycle read as "static, ish").
-    visuals.append(Capsule("morph_breathe_capsule", pose=Pose.at(x=slot_x),
-                           radius_mm=45, length_mm=240,
-                           color=(220, 200, 60), opacity=0.7,
-                           animation=Breathe(amplitude=0.55, period_s=1.5)))
+    visuals.append(
+        Capsule(
+            "morph_breathe_capsule",
+            pose=Pose.at(x=slot_x),
+            radius_mm=45,
+            length_mm=240,
+            color=(220, 200, 60),
+            opacity=0.7,
+            animation=Breathe(amplitude=0.55, period_s=1.5),
+        )
+    )
     slot_x += 380
 
     # Two 5×5 grids of flickering spheres side by side. Phase-offset
@@ -824,27 +922,30 @@ def geometry_morph() -> List[Visual]:
     grid_spacing = 80.0
     period_s = 4.0
 
-    def _add_grid(prefix: str, origin_x: float,
-                  color: Tuple[int, int, int], rotate_uuid: bool) -> None:
+    def _add_grid(prefix: str, origin_x: float, color: Tuple[int, int, int], rotate_uuid: bool) -> None:
         for row_idx in range(grid_n):
             for col_idx in range(grid_n):
                 phase_offset = (row_idx + col_idx) / (2 * grid_n - 1) * period_s
-                visuals.append(Sphere(
-                    f"{prefix}_{row_idx}{col_idx}",
-                    pose=Pose.at(x=origin_x + col_idx * grid_spacing,
-                                 y=row_idx * grid_spacing),
-                    radius_mm=22, color=color, opacity=1.0,
-                    animation=Flicker(period_s=period_s, duty_cycle=0.55,
-                                      phase_offset_s=phase_offset,
-                                      rotate_uuid_on_readd=rotate_uuid),
-                ))
+                visuals.append(
+                    Sphere(
+                        f"{prefix}_{row_idx}{col_idx}",
+                        pose=Pose.at(x=origin_x + col_idx * grid_spacing, y=row_idx * grid_spacing),
+                        radius_mm=22,
+                        color=color,
+                        opacity=1.0,
+                        animation=Flicker(
+                            period_s=period_s,
+                            duty_cycle=0.55,
+                            phase_offset_s=phase_offset,
+                            rotate_uuid_on_readd=rotate_uuid,
+                        ),
+                    )
+                )
 
     working_origin_x = slot_x + 60
-    _add_grid("morph_grid", working_origin_x, (80, 200, 140),
-              rotate_uuid=True)
+    _add_grid("morph_grid", working_origin_x, (80, 200, 140), rotate_uuid=True)
     broken_origin_x = working_origin_x + grid_n * grid_spacing + 80
-    _add_grid("morph_grid_broken", broken_origin_x, (230, 60, 60),
-              rotate_uuid=False)
+    _add_grid("morph_grid_broken", broken_origin_x, (230, 60, 60), rotate_uuid=False)
 
     return visuals
 
@@ -867,15 +968,22 @@ def force_vector_demo() -> List[Visual]:
     arm, spinning frame, and trajectory in the ``all`` row layout.
     """
     return [
-        Arrow("force_vector", pose=Pose.identity(),
-              length_mm=220, radius_mm=10,
-              color=(230, 60, 100), opacity=1.0,
-              animation=ForceVector(period_s=5.0,
-                                    length_amplitude_mm=80,
-                                    radius_amplitude_mm=5,
-                                    tilt_deg=45,
-                                    precession_speed=1.0,
-                                    color_speed=0.7))
+        Arrow(
+            "force_vector",
+            pose=Pose.identity(),
+            length_mm=220,
+            radius_mm=10,
+            color=(230, 60, 100),
+            opacity=1.0,
+            animation=ForceVector(
+                period_s=5.0,
+                length_amplitude_mm=80,
+                radius_amplitude_mm=5,
+                tilt_deg=45,
+                precession_speed=1.0,
+                color_speed=0.7,
+            ),
+        )
     ]
 
 
@@ -903,20 +1011,22 @@ def lifecycle_demo() -> List[Visual]:
         # Phase offset spaced so the row reads as a "wave" of
         # appear → alive → disappear → gone moving left to right.
         offset_s = (i / count) * period_s
-        visuals.append(Box(
-            f"lifecycle_{i:02d}",
-            pose=Pose.at(x=(i - (count - 1) / 2) * sp),
-            dims_mm=(120, 120, 120),
-            # color/opacity are overridden by the lifecycle animation
-            # every tick; the static values are placeholders so
-            # validate_config + metadata builder have something at
-            # install time.
-            color=(128, 128, 128),
-            opacity=1.0,
-            animation=Lifecycle(appear_s=appear_s, alive_s=alive_s,
-                                disappear_s=disappear_s, gone_s=gone_s,
-                                phase_offset_s=offset_s),
-        ))
+        visuals.append(
+            Box(
+                f"lifecycle_{i:02d}",
+                pose=Pose.at(x=(i - (count - 1) / 2) * sp),
+                dims_mm=(120, 120, 120),
+                # color/opacity are overridden by the lifecycle animation
+                # every tick; the static values are placeholders so
+                # validate_config + metadata builder have something at
+                # install time.
+                color=(128, 128, 128),
+                opacity=1.0,
+                animation=Lifecycle(
+                    appear_s=appear_s, alive_s=alive_s, disappear_s=disappear_s, gone_s=gone_s, phase_offset_s=offset_s
+                ),
+            )
+        )
     return visuals
 
 
@@ -936,9 +1046,14 @@ def chunked_pcd_demo() -> List[Visual]:
     DoCommand to inspect the chunk bytes).
     """
     return [
-        PointCloud("chunked_helix", pose=Pose.identity(),
-                   pointcloud_path="assets/helix.pcd",
-                   opacity=1.0, chunked=True, chunk_size=2000)
+        PointCloud(
+            "chunked_helix",
+            pose=Pose.identity(),
+            pointcloud_path="assets/helix.pcd",
+            opacity=1.0,
+            chunked=True,
+            chunk_size=2000,
+        )
     ]
 
 
@@ -970,15 +1085,17 @@ def _waypoints_with_tangent_orientations(
             ty = positions[i + 1]["y"] - positions[i - 1]["y"]
             tz = positions[i + 1]["z"] - positions[i - 1]["z"]
         norm = math.sqrt(tx * tx + ty * ty + tz * tz) or 1.0
-        out.append({
-            "x": float(p["x"]),
-            "y": float(p["y"]),
-            "z": float(p["z"]),
-            "ox": tx / norm,
-            "oy": ty / norm,
-            "oz": tz / norm,
-            "theta": float(p.get("theta", 0.0)),
-        })
+        out.append(
+            {
+                "x": float(p["x"]),
+                "y": float(p["y"]),
+                "z": float(p["z"]),
+                "ox": tx / norm,
+                "oy": ty / norm,
+                "oz": tz / norm,
+                "theta": float(p.get("theta", 0.0)),
+            }
+        )
     return out
 
 
@@ -1002,7 +1119,5 @@ def load(name: str) -> List[Visual]:
     :meth:`SceneServiceBase.set_scene`."""
     fn = PRESETS.get(name)
     if fn is None:
-        raise ValueError(
-            f"unknown preset {name!r}; available: {sorted(PRESETS.keys())}"
-        )
+        raise ValueError(f"unknown preset {name!r}; available: {sorted(PRESETS.keys())}")
     return fn()

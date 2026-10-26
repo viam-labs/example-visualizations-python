@@ -29,15 +29,15 @@ See README.md's "Driver + visualizer quickstart" section for the
 user-facing how-to, and CLAUDE.md's "Three-model split" for the
 architectural rationale.
 """
+
 from __future__ import annotations
 
-from typing import List, Mapping, Sequence, Tuple
+from typing import Sequence, Tuple
 
 from viam.proto.app.robot import ComponentConfig
 from viam.resource.easy_resource import EasyResource
 from viam.resource.types import Model, ModelFamily
 from viam.utils import struct_to_dict
-
 from viam_visuals import VALID_STRATEGIES, registry
 
 from .service import SceneSprites
@@ -55,7 +55,8 @@ class PlaygroundVisualizer(SceneSprites, EasyResource):
 
     @classmethod
     def validate_config(
-        cls, config: ComponentConfig,
+        cls,
+        config: ComponentConfig,
     ) -> Tuple[Sequence[str], Sequence[str]]:
         """Visualizer rejects ``items`` and ``preset`` — those belong
         on the driver side. Accepts the same ``tick_hz``,
@@ -66,14 +67,10 @@ class PlaygroundVisualizer(SceneSprites, EasyResource):
 
         if "items" in attrs:
             raise Exception(
-                "playground-visualizer doesn't accept 'items' — those "
-                "should come from a driver via apply_events"
+                "playground-visualizer doesn't accept 'items' — those should come from a driver via apply_events"
             )
         if "preset" in attrs:
-            raise Exception(
-                "playground-visualizer doesn't accept 'preset' — those "
-                "belong on the driver side"
-            )
+            raise Exception("playground-visualizer doesn't accept 'preset' — those belong on the driver side")
 
         tick_hz = attrs.get("tick_hz")
         if tick_hz is not None:
@@ -82,9 +79,7 @@ class PlaygroundVisualizer(SceneSprites, EasyResource):
                 raise Exception("tick_hz must be in (0, 30]")
         strategy = attrs.get("uuid_strategy")
         if strategy is not None and strategy not in VALID_STRATEGIES:
-            raise Exception(
-                f"uuid_strategy must be one of {VALID_STRATEGIES}, got {strategy!r}"
-            )
+            raise Exception(f"uuid_strategy must be one of {VALID_STRATEGIES}, got {strategy!r}")
         return [], []
 
     def reconfigure(self, config, dependencies):

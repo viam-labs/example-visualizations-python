@@ -24,6 +24,7 @@ the same process and the framework's dependency-injection stub
 would just add latency. If the visualizer isn't found in the
 registry at reconfigure time, the driver fails fast.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -35,11 +36,9 @@ from viam.proto.app.robot import ComponentConfig
 from viam.resource.easy_resource import EasyResource
 from viam.resource.types import Model, ModelFamily
 from viam.utils import ValueTypes, struct_to_dict
-
 from viam_visuals import Scene, events_to_wire, registry
 
 from .recipes import RECIPES, Recipe
-
 
 DEFAULT_TICK_HZ = 30.0
 MAX_TICK_HZ = 30.0
@@ -58,7 +57,8 @@ class PlaygroundDriver(Generic, EasyResource):
 
     @classmethod
     def validate_config(
-        cls, config: ComponentConfig,
+        cls,
+        config: ComponentConfig,
     ) -> Tuple[Sequence[str], Sequence[str]]:
         attrs = struct_to_dict(config.attributes) if config.attributes else {}
 
@@ -68,9 +68,7 @@ class PlaygroundDriver(Generic, EasyResource):
 
         recipe = attrs.get("recipe", DEFAULT_RECIPE)
         if recipe not in RECIPES:
-            raise Exception(
-                f"unknown recipe {recipe!r}; valid: {sorted(RECIPES.keys())}"
-            )
+            raise Exception(f"unknown recipe {recipe!r}; valid: {sorted(RECIPES.keys())}")
 
         tick_hz = attrs.get("tick_hz")
         if tick_hz is not None:
@@ -143,9 +141,7 @@ class PlaygroundDriver(Generic, EasyResource):
         # Async setup + tick loop: spawned as a task so reconfigure
         # stays sync. There's a running event loop here because the
         # framework's add_resource / reconfigure_resource are async.
-        self._tick_task = asyncio.create_task(
-            self._cleanup_then_startup(prev_scene, initial_events)
-        )
+        self._tick_task = asyncio.create_task(self._cleanup_then_startup(prev_scene, initial_events))
 
     async def _cleanup_then_startup(self, prev_scene, initial_events):
         """Push REMOVED for the prior scene's labels, then push the
@@ -207,11 +203,13 @@ class PlaygroundDriver(Generic, EasyResource):
     async def _send_events(self, events) -> None:
         if not events:
             return
-        await self._send_command({
-            "command": "apply_events",
-            "namespace": self._namespace,
-            "events": events_to_wire(events),
-        })
+        await self._send_command(
+            {
+                "command": "apply_events",
+                "namespace": self._namespace,
+                "events": events_to_wire(events),
+            }
+        )
 
     async def _send_command(self, command: Mapping[str, ValueTypes]) -> None:
         # Direct method call — same process as the visualizer.
@@ -235,9 +233,7 @@ class PlaygroundDriver(Generic, EasyResource):
                 "namespace": self._namespace,
                 "scene_size": len(self._scene),
                 "visualizer_type": type(self._visualizer).__name__,
-                "tick_running": (
-                    self._tick_task is not None and not self._tick_task.done()
-                ),
+                "tick_running": (self._tick_task is not None and not self._tick_task.done()),
             }
         if cmd == "recipes":
             return {"recipes": sorted(RECIPES.keys())}

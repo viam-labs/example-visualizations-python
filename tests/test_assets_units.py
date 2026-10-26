@@ -10,7 +10,7 @@ geometry 1000× too big — which has happened once already (0.0.1).
 These tests parse the shipped asset files directly and assert the
 vertex / point magnitudes are in the expected (meter-scale) range.
 """
-import re
+
 import struct
 from pathlib import Path
 
@@ -65,10 +65,7 @@ def test_arrow_ply_vertices_are_in_meters_not_millimeters():
         f"arrow.ply vertex magnitudes look mm-scaled (max={max_mag}); "
         "file should be in METERS — RDK reader multiplies by 1000."
     )
-    assert max_mag > 0.05, (
-        f"arrow.ply vertices unexpectedly tiny (max={max_mag}); "
-        "expected ≳0.05 m"
-    )
+    assert max_mag > 0.05, f"arrow.ply vertices unexpectedly tiny (max={max_mag}); expected ≳0.05 m"
 
 
 def test_arrow_ply_points_along_local_plus_z():
@@ -97,9 +94,7 @@ def test_arrow_ply_points_along_local_plus_z():
     # Vertex with max Z must be on the central axis (small XY radius).
     apex_candidates = [v for v in verts if abs(v[2] - max_z) < 1e-6]
     for ax, ay, _az in apex_candidates:
-        assert ax * ax + ay * ay < 1e-6, (
-            f"arrow apex not on z-axis: ({ax}, {ay}); expected (0, 0)"
-        )
+        assert ax * ax + ay * ay < 1e-6, f"arrow apex not on z-axis: ({ax}, {ay}); expected (0, 0)"
 
 
 def test_bunny_stl_vertices_are_in_meters_not_millimeters():
@@ -119,7 +114,7 @@ def test_bunny_stl_vertices_are_in_meters_not_millimeters():
     for _ in range(num_tris):
         offset += 12  # skip normal
         for _v in range(3):
-            x, y, z = struct.unpack("<fff", data[offset:offset + 12])
+            x, y, z = struct.unpack("<fff", data[offset : offset + 12])
             offset += 12
             max_mag = max(max_mag, abs(x), abs(y), abs(z))
         offset += 2  # skip attribute byte count
@@ -143,9 +138,11 @@ def test_bunny_stl_is_centered_on_xy_axes():
     for _ in range(num_tris):
         offset += 12  # skip normal
         for _v in range(3):
-            x, y, z = struct.unpack("<fff", data[offset:offset + 12])
+            x, y, z = struct.unpack("<fff", data[offset : offset + 12])
             offset += 12
-            xs.append(x); ys.append(y); zs.append(z)
+            xs.append(x)
+            ys.append(y)
+            zs.append(z)
         offset += 2
     cx = 0.5 * (min(xs) + max(xs))
     cy = 0.5 * (min(ys) + max(ys))
@@ -165,17 +162,16 @@ def test_helix_pcd_points_are_in_meters_not_millimeters():
     marker = b"DATA binary\n"
     idx = data.find(marker)
     assert idx >= 0, "expected binary PCD"
-    body = data[idx + len(marker):]
+    body = data[idx + len(marker) :]
     # Each point is 16 bytes (fff + uint32 RGB).
     n_points = len(body) // 16
     assert n_points > 0
     max_mag = 0.0
     for i in range(n_points):
-        x, y, z, _rgb = struct.unpack("<fffI", body[i * 16:(i + 1) * 16])
+        x, y, z, _rgb = struct.unpack("<fffI", body[i * 16 : (i + 1) * 16])
         max_mag = max(max_mag, abs(x), abs(y), abs(z))
     assert max_mag < 1.0, (
-        f"PCD point magnitudes look mm-scaled (max={max_mag}); "
-        "file should be in METERS — RDK reader expects meters."
+        f"PCD point magnitudes look mm-scaled (max={max_mag}); file should be in METERS — RDK reader expects meters."
     )
     # The helix has 200mm half-height = 0.2 m, plus 75 mm radius.
     # Reasonable lower bound on the largest coord.
@@ -196,13 +192,10 @@ def test_helix_pcd_header_matches_rdk_writer_byte_for_byte():
     head = data.split(b"DATA")[0].decode("ascii")
     # No comment lines allowed.
     for line in head.splitlines():
-        assert not line.lstrip().startswith("#"), (
-            f"PCD header must not contain comments: {line!r}"
-        )
+        assert not line.lstrip().startswith("#"), f"PCD header must not contain comments: {line!r}"
     # VERSION line MUST be ".7" exactly, not "0.7".
     assert head.splitlines()[0] == "VERSION .7", (
-        f"PCD VERSION line must be 'VERSION .7' (RDK convention), "
-        f"got: {head.splitlines()[0]!r}"
+        f"PCD VERSION line must be 'VERSION .7' (RDK convention), got: {head.splitlines()[0]!r}"
     )
     assert "FIELDS x y z rgb" in head
     assert "SIZE 4 4 4 4" in head

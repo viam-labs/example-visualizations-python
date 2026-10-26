@@ -4,23 +4,21 @@ tick (for both UUID strategies), and reconfigure semantics. Bypasses
 ``new()`` and exercises the service directly with bare instances and
 SimpleNamespace mocks for any framework-supplied inputs.
 """
+
 import asyncio
-from types import SimpleNamespace
 
 import pytest
 from viam.proto.app.robot import ComponentConfig
 from viam.proto.service.worldstatestore import (
-    StreamTransformChangesResponse,
     TransformChangeType,
 )
 from viam.utils import dict_to_struct
-
-from src.service import SceneSprites
 from viam_visuals import (
     DEFAULT_PARENT_FRAME,
     DEFAULT_TICK_HZ,
-    DEFAULT_UUID_STRATEGY,
 )
+
+from src.service import SceneSprites
 
 
 def _bare_service(strategy="stable", parent_frame=DEFAULT_PARENT_FRAME):
@@ -53,6 +51,7 @@ def _cfg(attrs):
 
 # ---------- list_uuids / get_transform ----------
 
+
 async def test_list_uuids_empty_when_no_items():
     s = _bare_service()
     assert await s.list_uuids() == []
@@ -82,6 +81,7 @@ async def test_get_transform_unknown_uuid_raises():
 
 # ---------- stream_transform_changes ----------
 
+
 async def test_subscriber_receives_initial_burst_of_added_for_existing_items():
     s = _bare_service()
     await s.do_command({"command": "add", "item": _sphere_item("a")})
@@ -108,6 +108,7 @@ async def test_subscriber_unsubscribes_on_aclose():
         async def add_then_close():
             await asyncio.sleep(0.01)
             await s.do_command({"command": "add", "item": _sphere_item("c")})
+
         task = asyncio.create_task(add_then_close())
         msg = await gen.__anext__()
         assert msg.change_type == TransformChangeType.TRANSFORM_CHANGE_TYPE_ADDED
@@ -121,9 +122,7 @@ async def test_subscriber_receives_added_when_add_happens_while_subscribed():
     s = _bare_service()
     gen = s.stream_transform_changes()
     # Burst is empty because no items yet. Sub is now registered.
-    add_task = asyncio.create_task(
-        s.do_command({"command": "add", "item": _sphere_item("late")})
-    )
+    add_task = asyncio.create_task(s.do_command({"command": "add", "item": _sphere_item("late")}))
     msg = await gen.__anext__()
     await add_task
     assert msg.change_type == TransformChangeType.TRANSFORM_CHANGE_TYPE_ADDED
@@ -137,9 +136,7 @@ async def test_subscriber_receives_removed_on_remove():
     gen = s.stream_transform_changes()
     # Drain initial ADDED.
     await gen.__anext__()
-    rm_task = asyncio.create_task(
-        s.do_command({"command": "remove", "label": "doomed"})
-    )
+    rm_task = asyncio.create_task(s.do_command({"command": "remove", "label": "doomed"}))
     msg = await gen.__anext__()
     await rm_task
     assert msg.change_type == TransformChangeType.TRANSFORM_CHANGE_TYPE_REMOVED
@@ -148,17 +145,19 @@ async def test_subscriber_receives_removed_on_remove():
 
 # ---------- animation tick — stable strategy ----------
 
+
 async def test_tick_once_with_stable_uuid_emits_updated_event_with_fieldmask():
     """The core contract: an animated item, when ticked, emits an
     UPDATED event with the right field-mask paths. This is the path
     the renderer reads to apply the delta."""
     s = _bare_service(strategy="stable")
     s.tick_hz = 100  # short period
-    await s.do_command({
-        "command": "add",
-        "item": _sphere_item("spin_me", animated_mode="oscillate",
-                             amplitude_mm=200, period_s=4),
-    })
+    await s.do_command(
+        {
+            "command": "add",
+            "item": _sphere_item("spin_me", animated_mode="oscillate", amplitude_mm=200, period_s=4),
+        }
+    )
 
     gen = s.stream_transform_changes()
     # Initial ADDED.
@@ -168,6 +167,7 @@ async def test_tick_once_with_stable_uuid_emits_updated_event_with_fieldmask():
     # Drive one tick at t=1.0 (T/4 -> max excursion). Set _animation_t0
     # so the elapsed time is exactly 1.0.
     import time
+
     s._animation_t0 = time.monotonic() - 1.0
 
     tick_task = asyncio.create_task(s._tick_once())
@@ -206,6 +206,7 @@ async def test_static_items_do_not_emit_on_tick():
 
 # ---------- animation tick — versioned strategy ----------
 
+
 async def test_tick_with_versioned_strategy_emits_removed_plus_added():
     """The other half of the toggle: when uuid_strategy is versioned,
     a tick emits REMOVED (old uuid) + ADDED (new uuid) instead of
@@ -213,11 +214,12 @@ async def test_tick_with_versioned_strategy_emits_removed_plus_added():
     fallback if the renderer ever stops honoring UPDATED."""
     s = _bare_service(strategy="versioned")
     s.tick_hz = 100
-    await s.do_command({
-        "command": "add",
-        "item": _sphere_item("v_item", animated_mode="oscillate",
-                             amplitude_mm=100, period_s=4),
-    })
+    await s.do_command(
+        {
+            "command": "add",
+            "item": _sphere_item("v_item", animated_mode="oscillate", amplitude_mm=100, period_s=4),
+        }
+    )
 
     # Capture the initial versioned UUID so we can verify it gets
     # replaced.
@@ -231,6 +233,7 @@ async def test_tick_with_versioned_strategy_emits_removed_plus_added():
 
     # Tick — expect REMOVED of initial_uuid then ADDED of a fresh UUID.
     import time
+
     s._animation_t0 = time.monotonic() - 1.0
     tick_task = asyncio.create_task(s._tick_once())
     msg_rm = await gen.__anext__()
@@ -245,6 +248,7 @@ async def test_tick_with_versioned_strategy_emits_removed_plus_added():
 
 
 # ---------- reconfigure ----------
+
 
 async def test_reconfigure_loads_default_preset_when_no_items_or_preset():
     s = _bare_service()
@@ -261,10 +265,15 @@ async def test_reconfigure_loads_default_preset_when_no_items_or_preset():
 
 async def test_reconfigure_with_explicit_items_overrides_preset():
     s = _bare_service()
-    s.reconfigure(_cfg({
-        "preset": "orientation_vectors",
-        "items": [_sphere_item("only_me")],
-    }), {})
+    s.reconfigure(
+        _cfg(
+            {
+                "preset": "orientation_vectors",
+                "items": [_sphere_item("only_me")],
+            }
+        ),
+        {},
+    )
     assert list(s._state.keys()) == ["only_me"]
     await s.close()
 
@@ -281,7 +290,9 @@ async def test_reconfigure_pushes_removed_for_prior_added_for_new_to_subscribers
 
     reconfig_task = asyncio.create_task(
         asyncio.to_thread(
-            s.reconfigure, _cfg({"items": [_sphere_item("second")]}), {},
+            s.reconfigure,
+            _cfg({"items": [_sphere_item("second")]}),
+            {},
         )
     )
     # Should see: REMOVED first, ADDED second.
@@ -301,9 +312,14 @@ async def test_reconfigure_starts_tick_task_only_when_items_are_animated():
     s = _bare_service()
     s.reconfigure(_cfg({"items": [_sphere_item("static")]}), {})
     assert s._tick_task is None
-    s.reconfigure(_cfg({
-        "items": [_sphere_item("moving", animated_mode="oscillate")],
-    }), {})
+    s.reconfigure(
+        _cfg(
+            {
+                "items": [_sphere_item("moving", animated_mode="oscillate")],
+            }
+        ),
+        {},
+    )
     assert s._tick_task is not None
     await s.close()
 
@@ -312,18 +328,21 @@ async def test_reconfigure_starts_tick_task_only_when_items_are_animated():
 
 # ---------- flicker REMOVED/ADDED scene-graph operations ----------
 
+
 async def test_flicker_emits_removed_then_added_on_phase_transitions():
     """Flicker truly removes and re-adds the entity to the scene
     instead of just toggling opacity. Subscribers see REMOVED on the
     falling edge of the duty cycle and ADDED on the rising edge."""
     import time
+
     s = _bare_service(strategy="stable")
     s.tick_hz = 100
-    await s.do_command({
-        "command": "add",
-        "item": _sphere_item("blink", animated_mode="flicker",
-                             period_s=4.0, duty_cycle=0.5),
-    })
+    await s.do_command(
+        {
+            "command": "add",
+            "item": _sphere_item("blink", animated_mode="flicker", period_s=4.0, duty_cycle=0.5),
+        }
+    )
     # Initial state: visible.
     assert s._state["blink"]["visible_to_viewer"] is True
 
@@ -358,13 +377,15 @@ async def test_flicker_uses_fresh_uuid_on_each_rising_edge():
     Pins the workaround: after one REMOVED+ADDED cycle, the entity's
     UUID is different from what it was on install."""
     import time
+
     s = _bare_service(strategy="stable")
     s.tick_hz = 100
-    await s.do_command({
-        "command": "add",
-        "item": _sphere_item("blink", animated_mode="flicker",
-                             period_s=4.0, duty_cycle=0.5),
-    })
+    await s.do_command(
+        {
+            "command": "add",
+            "item": _sphere_item("blink", animated_mode="flicker", period_s=4.0, duty_cycle=0.5),
+        }
+    )
     initial_uuid = s._state["blink"]["uuid"]
     # Stable strategy → UUID matches the label.
     assert initial_uuid == b"blink"
@@ -381,8 +402,7 @@ async def test_flicker_uses_fresh_uuid_on_each_rising_edge():
     assert s._state["blink"]["visible_to_viewer"] is True
     new_uuid = s._state["blink"]["uuid"]
     assert new_uuid != initial_uuid, (
-        "flicker re-add must use a fresh UUID; the viewer caches "
-        "removed UUIDs and silently drops repeats"
+        "flicker re-add must use a fresh UUID; the viewer caches removed UUIDs and silently drops repeats"
     )
     # The new UUID still encodes the label so it's debuggable.
     assert new_uuid.startswith(b"blink_")
@@ -398,10 +418,10 @@ async def test_flicker_with_rotate_uuid_on_readd_false_keeps_uuid_stable():
     REMOVED/ADDED on the wire. Pinned so the teaching demo
     behavior doesn't accidentally regress to working."""
     import time
+
     s = _bare_service(strategy="stable")
     s.tick_hz = 100
-    item = _sphere_item("stuck", animated_mode="flicker",
-                        period_s=4.0, duty_cycle=0.5)
+    item = _sphere_item("stuck", animated_mode="flicker", period_s=4.0, duty_cycle=0.5)
     item["animation"]["rotate_uuid_on_readd"] = False
     await s.do_command({"command": "add", "item": item})
     initial_uuid = s._state["stuck"]["uuid"]
@@ -425,13 +445,15 @@ async def test_flicker_removed_item_is_filtered_from_list_uuids_and_get_transfor
     (which would otherwise leak the 'removed' entity back into the
     viewer through a subsequent burst)."""
     import time
+
     s = _bare_service(strategy="stable")
     s.tick_hz = 100
-    await s.do_command({
-        "command": "add",
-        "item": _sphere_item("blink", animated_mode="flicker",
-                             period_s=4.0, duty_cycle=0.5),
-    })
+    await s.do_command(
+        {
+            "command": "add",
+            "item": _sphere_item("blink", animated_mode="flicker", period_s=4.0, duty_cycle=0.5),
+        }
+    )
     # Drive a tick that flips it out of the scene.
     s._animation_t0 = time.monotonic() - 3.0
     await s._tick_once()
@@ -447,9 +469,14 @@ async def test_flicker_removed_item_is_filtered_from_list_uuids_and_get_transfor
 
 async def test_close_cancels_tick_task():
     s = _bare_service()
-    s.reconfigure(_cfg({
-        "items": [_sphere_item("moving", animated_mode="oscillate")],
-    }), {})
+    s.reconfigure(
+        _cfg(
+            {
+                "items": [_sphere_item("moving", animated_mode="oscillate")],
+            }
+        ),
+        {},
+    )
     assert s._tick_task is not None
     # Give the loop a chance to schedule.
     await asyncio.sleep(0)

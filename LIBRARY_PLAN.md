@@ -106,58 +106,85 @@ class MyModule(ServiceBase):
         s = Scene(tick_hz=5, uuid_strategy="stable")
 
         # Static items — units in mm, color as RGB tuple or named/hex.
-        s.add(Box("base",
-            pose=Pose.identity(),
-            dims_mm=(100, 100, 100),
-            color=RGB(230, 25, 75),
-            opacity=0.8,
-        ))
+        s.add(
+            Box(
+                "base",
+                pose=Pose.identity(),
+                dims_mm=(100, 100, 100),
+                color=RGB(230, 25, 75),
+                opacity=0.8,
+            )
+        )
 
         # Animated sphere — animations are classes, not magic strings.
-        s.add(Sphere("bobber",
-            pose=Pose.mm(300, 0, 0),
-            radius_mm=90,
-            color=Named("green"),
-            animation=Oscillate(axis="y", amplitude_mm=100, period_s=3),
-        ))
+        s.add(
+            Sphere(
+                "bobber",
+                pose=Pose.mm(300, 0, 0),
+                radius_mm=90,
+                color=Named("green"),
+                animation=Oscillate(axis="y", amplitude_mm=100, period_s=3),
+            )
+        )
 
         # STL auto-converts to PLY on the way in; per-vertex colors
         # in the PLY get transcoded to metadata.colors transparently.
-        s.add(Mesh.from_file("bunny", "assets/bunny.stl",
-            pose=Pose.mm(600, 0, 0),
-            color=Hex("#FF8000"),
-        ))
+        s.add(
+            Mesh.from_file(
+                "bunny",
+                "assets/bunny.stl",
+                pose=Pose.mm(600, 0, 0),
+                color=Hex("#FF8000"),
+            )
+        )
 
         # Frame composition — child inherits parent's animated pose.
-        s.add(Sphere("anchor",
-            pose=Pose.mm(0, 0, 500),
-            show_axes_helper=True,
-            animation=Spin(period_s=6),
-        ))
-        s.add(Capsule("attached",
-            parent="anchor",
-            pose=Pose.mm(200, 0, 0),
-            radius_mm=20, length_mm=150,
-            animation=Spin(period_s=2),
-        ))
+        s.add(
+            Sphere(
+                "anchor",
+                pose=Pose.mm(0, 0, 500),
+                show_axes_helper=True,
+                animation=Spin(period_s=6),
+            )
+        )
+        s.add(
+            Capsule(
+                "attached",
+                parent="anchor",
+                pose=Pose.mm(200, 0, 0),
+                radius_mm=20,
+                length_mm=150,
+                animation=Spin(period_s=2),
+            )
+        )
 
         # Chunked delivery (experimental).
-        s.add(PointCloud.from_file("helix", "assets/helix.pcd",
-            pose=Pose.mm(1000, 0, 0),
-            chunked=True, chunk_size=2000,
-        ))
+        s.add(
+            PointCloud.from_file(
+                "helix",
+                "assets/helix.pcd",
+                pose=Pose.mm(1000, 0, 0),
+                chunked=True,
+                chunk_size=2000,
+            )
+        )
 
         # Lifecycle convention — staggered phases through one period.
         for i in range(5):
-            s.add(Box(f"lifecycle_{i:02d}",
-                pose=Pose.mm((i - 2) * 250, 0, 0),
-                dims_mm=(120, 120, 120),
-                animation=Lifecycle(
-                    appear_s=1.0, alive_s=2.0,
-                    disappear_s=1.0, gone_s=2.0,
-                    phase_offset_s=i * 6.0 / 5,
-                ),
-            ))
+            s.add(
+                Box(
+                    f"lifecycle_{i:02d}",
+                    pose=Pose.mm((i - 2) * 250, 0, 0),
+                    dims_mm=(120, 120, 120),
+                    animation=Lifecycle(
+                        appear_s=1.0,
+                        alive_s=2.0,
+                        disappear_s=1.0,
+                        gone_s=2.0,
+                        phase_offset_s=i * 6.0 / 5,
+                    ),
+                )
+            )
 
         return s
 ```
@@ -182,7 +209,7 @@ bbox = BoundingBox(dims_mm=(100, 200, 50), pose=Pose.mm(0, 0, 50), color="red")
 ball = Sphere(radius_mm=80, color=Named("green"), animation=Spin(rpm=15))
 
 # 2) Add — registers with the scene; broadcasts ADDED to subscribers.
-scene.add(bbox, ball)              # variadic: bulk-add in one call
+scene.add(bbox, ball)  # variadic: bulk-add in one call
 
 # 3) Mutate — fields are public attributes you assign to.
 bbox.pose = new_pose

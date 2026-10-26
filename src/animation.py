@@ -52,9 +52,9 @@ Modes (all parameters in mm and seconds):
 The animation module is purely functional; the service threads the
 elapsed time and base pose in. Tests can pin t to known values.
 """
-import math
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 
+import math
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 # Field-mask paths used in the UPDATED event. The official
 # worldstatestore guide says these should be snake_case proto field
@@ -77,8 +77,17 @@ PATH_BOX_DIMS_Y = "physicalObject.geometryType.value.dimsMm.y"
 PATH_BOX_DIMS_Z = "physicalObject.geometryType.value.dimsMm.z"
 
 SUPPORTED_MODES = (
-    "none", "orbit", "oscillate", "spin", "swing", "pulse", "trajectory",
-    "force_vector", "breathe", "flicker", "lifecycle",
+    "none",
+    "orbit",
+    "oscillate",
+    "spin",
+    "swing",
+    "pulse",
+    "trajectory",
+    "force_vector",
+    "breathe",
+    "flicker",
+    "lifecycle",
 )
 SUPPORTED_AXES = ("x", "y", "z")
 
@@ -219,17 +228,11 @@ def compute_tick(
         delta = amplitude_mm * math.sin(2 * math.pi * t / period_s)
         item_type = item.get("type")
         if item_type == "sphere":
-            new_geom["radius_mm"] = max(
-                0.1, float(base_geom.get("radius_mm", 50.0)) + delta
-            )
+            new_geom["radius_mm"] = max(0.1, float(base_geom.get("radius_mm", 50.0)) + delta)
             paths = [PATH_SPHERE_RADIUS]
         elif item_type == "capsule":
-            new_geom["radius_mm"] = max(
-                0.1, float(base_geom.get("radius_mm", 50.0)) + delta
-            )
-            new_geom["length_mm"] = max(
-                0.1, float(base_geom.get("length_mm", 200.0)) + delta
-            )
+            new_geom["radius_mm"] = max(0.1, float(base_geom.get("radius_mm", 50.0)) + delta)
+            new_geom["length_mm"] = max(0.1, float(base_geom.get("length_mm", 200.0)) + delta)
             paths = [PATH_CAPSULE_RADIUS, PATH_CAPSULE_LENGTH]
         elif item_type == "box":
             # Optional `axis` param targets just one dimension (the
@@ -300,8 +303,12 @@ def compute_tick(
             new_pose["ox"], new_pose["oy"], new_pose["oz"] = 0.0, 0.0, 1.0
         new_pose["theta"] = _lerp(a.get("theta", 0.0), b.get("theta", 0.0), alpha)
         paths = [
-            PATH_X, PATH_Y, PATH_Z,
-            PATH_OX, PATH_OY, PATH_OZ,
+            PATH_X,
+            PATH_Y,
+            PATH_Z,
+            PATH_OX,
+            PATH_OY,
+            PATH_OZ,
             PATH_THETA,
         ]
         return new_pose, new_geom, paths, None
@@ -321,9 +328,7 @@ def compute_tick(
         # changing two independent quantities.
         radius_amp = float(anim.get("radius_amplitude_mm", 4.0))
         base_radius = float(base_geom.get("radius_mm", 10.0))
-        new_geom["radius_mm"] = max(
-            0.1, base_radius + radius_amp * math.sin(phase + math.pi / 3)
-        )
+        new_geom["radius_mm"] = max(0.1, base_radius + radius_amp * math.sin(phase + math.pi / 3))
         # Orientation: precess around world +Z at a fixed cone half-
         # angle (``tilt_deg``). The arrow's tip traces a circle at
         # altitude cos(tilt). precession_speed scales the precession
@@ -344,7 +349,9 @@ def compute_tick(
         paths = [
             PATH_CAPSULE_LENGTH,
             PATH_SPHERE_RADIUS,
-            PATH_OX, PATH_OY, PATH_OZ,
+            PATH_OX,
+            PATH_OY,
+            PATH_OZ,
             PATH_THETA,
             PATH_METADATA_COLOR,
         ]
@@ -360,9 +367,7 @@ def compute_tick(
         if period_s <= 0:
             period_s = 4.0
         amplitude = float(anim.get("amplitude", 0.4))
-        base_opacity = float(
-            (item.get("opacity") if item.get("opacity") is not None else 1.0)
-        )
+        base_opacity = float((item.get("opacity") if item.get("opacity") is not None else 1.0))
         opacity = base_opacity + amplitude * math.sin(2 * math.pi * t / period_s)
         opacity = max(0.0, min(1.0, opacity))
         paths = [PATH_METADATA_OPACITY]
@@ -408,11 +413,16 @@ def compute_tick(
             opacity = 0.0
             in_scene = False
         paths = [PATH_METADATA_COLOR, PATH_METADATA_OPACITY]
-        return new_pose, new_geom, paths, {
-            "_in_scene": in_scene,
-            "color": color,
-            "opacity": opacity,
-        }
+        return (
+            new_pose,
+            new_geom,
+            paths,
+            {
+                "_in_scene": in_scene,
+                "color": color,
+                "opacity": opacity,
+            },
+        )
 
     if mode == "flicker":
         # True scene-graph mutation — the entity is actually REMOVED

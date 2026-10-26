@@ -6,14 +6,15 @@ nature of do_command + the subscriber fanout is exercised by
 test_service.py — these tests focus on the dispatch table and the
 mutation logic.
 """
-import pytest
 
-from src.service import SceneSprites
+import pytest
 from viam_visuals import (
     DEFAULT_PARENT_FRAME,
     DEFAULT_TICK_HZ,
     DEFAULT_UUID_STRATEGY,
 )
+
+from src.service import SceneSprites
 
 
 def _bare_service():
@@ -43,6 +44,7 @@ def _box_item(label="b1", **overrides):
 
 # ---------- list ----------
 
+
 async def test_list_empty_service_returns_empty():
     s = _bare_service()
     out = await s.do_command({"command": "list"})
@@ -63,6 +65,7 @@ async def test_list_returns_one_summary_per_item():
 
 
 # ---------- add ----------
+
 
 async def test_add_installs_item_with_stable_uuid_equal_to_label():
     s = _bare_service()
@@ -96,6 +99,7 @@ async def test_add_duplicate_label_raises():
 
 # ---------- remove ----------
 
+
 async def test_remove_returns_false_for_unknown_label():
     s = _bare_service()
     out = await s.do_command({"command": "remove", "label": "ghost"})
@@ -118,14 +122,17 @@ async def test_remove_missing_label_raises():
 
 # ---------- update ----------
 
+
 async def test_update_color_emits_metadata_color_fieldmask_path():
     s = _bare_service()
     await s.do_command({"command": "add", "item": _box_item("u1")})
-    out = await s.do_command({
-        "command": "update",
-        "label": "u1",
-        "patch": {"color": {"r": 0, "g": 255, "b": 0}},
-    })
+    out = await s.do_command(
+        {
+            "command": "update",
+            "label": "u1",
+            "patch": {"color": {"r": 0, "g": 255, "b": 0}},
+        }
+    )
     assert out["updated_fields"] == ["metadata.color"]
     assert s._state["u1"]["item"]["color"] == {"r": 0, "g": 255, "b": 0}
 
@@ -133,9 +140,13 @@ async def test_update_color_emits_metadata_color_fieldmask_path():
 async def test_update_opacity_emits_metadata_opacity_fieldmask_path():
     s = _bare_service()
     await s.do_command({"command": "add", "item": _box_item("u2")})
-    out = await s.do_command({
-        "command": "update", "label": "u2", "patch": {"opacity": 0.25},
-    })
+    out = await s.do_command(
+        {
+            "command": "update",
+            "label": "u2",
+            "patch": {"opacity": 0.25},
+        }
+    )
     assert out["updated_fields"] == ["metadata.opacity"]
     assert s._state["u2"]["item"]["opacity"] == 0.25
 
@@ -143,9 +154,13 @@ async def test_update_opacity_emits_metadata_opacity_fieldmask_path():
 async def test_update_pose_x_emits_pose_x_fieldmask_path():
     s = _bare_service()
     await s.do_command({"command": "add", "item": _box_item("u3")})
-    out = await s.do_command({
-        "command": "update", "label": "u3", "patch": {"pose": {"x": 500}},
-    })
+    out = await s.do_command(
+        {
+            "command": "update",
+            "label": "u3",
+            "patch": {"pose": {"x": 500}},
+        }
+    )
     assert out["updated_fields"] == ["poseInObserverFrame.pose.x"]
     assert s._state["u3"]["base_pose"]["x"] == 500
 
@@ -153,22 +168,29 @@ async def test_update_pose_x_emits_pose_x_fieldmask_path():
 async def test_update_pose_multi_axis_emits_one_path_per_axis():
     s = _bare_service()
     await s.do_command({"command": "add", "item": _box_item("u4")})
-    out = await s.do_command({
-        "command": "update", "label": "u4",
-        "patch": {"pose": {"x": 100, "y": 200}},
-    })
+    out = await s.do_command(
+        {
+            "command": "update",
+            "label": "u4",
+            "patch": {"pose": {"x": 100, "y": 200}},
+        }
+    )
     assert set(out["updated_fields"]) == {
-        "poseInObserverFrame.pose.x", "poseInObserverFrame.pose.y",
+        "poseInObserverFrame.pose.x",
+        "poseInObserverFrame.pose.y",
     }
 
 
 async def test_update_box_dims_emits_all_three_dim_paths():
     s = _bare_service()
     await s.do_command({"command": "add", "item": _box_item("u5")})
-    out = await s.do_command({
-        "command": "update", "label": "u5",
-        "patch": {"dims_mm": {"x": 200, "y": 300, "z": 50}},
-    })
+    out = await s.do_command(
+        {
+            "command": "update",
+            "label": "u5",
+            "patch": {"dims_mm": {"x": 200, "y": 300, "z": 50}},
+        }
+    )
     assert set(out["updated_fields"]) >= {
         "physicalObject.geometryType.value.dimsMm.x",
         "physicalObject.geometryType.value.dimsMm.y",
@@ -180,14 +202,20 @@ async def test_update_box_dims_emits_all_three_dim_paths():
 async def test_update_sphere_radius():
     s = _bare_service()
     sphere = {
-        "type": "sphere", "label": "u6",
+        "type": "sphere",
+        "label": "u6",
         "pose": {"x": 0, "y": 0, "z": 0, "oz": 1},
-        "radius_mm": 50, "animation": {"mode": "none"},
+        "radius_mm": 50,
+        "animation": {"mode": "none"},
     }
     await s.do_command({"command": "add", "item": sphere})
-    out = await s.do_command({
-        "command": "update", "label": "u6", "patch": {"radius_mm": 120},
-    })
+    out = await s.do_command(
+        {
+            "command": "update",
+            "label": "u6",
+            "patch": {"radius_mm": 120},
+        }
+    )
     assert "physicalObject.geometryType.value.radiusMm" in out["updated_fields"]
     assert s._state["u6"]["item"]["radius_mm"] == 120
 
@@ -200,16 +228,20 @@ async def test_update_mesh_path_swaps_file_at_runtime(tmp_path):
     # Use the shipped assets so file IO works without monkeying with
     # the module dir.
     mesh_item = {
-        "type": "mesh", "label": "u7",
+        "type": "mesh",
+        "label": "u7",
         "pose": {"x": 0, "y": 0, "z": 0, "oz": 1},
         "mesh_path": "assets/icosahedron.ply",
         "animation": {"mode": "none"},
     }
     await s.do_command({"command": "add", "item": mesh_item})
-    out = await s.do_command({
-        "command": "update", "label": "u7",
-        "patch": {"mesh_path": "assets/bunny.stl"},
-    })
+    out = await s.do_command(
+        {
+            "command": "update",
+            "label": "u7",
+            "patch": {"mesh_path": "assets/bunny.stl"},
+        }
+    )
     assert "physicalObject.mesh" in out["updated_fields"]
     assert s._state["u7"]["item"]["mesh_path"] == "assets/bunny.stl"
 
@@ -217,9 +249,13 @@ async def test_update_mesh_path_swaps_file_at_runtime(tmp_path):
 async def test_update_unknown_label_raises():
     s = _bare_service()
     with pytest.raises(Exception, match="unknown label"):
-        await s.do_command({
-            "command": "update", "label": "ghost", "patch": {"opacity": 0.5},
-        })
+        await s.do_command(
+            {
+                "command": "update",
+                "label": "ghost",
+                "patch": {"opacity": 0.5},
+            }
+        )
 
 
 async def test_update_missing_patch_raises():
@@ -231,6 +267,7 @@ async def test_update_missing_patch_raises():
 
 # ---------- clear ----------
 
+
 async def test_clear_returns_removed_count_and_empties_state():
     s = _bare_service()
     await s.do_command({"command": "add", "item": _box_item("a")})
@@ -241,6 +278,7 @@ async def test_clear_returns_removed_count_and_empties_state():
 
 
 # ---------- preset ----------
+
 
 async def test_preset_replaces_existing_items():
     s = _bare_service()
@@ -267,13 +305,13 @@ async def test_preset_primitives_loads_sixteen_items():
 
 # ---------- snapshot ----------
 
+
 async def test_snapshot_returns_pasteable_config():
     """A snapshot should roundtrip — passing the returned ``config`` to
     validate_config + reconfigure should reproduce the same scene."""
     s = _bare_service()
     await s.do_command({"command": "add", "item": _box_item("snap_box")})
-    await s.do_command({"command": "add", "item": _box_item("snap_box_2",
-        pose={"x": 200, "y": 0, "z": 0, "oz": 1})})
+    await s.do_command({"command": "add", "item": _box_item("snap_box_2", pose={"x": 200, "y": 0, "z": 0, "oz": 1})})
     out = await s.do_command({"command": "snapshot"})
     cfg = out["config"]
     # Top-level service params present.
@@ -301,6 +339,7 @@ async def test_snapshot_roundtrips_through_validate_config():
 
 # ---------- set_uuid_strategy ----------
 
+
 async def test_set_uuid_strategy_toggles_runtime_setting():
     s = _bare_service()
     assert s.uuid_strategy == "stable"
@@ -316,6 +355,7 @@ async def test_set_uuid_strategy_unknown_value_raises():
 
 
 # ---------- get_entity_chunk ----------
+
 
 async def test_get_entity_chunk_returns_first_chunk_for_chunked_item():
     """A chunked pointcloud item exposes its body via get_entity_chunk.
@@ -334,11 +374,13 @@ async def test_get_entity_chunk_returns_first_chunk_for_chunked_item():
         "animation": {"mode": "none"},
     }
     await s.do_command({"command": "add", "item": chunked_item})
-    out = await s.do_command({
-        "command": "get_entity_chunk",
-        "label": "helix",
-        "chunk_index": 0,
-    })
+    out = await s.do_command(
+        {
+            "command": "get_entity_chunk",
+            "label": "helix",
+            "chunk_index": 0,
+        }
+    )
     assert out["label"] == "helix"
     assert out["chunk_index"] == 0
     assert out["n_chunks"] > 1  # helix.pcd has thousands of points
@@ -364,20 +406,24 @@ async def test_get_entity_chunk_non_chunked_item_raises():
     }
     await s.do_command({"command": "add", "item": plain_item})
     with pytest.raises(Exception, match="not chunked"):
-        await s.do_command({
-            "command": "get_entity_chunk",
-            "label": "plain_helix",
-            "chunk_index": 0,
-        })
+        await s.do_command(
+            {
+                "command": "get_entity_chunk",
+                "label": "plain_helix",
+                "chunk_index": 0,
+            }
+        )
 
 
 async def test_get_entity_chunk_unknown_label_raises():
     s = _bare_service()
     with pytest.raises(Exception, match="valid 'label' or 'uuid'"):
-        await s.do_command({
-            "command": "get_entity_chunk",
-            "chunk_index": 0,
-        })
+        await s.do_command(
+            {
+                "command": "get_entity_chunk",
+                "chunk_index": 0,
+            }
+        )
 
 
 async def test_get_entity_chunk_index_out_of_range_raises():
@@ -394,14 +440,17 @@ async def test_get_entity_chunk_index_out_of_range_raises():
     }
     await s.do_command({"command": "add", "item": chunked_item})
     with pytest.raises(Exception, match="out of range"):
-        await s.do_command({
-            "command": "get_entity_chunk",
-            "label": "helix",
-            "chunk_index": 9999,
-        })
+        await s.do_command(
+            {
+                "command": "get_entity_chunk",
+                "label": "helix",
+                "chunk_index": 9999,
+            }
+        )
 
 
 # ---------- default / debug ----------
+
 
 async def test_no_command_returns_debug_snapshot():
     s = _bare_service()

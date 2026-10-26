@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from viam_visuals import (
     ADDED,
     REMOVED,
@@ -17,8 +16,8 @@ from viam_visuals import (
     Sphere,
 )
 
-
 # ---- add ---------------------------------------------------------------
+
 
 def test_add_single_visual_emits_added_event():
     s = Scene()
@@ -68,11 +67,15 @@ def test_add_composite_expands_into_constituents():
     assert len(events) == 4
     assert {e.kind for e in events} == {ADDED}
     assert set(s.labels()) == {
-        "frame", "frame_axis_x", "frame_axis_y", "frame_axis_z",
+        "frame",
+        "frame_axis_x",
+        "frame_axis_y",
+        "frame_axis_z",
     }
 
 
 # ---- update ------------------------------------------------------------
+
 
 def test_update_pose_emits_per_axis_paths():
     s = Scene()
@@ -194,6 +197,7 @@ def test_update_recommits_snapshot_so_second_update_diffs_against_new_state():
 
 # ---- add_or_update -----------------------------------------------------
 
+
 def test_add_or_update_adds_new_visuals():
     s = Scene()
     b = Box("b", dims_mm=(100, 100, 100))
@@ -223,6 +227,7 @@ def test_add_or_update_mixed_batch():
 
 
 # ---- remove ------------------------------------------------------------
+
 
 def test_remove_by_object():
     s = Scene()
@@ -270,6 +275,7 @@ def test_clear_removes_everything():
 
 
 # ---- introspection -----------------------------------------------------
+
 
 def test_get_returns_live_object_reference():
     """The Visual returned by get() is the exact same instance the
@@ -319,6 +325,7 @@ def test_parent_frame_custom():
 
 
 # ---- BoundingBox round-trip --------------------------------------------
+
 
 def test_bounding_box_updates_pose_via_object_mutation():
     """The headline use case — bbox.pose = new_pose; scene.update(bbox).

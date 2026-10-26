@@ -6,15 +6,14 @@ directly (no gRPC)."""
 from __future__ import annotations
 
 import asyncio
-import time
 
 import pytest
-from google.protobuf.struct_pb2 import Struct, Value
+from google.protobuf.struct_pb2 import Struct
 from viam.proto.app.robot import ComponentConfig
+from viam_visuals import registry
 
 from src.driver import PlaygroundDriver
 from src.visualizer import PlaygroundVisualizer
-from viam_visuals import registry
 
 
 def _config(attrs: dict, name: str = "test") -> ComponentConfig:
@@ -42,7 +41,10 @@ async def _make_visualizer(name="vis") -> PlaygroundVisualizer:
 
 
 async def _make_driver(
-    vis_name="vis", recipe="marching_boxes", tick_hz=10.0, namespace="",
+    vis_name="vis",
+    recipe="marching_boxes",
+    tick_hz=10.0,
+    namespace="",
 ) -> PlaygroundDriver:
     d = PlaygroundDriver.__new__(PlaygroundDriver)
     PlaygroundDriver.__init__(d, "drv")
@@ -62,6 +64,7 @@ async def _make_driver(
 
 # ---- validation -------------------------------------------------------
 
+
 def test_driver_validate_requires_visualizer():
     with pytest.raises(Exception, match="'visualizer' is required"):
         PlaygroundDriver.validate_config(_config({"recipe": "marching_boxes"}))
@@ -69,26 +72,44 @@ def test_driver_validate_requires_visualizer():
 
 def test_driver_validate_rejects_unknown_recipe():
     with pytest.raises(Exception, match="unknown recipe"):
-        PlaygroundDriver.validate_config(_config({
-            "visualizer": "vis", "recipe": "made_up",
-        }))
+        PlaygroundDriver.validate_config(
+            _config(
+                {
+                    "visualizer": "vis",
+                    "recipe": "made_up",
+                }
+            )
+        )
 
 
 def test_driver_validate_rejects_invalid_tick_hz():
     with pytest.raises(Exception, match="tick_hz"):
-        PlaygroundDriver.validate_config(_config({
-            "visualizer": "vis", "recipe": "marching_boxes", "tick_hz": 100.0,
-        }))
+        PlaygroundDriver.validate_config(
+            _config(
+                {
+                    "visualizer": "vis",
+                    "recipe": "marching_boxes",
+                    "tick_hz": 100.0,
+                }
+            )
+        )
 
 
 def test_driver_validate_accepts_good_config():
-    deps_req, deps_opt = PlaygroundDriver.validate_config(_config({
-        "visualizer": "vis", "recipe": "marching_boxes", "tick_hz": 5.0,
-    }))
+    deps_req, deps_opt = PlaygroundDriver.validate_config(
+        _config(
+            {
+                "visualizer": "vis",
+                "recipe": "marching_boxes",
+                "tick_hz": 5.0,
+            }
+        )
+    )
     assert (list(deps_req), list(deps_opt)) == ([], [])
 
 
 # ---- reconfigure / registry lookup -----------------------------------
+
 
 async def test_driver_fails_when_visualizer_not_registered():
     d = PlaygroundDriver.__new__(PlaygroundDriver)
@@ -144,6 +165,7 @@ async def test_driver_uses_in_process_reference_not_grpc_stub():
 
 # ---- namespace --------------------------------------------------------
 
+
 async def test_driver_namespace_prefixes_labels_on_visualizer():
     vis = await _make_visualizer()
     d = await _make_driver(namespace="ns1")
@@ -160,16 +182,17 @@ async def test_two_drivers_with_namespaces_coexist():
     d2 = await _make_driver(recipe="pulsing_spheres", namespace="b")
     # 5 march_ from a, 3 pulse_ from b = 8 total.
     assert len(vis._state) == 8
-    assert any(l.startswith("a/march_") for l in vis._state)
-    assert any(l.startswith("b/pulse_") for l in vis._state)
+    assert any(label.startswith("a/march_") for label in vis._state)
+    assert any(label.startswith("b/pulse_") for label in vis._state)
     await d1.close()
     await d2.close()
 
 
 # ---- DoCommand surface ------------------------------------------------
 
+
 async def test_driver_info_command():
-    vis = await _make_visualizer()
+    await _make_visualizer()
     d = await _make_driver()
     info = await d.do_command({"command": "info"})
     assert info["visualizer"] == "vis"
@@ -181,7 +204,7 @@ async def test_driver_info_command():
 
 
 async def test_driver_recipes_command_lists_known_recipes():
-    vis = await _make_visualizer()
+    await _make_visualizer()
     d = await _make_driver()
     out = await d.do_command({"command": "recipes"})
     assert "marching_boxes" in out["recipes"]
@@ -193,13 +216,14 @@ async def test_driver_close_clears_visualizer_state():
     vis = await _make_visualizer()
     d = await _make_driver(namespace="cleanup_test")
     # 5 boxes added.
-    assert any(l.startswith("cleanup_test/") for l in vis._state)
+    assert any(label.startswith("cleanup_test/") for label in vis._state)
     await d.close()
     # After close, our labels should be gone (other namespaces untouched).
-    assert not any(l.startswith("cleanup_test/") for l in vis._state)
+    assert not any(label.startswith("cleanup_test/") for label in vis._state)
 
 
 # ---- reconfigure clears prior scene ----------------------------------
+
 
 async def test_driver_reconfigure_clears_prior_recipe_labels():
     """Switching recipes via reconfigure should REMOVE the prior
@@ -208,22 +232,28 @@ async def test_driver_reconfigure_clears_prior_recipe_labels():
     vis = await _make_visualizer()
     d = await _make_driver(recipe="marching_boxes")
     # MarchingBoxes installs 5 march_* labels.
-    assert any(l.startswith("march_") for l in vis._state)
-    assert not any(l.startswith("pulse_") for l in vis._state)
+    assert any(label.startswith("march_") for label in vis._state)
+    assert not any(label.startswith("pulse_") for label in vis._state)
 
     # Reconfigure to a different recipe.
-    d.reconfigure(_config({
-        "visualizer": "vis",
-        "recipe": "pulsing_spheres",
-        "tick_hz": 20.0,
-    }, name="drv"), {})
+    d.reconfigure(
+        _config(
+            {
+                "visualizer": "vis",
+                "recipe": "pulsing_spheres",
+                "tick_hz": 20.0,
+            },
+            name="drv",
+        ),
+        {},
+    )
     await asyncio.sleep(0.05)
 
     # Prior recipe's labels should be gone; new recipe's labels present.
-    assert not any(l.startswith("march_") for l in vis._state), (
+    assert not any(label.startswith("march_") for label in vis._state), (
         f"march_* labels still present after recipe switch: {list(vis._state)}"
     )
-    assert any(l.startswith("pulse_") for l in vis._state), (
+    assert any(label.startswith("pulse_") for label in vis._state), (
         f"pulse_* labels missing after recipe switch: {list(vis._state)}"
     )
     await d.close()

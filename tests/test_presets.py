@@ -7,24 +7,47 @@ keep working without rewriting ~50 tests against the Visual API.
 The semantic contract under test (item types, labels, poses,
 animation specs) is unchanged.
 """
+
 import math
 
 import pytest
 
-from src.animation import SUPPORTED_AXES, SUPPORTED_MODES
+from src.animation import SUPPORTED_MODES
 from src.geometries import SUPPORTED_TYPES
 from src.presets import (
     PRESET_NAMES,
+)
+from src.presets import (
     PRESETS as _PRESETS_VISUALS,
-    primitives as _primitives,
+)
+from src.presets import (
     color_wheel as _color_wheel,
+)
+from src.presets import (
     force_vector_demo as _force_vector_demo,
+)
+from src.presets import (
     frame_composition as _frame_composition,
+)
+from src.presets import (
     geometry_morph as _geometry_morph,
+)
+from src.presets import (
     load as _load,
+)
+from src.presets import (
     orientation_vectors as _orientation_vectors,
+)
+from src.presets import (
+    primitives as _primitives,
+)
+from src.presets import (
     reference_frame_demo as _reference_frame_demo,
+)
+from src.presets import (
     robot_arm as _robot_arm,
+)
+from src.presets import (
     trajectory_preview as _trajectory_preview,
 )
 
@@ -82,6 +105,7 @@ PRESETS = {name: (lambda fn=fn: _dicts(fn())) for name, fn in _PRESETS_VISUALS.i
 
 
 # ---------- primitives ----------
+
 
 def test_primitives_emits_one_of_every_supported_type():
     """The default scene is every primitive type at least once + a
@@ -200,6 +224,7 @@ def test_primitives_pointcloud_item_references_pcd():
 
 # ---------- color_wheel ----------
 
+
 def test_color_wheel_default_has_ten_spheres():
     items = color_wheel()
     assert len(items) == 10
@@ -222,7 +247,7 @@ def test_color_wheel_positions_form_a_ring():
     items = color_wheel(count=8, ring_radius_mm=200)
     for it in items:
         x, y = it["pose"]["x"], it["pose"]["y"]
-        r = (x ** 2 + y ** 2) ** 0.5
+        r = (x**2 + y**2) ** 0.5
         assert r == pytest.approx(200, abs=1e-6)
         assert it["pose"]["z"] == 0
 
@@ -230,6 +255,7 @@ def test_color_wheel_positions_form_a_ring():
 # ---------- mesh_gallery ----------
 
 # ---------- robot_arm ----------
+
 
 def test_robot_arm_forms_a_parent_frame_chain():
     """The arm is a kinematic chain: each link parents to the
@@ -255,8 +281,7 @@ def test_robot_arm_forms_a_parent_frame_chain():
             assert actual_parent in (None, "", "world")
         else:
             assert actual_parent == expected_parent, (
-                f"{label!r} should parent to {expected_parent!r}, "
-                f"got {actual_parent!r}"
+                f"{label!r} should parent to {expected_parent!r}, got {actual_parent!r}"
             )
 
 
@@ -270,12 +295,9 @@ def test_robot_arm_joint_motions_use_swing_not_spin():
     for joint in ("arm_base", "arm_elbow", "arm_wrist"):
         anim = by_label[joint]["animation"]
         assert anim["mode"] == "swing", (
-            f"{joint!r} should use bounded swing motion (RoM), not "
-            f"continuous spin; got {anim['mode']!r}"
+            f"{joint!r} should use bounded swing motion (RoM), not continuous spin; got {anim['mode']!r}"
         )
-        assert anim.get("amplitude_deg", 0) > 0, (
-            f"{joint!r} swing animation needs a positive amplitude_deg"
-        )
+        assert anim.get("amplitude_deg", 0) > 0, f"{joint!r} swing animation needs a positive amplitude_deg"
 
 
 def test_robot_arm_claw_fingers_open_and_close_in_phase():
@@ -299,6 +321,7 @@ def test_robot_arm_claw_fingers_open_and_close_in_phase():
 
 # ---------- orientation_vectors ----------
 
+
 def test_orientation_vectors_uses_show_axes_helper_coordinate_frames():
     """Orientation viz uses ``show_axes_helper: True`` on small
     sphere markers — the viewer renders an RGB XYZ triad at each
@@ -312,8 +335,7 @@ def test_orientation_vectors_uses_show_axes_helper_coordinate_frames():
             "items should be sphere hosts carrying show_axes_helper"
         )
         assert it.get("show_axes_helper") is True, (
-            f"{it['label']!r} missing show_axes_helper=True; without "
-            "it the viewer renders no axes triad"
+            f"{it['label']!r} missing show_axes_helper=True; without it the viewer renders no axes triad"
         )
 
 
@@ -323,10 +345,11 @@ def test_orientation_vectors_covers_x_y_z_and_theta_demo():
     assert "frame_+X" in labels
     assert "frame_+Y" in labels
     assert "frame_+Z" in labels
-    assert any("theta" in l.lower() for l in labels)
+    assert any("theta" in label.lower() for label in labels)
 
 
 # ---------- reference_frame_demo ----------
+
 
 def test_reference_frame_demo_items_form_parent_chain():
     """The anchor item has no parent_frame override (defaults to
@@ -348,8 +371,7 @@ def test_reference_frame_demo_items_form_parent_chain():
         "spinning_frame_attached_mesh",
     ):
         assert by_label[child_label]["parent_frame"] == "spinning_frame", (
-            f"{child_label} must parent to spinning_frame for the "
-            "frame-composition demo to work"
+            f"{child_label} must parent to spinning_frame for the frame-composition demo to work"
         )
 
 
@@ -406,16 +428,14 @@ def test_reference_frame_demo_wheel_hub_parented_to_mesh_with_identity_orientati
     hub = by_label.get("spinning_frame_wheel_hub")
     assert hub is not None, "expected an intermediate wheel_hub"
     assert hub["parent_frame"] == "spinning_frame_attached_mesh", (
-        "wheel_hub must parent to the mesh so the wheel orbits the "
-        "mesh, not the anchor"
+        "wheel_hub must parent to the mesh so the wheel orbits the mesh, not the anchor"
     )
     # Identity orientation: OZ=1, others 0.
     pose = hub["pose"]
     assert pose["ox"] == 0
     assert pose["oy"] == 0
     assert pose["oz"] == 1, (
-        "wheel_hub must have identity orientation (OZ=1) so the "
-        "spin axis is the ring's own perpendicular"
+        "wheel_hub must have identity orientation (OZ=1) so the spin axis is the ring's own perpendicular"
     )
     # And the hub spins (otherwise the wheel doesn't rotate).
     assert hub["animation"]["mode"] == "spin"
@@ -428,9 +448,9 @@ def test_reference_frame_demo_wheel_children_parent_to_hub():
     the axis-distinct teaching point regresses."""
     items = reference_frame_demo()
     wheel = [
-        it for it in items
-        if it["label"].startswith("spinning_frame_wheel_")
-        and it["label"] != "spinning_frame_wheel_hub"
+        it
+        for it in items
+        if it["label"].startswith("spinning_frame_wheel_") and it["label"] != "spinning_frame_wheel_hub"
     ]
     assert len(wheel) == 10, f"expected 10 wheel spheres, got {len(wheel)}"
     for it in wheel:
@@ -446,6 +466,7 @@ def test_reference_frame_demo_wheel_children_parent_to_hub():
 
 
 # ---------- frame_composition ----------
+
 
 def test_frame_composition_includes_both_demos():
     """The merged preset must carry both the spinning_frame anchor
@@ -488,6 +509,7 @@ def test_frame_composition_offsets_bases_along_x_only():
 
 # ---------- trajectory_preview ----------
 
+
 def test_trajectory_preview_has_runner_waypoints_and_line_segments():
     """Three component categories: waypoint markers, line segments,
     and exactly one moving runner."""
@@ -498,9 +520,7 @@ def test_trajectory_preview_has_runner_waypoints_and_line_segments():
     runner_count = sum(1 for L in labels if L == "traj_runner")
     assert wp_count >= 2, "need at least 2 waypoints for a trajectory"
     # Line segments connect adjacent waypoints, so seg count = wp - 1.
-    assert seg_count == wp_count - 1, (
-        f"segments ({seg_count}) should equal waypoints-1 ({wp_count - 1})"
-    )
+    assert seg_count == wp_count - 1, f"segments ({seg_count}) should equal waypoints-1 ({wp_count - 1})"
     assert runner_count == 1, "exactly one runner item drives the demo"
 
 
@@ -572,6 +592,7 @@ def test_trajectory_preview_line_segments_align_with_segment_directions():
 
 # ---------- geometry_morph ----------
 
+
 def test_geometry_morph_includes_all_four_animation_modes():
     """The row showcases four distinct attribute-animation patterns;
     each must be present. Modes: pulse on sphere (size), pulse on
@@ -600,9 +621,7 @@ def test_geometry_morph_grid_phase_offsets_vary_per_cell():
     # The working grid (green) — use morph_grid_NN labels, not the
     # broken-grid morph_grid_broken_* labels.
     grid_items = [
-        it for it in items
-        if it["label"].startswith("morph_grid_")
-        and not it["label"].startswith("morph_grid_broken_")
+        it for it in items if it["label"].startswith("morph_grid_") and not it["label"].startswith("morph_grid_broken_")
     ]
     offsets = {it["animation"]["phase_offset_s"] for it in grid_items}
     # Diagonal pattern: (row+col) ∈ [0, 8] gives 9 distinct offset
@@ -620,9 +639,9 @@ def test_geometry_morph_includes_working_and_broken_grids():
     them side-by-side makes the bug visually obvious for teaching
     and for QA against future viewer fixes."""
     items = geometry_morph()
-    working = [it for it in items
-               if it["label"].startswith("morph_grid_")
-               and not it["label"].startswith("morph_grid_broken_")]
+    working = [
+        it for it in items if it["label"].startswith("morph_grid_") and not it["label"].startswith("morph_grid_broken_")
+    ]
     broken = [it for it in items if it["label"].startswith("morph_grid_broken_")]
     assert len(working) == 25
     assert len(broken) == 25
@@ -642,6 +661,7 @@ def test_geometry_morph_includes_working_and_broken_grids():
 
 
 # ---------- force_vector_demo ----------
+
 
 def test_force_vector_demo_is_a_single_animated_arrow():
     """Standalone preset is exactly one arrow with force_vector
@@ -668,6 +688,7 @@ def test_force_vector_demo_animation_carries_all_four_attributes():
 
 
 # ---------- all preset trajectory-shift behavior ----------
+
 
 def test_all_preset_shifts_trajectory_animation_waypoints():
     """When the `all` preset offsets the trajectory_preview items in
@@ -698,6 +719,7 @@ def test_all_preset_shifts_trajectory_animation_waypoints():
 
 # ---------- registry + load ----------
 
+
 def test_presets_registry_matches_names_constant():
     assert set(PRESETS.keys()) == set(PRESET_NAMES)
 
@@ -714,6 +736,7 @@ def test_load_raises_for_unknown_preset():
 
 
 # ---------- shape sanity: every preset emits valid item shapes ----------
+
 
 @pytest.mark.parametrize("preset_name", list(PRESET_NAMES))
 def test_every_preset_item_has_required_fields(preset_name):

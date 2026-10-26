@@ -16,6 +16,7 @@ Add a new recipe by:
 
 The driver picks one by name via its ``recipe`` config attribute.
 """
+
 from __future__ import annotations
 
 import math
@@ -27,7 +28,6 @@ from viam_visuals import (
     Box,
     Capsule,
     CoordinateFrame,
-    Line,
     Mesh,
     Point,
     PointCloud,
@@ -61,6 +61,7 @@ class Recipe(Protocol):
 
 
 # ---- marching_boxes -----------------------------------------------------
+
 
 class MarchingBoxes:
     """Five boxes in a row along X, each bobbing in Y on a sine wave.
@@ -116,6 +117,7 @@ class MarchingBoxes:
 
 # ---- pulsing_spheres ---------------------------------------------------
 
+
 class PulsingSpheres:
     """Three spheres pulsing their radius on phase-offset sine waves.
 
@@ -157,15 +159,14 @@ class PulsingSpheres:
             if sp is None:
                 continue
             phase = (2 * math.pi) * i / self.N_SPHERES
-            r = self.R_BASE + self.R_AMPLITUDE * math.sin(
-                2 * math.pi * t / self.PERIOD_S + phase
-            )
+            r = self.R_BASE + self.R_AMPLITUDE * math.sin(2 * math.pi * t / self.PERIOD_S + phase)
             sp.radius_mm = r
             out.extend(scene.update(sp))
         return out
 
 
 # ---- all_primitives ----------------------------------------------------
+
 
 class AllPrimitives:
     """One of every supported shape, static.
@@ -246,6 +247,7 @@ class AllPrimitives:
 
 # ---- detections_overlay ------------------------------------------------
 
+
 class DetectionsOverlay:
     """Simulated object-detection overlay: N wireframe bounding boxes
     drifting around the origin.
@@ -313,6 +315,7 @@ class DetectionsOverlay:
 
 # ---- coordinate_frames_arm --------------------------------------------
 
+
 class CoordinateFramesArm:
     """Three spinning coordinate-frame triads + an articulated arm.
 
@@ -340,13 +343,13 @@ class CoordinateFramesArm:
 
     name = "coordinate_frames_arm"
 
-    FRAME_POSITIONS = (-400, 0, 400)   # x positions for the 3 triads
-    FRAME_Y_OFFSET = 600                # in front of the arm
+    FRAME_POSITIONS = (-400, 0, 400)  # x positions for the 3 triads
+    FRAME_Y_OFFSET = 600  # in front of the arm
     FRAME_SIZE_MM = 120
-    FRAME_PERIODS_S = (4.0, 5.5, 7.0)   # phase-offset spin rates
+    FRAME_PERIODS_S = (4.0, 5.5, 7.0)  # phase-offset spin rates
 
     ARM_BASE_X = -800
-    ARM_BASE_Y_OFFSET = -400            # behind the frames
+    ARM_BASE_Y_OFFSET = -400  # behind the frames
     ARM_BASE_Z = 0
     LINK_LENGTH = 200
     SHOULDER_AMP_DEG = 50
@@ -377,24 +380,41 @@ class CoordinateFramesArm:
         by = self.y_origin + self.ARM_BASE_Y_OFFSET
         bz = self.ARM_BASE_Z
         L = self.LINK_LENGTH
-        events.extend(scene.add(
-            Sphere(label="arm_shoulder", pose=Pose.at(x=bx, y=by, z=bz),
-                   radius_mm=45, color=(120, 120, 120)),
-            Capsule(label="arm_upper", parent_frame="arm_shoulder",
+        events.extend(
+            scene.add(
+                Sphere(label="arm_shoulder", pose=Pose.at(x=bx, y=by, z=bz), radius_mm=45, color=(120, 120, 120)),
+                Capsule(
+                    label="arm_upper",
+                    parent_frame="arm_shoulder",
                     pose=Pose.at(z=L / 2),
-                    radius_mm=28, length_mm=L,
-                    color=(230, 100, 100)),
-            Sphere(label="arm_elbow", parent_frame="arm_upper",
-                   pose=Pose.at(z=L / 2),
-                   radius_mm=36, color=(100, 230, 100)),
-            Capsule(label="arm_forearm", parent_frame="arm_elbow",
+                    radius_mm=28,
+                    length_mm=L,
+                    color=(230, 100, 100),
+                ),
+                Sphere(
+                    label="arm_elbow",
+                    parent_frame="arm_upper",
                     pose=Pose.at(z=L / 2),
-                    radius_mm=22, length_mm=L,
-                    color=(100, 100, 230)),
-            Sphere(label="arm_wrist", parent_frame="arm_forearm",
-                   pose=Pose.at(z=L / 2),
-                   radius_mm=28, color=(230, 230, 100)),
-        ))
+                    radius_mm=36,
+                    color=(100, 230, 100),
+                ),
+                Capsule(
+                    label="arm_forearm",
+                    parent_frame="arm_elbow",
+                    pose=Pose.at(z=L / 2),
+                    radius_mm=22,
+                    length_mm=L,
+                    color=(100, 100, 230),
+                ),
+                Sphere(
+                    label="arm_wrist",
+                    parent_frame="arm_forearm",
+                    pose=Pose.at(z=L / 2),
+                    radius_mm=28,
+                    color=(230, 230, 100),
+                ),
+            )
+        )
         return events
 
     def tick(self, scene: Scene, t: float) -> List[SceneEvent]:
@@ -410,45 +430,52 @@ class CoordinateFramesArm:
             period = self.FRAME_PERIODS_S[i]
             theta = 360.0 * (t / period) % 360.0
             anchor.pose = Pose.at(
-                x=x, y=frame_y, z=200, theta=theta,
+                x=x,
+                y=frame_y,
+                z=200,
+                theta=theta,
             )
             events.extend(scene.update(anchor))
 
         # Arm joints. Each rotates around its parent's Y axis (shoulder
         # / elbow swing) or its own Z (wrist roll).
-        shoulder_theta = self.SHOULDER_AMP_DEG * math.sin(
-            2 * math.pi * t / self.SHOULDER_PERIOD_S
-        )
+        shoulder_theta = self.SHOULDER_AMP_DEG * math.sin(2 * math.pi * t / self.SHOULDER_PERIOD_S)
         shoulder = scene.get("arm_shoulder")
         if shoulder is not None:
             bx = self.ARM_BASE_X
             by = self.y_origin + self.ARM_BASE_Y_OFFSET
             bz = self.ARM_BASE_Z
             shoulder.pose = Pose.at(
-                x=bx, y=by, z=bz, ox=0, oy=1, oz=0, theta=shoulder_theta,
+                x=bx,
+                y=by,
+                z=bz,
+                ox=0,
+                oy=1,
+                oz=0,
+                theta=shoulder_theta,
             )
             events.extend(scene.update(shoulder))
 
         # Elbow swings on its own Y in the upper-arm's local frame.
-        elbow_theta = self.ELBOW_AMP_DEG * math.sin(
-            2 * math.pi * t / self.ELBOW_PERIOD_S + 0.7
-        )
+        elbow_theta = self.ELBOW_AMP_DEG * math.sin(2 * math.pi * t / self.ELBOW_PERIOD_S + 0.7)
         elbow = scene.get("arm_elbow")
         if elbow is not None:
             elbow.pose = Pose.at(
-                z=self.LINK_LENGTH / 2, ox=0, oy=1, oz=0,
+                z=self.LINK_LENGTH / 2,
+                ox=0,
+                oy=1,
+                oz=0,
                 theta=elbow_theta,
             )
             events.extend(scene.update(elbow))
 
         # Wrist rolls around Z (its own long axis).
-        wrist_theta = self.WRIST_AMP_DEG * math.sin(
-            2 * math.pi * t / self.WRIST_PERIOD_S
-        )
+        wrist_theta = self.WRIST_AMP_DEG * math.sin(2 * math.pi * t / self.WRIST_PERIOD_S)
         wrist = scene.get("arm_wrist")
         if wrist is not None:
             wrist.pose = Pose.at(
-                z=self.LINK_LENGTH / 2, theta=wrist_theta,
+                z=self.LINK_LENGTH / 2,
+                theta=wrist_theta,
             )
             events.extend(scene.update(wrist))
 
@@ -456,6 +483,7 @@ class CoordinateFramesArm:
 
 
 # ---- trajectory_runner ------------------------------------------------
+
 
 class TrajectoryRunner:
     """A "runner" sphere walking through a list of waypoints, each
@@ -491,11 +519,11 @@ class TrajectoryRunner:
         # wp 1: tipped onto its side (local +Z → world +X)
         Pose.at(x=-200, y=-150, z=200, ox=1, oy=0, oz=0, theta=0),
         # wp 2: rolled 90° around its own +Z
-        Pose.at(x=0,    y=0,    z=300, oz=1, theta=90),
+        Pose.at(x=0, y=0, z=300, oz=1, theta=90),
         # wp 3: tipped along Y
-        Pose.at(x=200,  y=150,  z=200, ox=0, oy=1, oz=0, theta=0),
+        Pose.at(x=200, y=150, z=200, ox=0, oy=1, oz=0, theta=0),
         # wp 4: back to identity (so the loop closes smoothly)
-        Pose.at(x=400,  y=300,  z=100, oz=1, theta=0),
+        Pose.at(x=400, y=300, z=100, oz=1, theta=0),
     )
     LAP_PERIOD_S = 12.0  # time to traverse all segments once (slower for visual clarity)
     # Loop semantics: snap-back at end of lap (the runner jumps from
@@ -513,8 +541,13 @@ class TrajectoryRunner:
         # Orientation is preserved verbatim; only the position shifts.
         self.waypoints = tuple(
             Pose.at(
-                x=wp.x, y=wp.y + self.y_origin, z=wp.z,
-                ox=wp.ox, oy=wp.oy, oz=wp.oz, theta=wp.theta,
+                x=wp.x,
+                y=wp.y + self.y_origin,
+                z=wp.z,
+                ox=wp.ox,
+                oy=wp.oy,
+                oz=wp.oz,
+                theta=wp.theta,
             )
             for wp in self.BASE_WAYPOINTS
         )
@@ -524,28 +557,36 @@ class TrajectoryRunner:
 
         # The whole static plan visualization — line + per-waypoint
         # coordinate-frame triads — from one composite.
-        events.extend(scene.add(TrajectoryPlan(
-            label_prefix=self.LABEL_PREFIX,
-            waypoints=list(self.waypoints),
-            line_color=(120, 180, 220),
-            line_width_mm=6,
-            line_opacity=0.5,
-            frame_size_mm=80,
-            frame_axis_radius_mm=4,
-            frame_anchor_radius_mm=8,
-            frame_anchor_opacity=0.5,
-            frame_axis_opacity=0.8,
-        )))
+        events.extend(
+            scene.add(
+                TrajectoryPlan(
+                    label_prefix=self.LABEL_PREFIX,
+                    waypoints=list(self.waypoints),
+                    line_color=(120, 180, 220),
+                    line_width_mm=6,
+                    line_opacity=0.5,
+                    frame_size_mm=80,
+                    frame_axis_radius_mm=4,
+                    frame_anchor_radius_mm=8,
+                    frame_anchor_opacity=0.5,
+                    frame_axis_opacity=0.8,
+                )
+            )
+        )
 
         # The runner — brighter, larger, with its own axes helper so
         # its orientation through the arc is unmistakable.
-        events.extend(scene.add(Sphere(
-            label="trajectory_runner",
-            pose=self.waypoints[0],
-            radius_mm=55,
-            color=(255, 200, 50),
-            show_axes_helper=True,
-        )))
+        events.extend(
+            scene.add(
+                Sphere(
+                    label="trajectory_runner",
+                    pose=self.waypoints[0],
+                    radius_mm=55,
+                    color=(255, 200, 50),
+                    show_axes_helper=True,
+                )
+            )
+        )
         return events
 
     def tick(self, scene: Scene, t: float) -> List[SceneEvent]:
@@ -577,6 +618,7 @@ class TrajectoryRunner:
 
 
 # ---- lifecycle_garden -------------------------------------------------
+
 
 class LifecycleGarden:
     """Five "plots" cycling through appear → alive → disappear → gone.
@@ -708,6 +750,7 @@ class LifecycleGarden:
 
 # ---- force_vector -----------------------------------------------------
 
+
 class ForceVector:
     """Animated force-vector arrow: length / radius / orientation
     all changing simultaneously.
@@ -740,7 +783,7 @@ class ForceVector:
     RADIUS_AMPLITUDE_MM = 6.0
     RADIUS_PERIOD_S = 2.0
 
-    TILT_DEG = 45.0          # angle from world +Z
+    TILT_DEG = 45.0  # angle from world +Z
     PRECESSION_PERIOD_S = 5.0  # full revolution around world +Z
 
     def __init__(self, y_origin: float = 0.0) -> None:
@@ -764,9 +807,7 @@ class ForceVector:
             return []
 
         # Length and radius: phase-offset sinusoids.
-        length = self.BASE_LENGTH_MM + self.LENGTH_AMPLITUDE_MM * math.sin(
-            2 * math.pi * t / self.LENGTH_PERIOD_S
-        )
+        length = self.BASE_LENGTH_MM + self.LENGTH_AMPLITUDE_MM * math.sin(2 * math.pi * t / self.LENGTH_PERIOD_S)
         radius = self.BASE_RADIUS_MM + self.RADIUS_AMPLITUDE_MM * math.sin(
             2 * math.pi * t / self.RADIUS_PERIOD_S + math.pi / 2
         )
@@ -787,6 +828,7 @@ class ForceVector:
 
 
 # ---- breathing_shapes -------------------------------------------------
+
 
 class BreathingShapes:
     """N spheres whose opacity smoothly cycles in ``[0, 1]`` via
@@ -815,7 +857,7 @@ class BreathingShapes:
     SPACING_MM = 300.0
     RADIUS_MM = 70.0
     PERIOD_S = 3.5
-    STEPS_PER_PERIOD = 16    # snap opacity to N discrete values
+    STEPS_PER_PERIOD = 16  # snap opacity to N discrete values
     OPACITY_MIN = 0.10
     OPACITY_MAX = 1.0
 
@@ -840,10 +882,7 @@ class BreathingShapes:
             phase = (2 * math.pi) * i / self.N_SHAPES
             theta = 2 * math.pi * t / self.PERIOD_S + phase
             # Continuous opacity in [OPACITY_MIN, OPACITY_MAX].
-            opacity = self.OPACITY_MIN + (
-                (self.OPACITY_MAX - self.OPACITY_MIN)
-                * (0.5 * (1 + math.sin(theta)))
-            )
+            opacity = self.OPACITY_MIN + ((self.OPACITY_MAX - self.OPACITY_MIN) * (0.5 * (1 + math.sin(theta))))
             # Snap to the nearest step so label rotations happen at
             # a bounded rate.
             step = int(theta / (2 * math.pi / steps)) % steps
@@ -876,6 +915,7 @@ class BreathingShapes:
 
 
 # ---- color_cycling -----------------------------------------------------
+
 
 class ColorCycling:
     """N spheres whose color smoothly cycles through the rainbow via
@@ -940,6 +980,7 @@ class ColorCycling:
 
 # ---- all (every recipe, stacked along Y) ------------------------------
 
+
 class AllRecipe:
     """Run every other recipe simultaneously, stacked along Y.
 
@@ -969,16 +1010,16 @@ class AllRecipe:
     name = "all"
 
     _LAYOUT = (
-        (MarchingBoxes,      -3200.0),
-        (PulsingSpheres,     -2600.0),
-        (BreathingShapes,    -2000.0),
-        (ColorCycling,       -1400.0),
-        (AllPrimitives,       -800.0),
-        (DetectionsOverlay,      0.0),
-        (ForceVector,         +600.0),
-        (LifecycleGarden,    +1200.0),
-        (TrajectoryRunner,   +1900.0),
-        (CoordinateFramesArm,+2800.0),
+        (MarchingBoxes, -3200.0),
+        (PulsingSpheres, -2600.0),
+        (BreathingShapes, -2000.0),
+        (ColorCycling, -1400.0),
+        (AllPrimitives, -800.0),
+        (DetectionsOverlay, 0.0),
+        (ForceVector, +600.0),
+        (LifecycleGarden, +1200.0),
+        (TrajectoryRunner, +1900.0),
+        (CoordinateFramesArm, +2800.0),
     )
 
     def __init__(self) -> None:
@@ -1015,6 +1056,7 @@ RECIPES: Dict[str, Recipe] = {
 
 
 # ---- helpers -----------------------------------------------------------
+
 
 def _rainbow(u: float) -> tuple[int, int, int]:
     """Cheap HSV→RGB at full saturation, full value, varying hue.

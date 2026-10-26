@@ -65,5 +65,6 @@ direction, and the theta field rotates the arrow about its own axis
 
   ```python
   import trimesh
+
   trimesh.load("model.glb").export("model.ply")
   ```
