@@ -21,21 +21,9 @@ def _rotate_vec_by_quat(q, v):
     vx, vy, vz = v
     # q * (0, v) * q^-1
     # Standard quaternion rotation formula
-    rx = (
-        (1 - 2 * (y * y + z * z)) * vx
-        + 2 * (x * y - w * z) * vy
-        + 2 * (x * z + w * y) * vz
-    )
-    ry = (
-        2 * (x * y + w * z) * vx
-        + (1 - 2 * (x * x + z * z)) * vy
-        + 2 * (y * z - w * x) * vz
-    )
-    rz = (
-        2 * (x * z - w * y) * vx
-        + 2 * (y * z + w * x) * vy
-        + (1 - 2 * (x * x + y * y)) * vz
-    )
+    rx = (1 - 2 * (y * y + z * z)) * vx + 2 * (x * y - w * z) * vy + 2 * (x * z + w * y) * vz
+    ry = 2 * (x * y + w * z) * vx + (1 - 2 * (x * x + z * z)) * vy + 2 * (y * z - w * x) * vz
+    rz = 2 * (x * z - w * y) * vx + 2 * (y * z + w * x) * vy + (1 - 2 * (x * x + y * y)) * vz
     return (rx, ry, rz)
 
 
@@ -74,8 +62,7 @@ def test_ov_to_quat_round_trip_preserves_rotation(ox, oy, oz, theta):
     ox2, oy2, oz2, theta2 = _quat_to_ov(*q1)
     q2 = _ov_to_quat(ox2, oy2, oz2, theta2)
     assert _rotations_equivalent(q1, q2), (
-        f"round-trip changed rotation: q1={q1} q2={q2} "
-        f"OV in=({ox},{oy},{oz},{theta}) out=({ox2},{oy2},{oz2},{theta2})"
+        f"round-trip changed rotation: q1={q1} q2={q2} OV in=({ox},{oy},{oz},{theta}) out=({ox2},{oy2},{oz2},{theta2})"
     )
 
 
@@ -172,8 +159,7 @@ def test_lerp_pose_midpoint_of_extreme_rotation_is_halfway_in_so3():
     a_to_mid = ang(qa, qr)
     mid_to_b = ang(qr, qb)
     assert abs(a_to_mid - mid_to_b) < 1e-4, (
-        f"midpoint not halfway in SO(3): a→mid={math.degrees(a_to_mid):.3f}° "
-        f"mid→b={math.degrees(mid_to_b):.3f}°"
+        f"midpoint not halfway in SO(3): a→mid={math.degrees(a_to_mid):.3f}° mid→b={math.degrees(mid_to_b):.3f}°"
     )
 
 
@@ -195,7 +181,4 @@ def test_lerp_pose_takes_shorter_arc():
     qr = _ov_to_quat(r.ox, r.oy, r.oz, r.theta)
     dot = abs(qa[0] * qr[0] + qa[1] * qr[1] + qa[2] * qr[2] + qa[3] * qr[3])
     angle = 2 * math.degrees(math.acos(max(-1.0, min(1.0, dot))))
-    assert abs(angle - 45) < 1.0, (
-        f"expected ~45° (short arc), got {angle:.3f}° — "
-        f"SLERP not taking the shorter path"
-    )
+    assert abs(angle - 45) < 1.0, f"expected ~45° (short arc), got {angle:.3f}° — SLERP not taking the shorter path"

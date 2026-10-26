@@ -295,12 +295,9 @@ def test_robot_arm_joint_motions_use_swing_not_spin():
     for joint in ("arm_base", "arm_elbow", "arm_wrist"):
         anim = by_label[joint]["animation"]
         assert anim["mode"] == "swing", (
-            f"{joint!r} should use bounded swing motion (RoM), not "
-            f"continuous spin; got {anim['mode']!r}"
+            f"{joint!r} should use bounded swing motion (RoM), not continuous spin; got {anim['mode']!r}"
         )
-        assert anim.get("amplitude_deg", 0) > 0, (
-            f"{joint!r} swing animation needs a positive amplitude_deg"
-        )
+        assert anim.get("amplitude_deg", 0) > 0, f"{joint!r} swing animation needs a positive amplitude_deg"
 
 
 def test_robot_arm_claw_fingers_open_and_close_in_phase():
@@ -338,8 +335,7 @@ def test_orientation_vectors_uses_show_axes_helper_coordinate_frames():
             "items should be sphere hosts carrying show_axes_helper"
         )
         assert it.get("show_axes_helper") is True, (
-            f"{it['label']!r} missing show_axes_helper=True; without "
-            "it the viewer renders no axes triad"
+            f"{it['label']!r} missing show_axes_helper=True; without it the viewer renders no axes triad"
         )
 
 
@@ -375,8 +371,7 @@ def test_reference_frame_demo_items_form_parent_chain():
         "spinning_frame_attached_mesh",
     ):
         assert by_label[child_label]["parent_frame"] == "spinning_frame", (
-            f"{child_label} must parent to spinning_frame for the "
-            "frame-composition demo to work"
+            f"{child_label} must parent to spinning_frame for the frame-composition demo to work"
         )
 
 
@@ -412,11 +407,7 @@ def test_reference_frame_demo_static_axes():
     Making them animate independently would muddle the teaching point."""
     items = reference_frame_demo()
     by_label = {it["label"]: it for it in items}
-    for axis in (
-        "spinning_frame_axis_x",
-        "spinning_frame_axis_y",
-        "spinning_frame_axis_z",
-    ):
+    for axis in ("spinning_frame_axis_x", "spinning_frame_axis_y", "spinning_frame_axis_z"):
         assert by_label[axis]["animation"]["mode"] == "none"
 
 
@@ -444,8 +435,7 @@ def test_reference_frame_demo_wheel_hub_parented_to_mesh_with_identity_orientati
     assert pose["ox"] == 0
     assert pose["oy"] == 0
     assert pose["oz"] == 1, (
-        "wheel_hub must have identity orientation (OZ=1) so the "
-        "spin axis is the ring's own perpendicular"
+        "wheel_hub must have identity orientation (OZ=1) so the spin axis is the ring's own perpendicular"
     )
     # And the hub spins (otherwise the wheel doesn't rotate).
     assert hub["animation"]["mode"] == "spin"
@@ -460,8 +450,7 @@ def test_reference_frame_demo_wheel_children_parent_to_hub():
     wheel = [
         it
         for it in items
-        if it["label"].startswith("spinning_frame_wheel_")
-        and it["label"] != "spinning_frame_wheel_hub"
+        if it["label"].startswith("spinning_frame_wheel_") and it["label"] != "spinning_frame_wheel_hub"
     ]
     assert len(wheel) == 10, f"expected 10 wheel spheres, got {len(wheel)}"
     for it in wheel:
@@ -531,9 +520,7 @@ def test_trajectory_preview_has_runner_waypoints_and_line_segments():
     runner_count = sum(1 for L in labels if L == "traj_runner")
     assert wp_count >= 2, "need at least 2 waypoints for a trajectory"
     # Line segments connect adjacent waypoints, so seg count = wp - 1.
-    assert seg_count == wp_count - 1, (
-        f"segments ({seg_count}) should equal waypoints-1 ({wp_count - 1})"
-    )
+    assert seg_count == wp_count - 1, f"segments ({seg_count}) should equal waypoints-1 ({wp_count - 1})"
     assert runner_count == 1, "exactly one runner item drives the demo"
 
 
@@ -634,10 +621,7 @@ def test_geometry_morph_grid_phase_offsets_vary_per_cell():
     # The working grid (green) — use morph_grid_NN labels, not the
     # broken-grid morph_grid_broken_* labels.
     grid_items = [
-        it
-        for it in items
-        if it["label"].startswith("morph_grid_")
-        and not it["label"].startswith("morph_grid_broken_")
+        it for it in items if it["label"].startswith("morph_grid_") and not it["label"].startswith("morph_grid_broken_")
     ]
     offsets = {it["animation"]["phase_offset_s"] for it in grid_items}
     # Diagonal pattern: (row+col) ∈ [0, 8] gives 9 distinct offset
@@ -656,10 +640,7 @@ def test_geometry_morph_includes_working_and_broken_grids():
     and for QA against future viewer fixes."""
     items = geometry_morph()
     working = [
-        it
-        for it in items
-        if it["label"].startswith("morph_grid_")
-        and not it["label"].startswith("morph_grid_broken_")
+        it for it in items if it["label"].startswith("morph_grid_") and not it["label"].startswith("morph_grid_broken_")
     ]
     broken = [it for it in items if it["label"].startswith("morph_grid_broken_")]
     assert len(working) == 25

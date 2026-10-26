@@ -59,23 +59,10 @@ def test_items_list_with_each_primitive_type_validates():
                 "items": [
                     {"type": "box", "label": "b", "dims_mm": {"x": 1, "y": 1, "z": 1}},
                     {"type": "sphere", "label": "s", "radius_mm": 1.0},
-                    {
-                        "type": "capsule",
-                        "label": "c",
-                        "radius_mm": 1.0,
-                        "length_mm": 2.0,
-                    },
+                    {"type": "capsule", "label": "c", "radius_mm": 1.0, "length_mm": 2.0},
                     {"type": "point", "label": "p"},
-                    {
-                        "type": "mesh",
-                        "label": "m",
-                        "mesh_path": "assets/icosahedron.ply",
-                    },
-                    {
-                        "type": "pointcloud",
-                        "label": "pc",
-                        "pointcloud_path": "assets/helix.pcd",
-                    },
+                    {"type": "mesh", "label": "m", "mesh_path": "assets/icosahedron.ply"},
+                    {"type": "pointcloud", "label": "pc", "pointcloud_path": "assets/helix.pcd"},
                 ],
             }
         )
@@ -192,13 +179,7 @@ def test_box_zero_dim_rejected():
         SceneSprites.validate_config(
             _cfg(
                 {
-                    "items": [
-                        {
-                            "type": "box",
-                            "label": "b",
-                            "dims_mm": {"x": 0, "y": 1, "z": 1},
-                        }
-                    ],
+                    "items": [{"type": "box", "label": "b", "dims_mm": {"x": 0, "y": 1, "z": 1}}],
                 }
             )
         )
@@ -209,13 +190,7 @@ def test_box_negative_dim_rejected():
         SceneSprites.validate_config(
             _cfg(
                 {
-                    "items": [
-                        {
-                            "type": "box",
-                            "label": "b",
-                            "dims_mm": {"x": 1, "y": -1, "z": 1},
-                        }
-                    ],
+                    "items": [{"type": "box", "label": "b", "dims_mm": {"x": 1, "y": -1, "z": 1}}],
                 }
             )
         )
@@ -291,9 +266,7 @@ def test_mesh_unsupported_extension_rejected():
         SceneSprites.validate_config(
             _cfg(
                 {
-                    "items": [
-                        {"type": "mesh", "label": "m", "mesh_path": "model.gltf"}
-                    ],
+                    "items": [{"type": "mesh", "label": "m", "mesh_path": "model.gltf"}],
                 }
             )
         )
@@ -304,9 +277,7 @@ def test_mesh_missing_file_rejected():
         SceneSprites.validate_config(
             _cfg(
                 {
-                    "items": [
-                        {"type": "mesh", "label": "m", "mesh_path": "assets/nope.ply"}
-                    ],
+                    "items": [{"type": "mesh", "label": "m", "mesh_path": "assets/nope.ply"}],
                 }
             )
         )
@@ -328,13 +299,7 @@ def test_pointcloud_missing_file_rejected():
         SceneSprites.validate_config(
             _cfg(
                 {
-                    "items": [
-                        {
-                            "type": "pointcloud",
-                            "label": "pc",
-                            "pointcloud_path": "missing.pcd",
-                        }
-                    ],
+                    "items": [{"type": "pointcloud", "label": "pc", "pointcloud_path": "missing.pcd"}],
                 }
             )
         )
@@ -349,13 +314,7 @@ def test_color_channel_out_of_range_rejected(bad):
         SceneSprites.validate_config(
             _cfg(
                 {
-                    "items": [
-                        {
-                            "type": "point",
-                            "label": "p",
-                            "color": {"r": bad, "g": 0, "b": 0},
-                        }
-                    ],
+                    "items": [{"type": "point", "label": "p", "color": {"r": bad, "g": 0, "b": 0}}],
                 }
             )
         )

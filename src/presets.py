@@ -143,9 +143,7 @@ def _label_for(
         oz=1.0,
         theta=0.0,
     )
-    color = ITEM_LABEL_COLORS[
-        sum(ord(c) for c in target_label) % len(ITEM_LABEL_COLORS)
-    ]
+    color = ITEM_LABEL_COLORS[sum(ord(c) for c in target_label) % len(ITEM_LABEL_COLORS)]
     return Mesh(
         label=f"label_{target_label}",
         pose=pose,
@@ -212,39 +210,13 @@ def primitives() -> List[Visual]:
     class surface and ``LIBRARY_PLAN.md`` for the design context."""
     sp = PRIMITIVE_ROW_SPACING_MM
     visuals = [
-        Box(
-            "demo_box",
-            pose=Pose.at(x=-4 * sp),
-            dims_mm=(150, 150, 150),
-            color=(230, 25, 75),
-            opacity=1.0,
-        ),
-        Sphere(
-            "demo_sphere",
-            pose=Pose.at(x=-3 * sp),
-            radius_mm=90,
-            color=(60, 180, 75),
-            opacity=1.0,
-        ),
-        Capsule(
-            "demo_capsule",
-            pose=Pose.at(x=-2 * sp),
-            radius_mm=50,
-            length_mm=200,
-            color=(0, 130, 200),
-            opacity=1.0,
-        ),
+        Box("demo_box", pose=Pose.at(x=-4 * sp), dims_mm=(150, 150, 150), color=(230, 25, 75), opacity=1.0),
+        Sphere("demo_sphere", pose=Pose.at(x=-3 * sp), radius_mm=90, color=(60, 180, 75), opacity=1.0),
+        Capsule("demo_capsule", pose=Pose.at(x=-2 * sp), radius_mm=50, length_mm=200, color=(0, 130, 200), opacity=1.0),
         Point("demo_point", pose=Pose.at(x=-1 * sp), color=(255, 225, 25), opacity=1.0),
         # Procedural mesh, asymmetric — direction is unambiguous
         # unlike a capsule.
-        Arrow(
-            "demo_arrow",
-            pose=Pose.at(x=0),
-            length_mm=220,
-            radius_mm=12,
-            color=(145, 30, 180),
-            opacity=1.0,
-        ),
+        Arrow("demo_arrow", pose=Pose.at(x=0), length_mm=220, radius_mm=12, color=(145, 30, 180), opacity=1.0),
         Mesh(
             "demo_icosahedron",
             pose=Pose.at(x=1 * sp),
@@ -253,13 +225,7 @@ def primitives() -> List[Visual]:
             opacity=1.0,
         ),
         # STL → PLY conversion at construction time; works.
-        Mesh(
-            "demo_bunny",
-            pose=Pose.at(x=2 * sp),
-            mesh_path="assets/bunny.stl",
-            color=(245, 130, 49),
-            opacity=1.0,
-        ),
+        Mesh("demo_bunny", pose=Pose.at(x=2 * sp), mesh_path="assets/bunny.stl", color=(245, 130, 49), opacity=1.0),
         # Same STL, shipped raw with content_type="stl" (bypassing
         # stl_to_ply via raw_stl=True). Bug-demo for the viz team:
         # the proto/RDK contract says STL on the wire should work
@@ -275,32 +241,15 @@ def primitives() -> List[Visual]:
             color=(245, 130, 49),
             opacity=1.0,
         ),
-        Mesh(
-            "demo_torus",
-            pose=Pose.at(x=4 * sp),
-            mesh_path="assets/torus.ply",
-            color=(70, 240, 240),
-            opacity=1.0,
-        ),
-        Mesh(
-            "demo_teapot",
-            pose=Pose.at(x=5 * sp),
-            mesh_path="assets/teapot.ply",
-            color=(60, 180, 75),
-            opacity=1.0,
-        ),
+        Mesh("demo_torus", pose=Pose.at(x=4 * sp), mesh_path="assets/torus.ply", color=(70, 240, 240), opacity=1.0),
+        Mesh("demo_teapot", pose=Pose.at(x=5 * sp), mesh_path="assets/teapot.ply", color=(60, 180, 75), opacity=1.0),
         # MESH version of the colored sphere. PLY w/ per-vertex
         # `property uchar red/green/blue`; service transcodes to
         # metadata.colors, but the viewer collapses N colors to one
         # uniform tint (the first color). Bug-demo: no `color` so
         # the embedded vertex colors are the only color source.
         # See LESSONS.md::mesh-metadata-colors-only-uses-first-color.
-        Mesh(
-            "demo_colorful_sphere_mesh",
-            pose=Pose.at(x=6 * sp),
-            mesh_path="assets/colorful_sphere.ply",
-            opacity=1.0,
-        ),
+        Mesh("demo_colorful_sphere_mesh", pose=Pose.at(x=6 * sp), mesh_path="assets/colorful_sphere.ply", opacity=1.0),
         # PER-FACE colors variant — `property uchar r/g/b` on
         # `element face` instead of `element vertex`. Untested;
         # bug-demo asks "does the renderer treat per-FACE colors
@@ -315,30 +264,17 @@ def primitives() -> List[Visual]:
         # `comment TextureFile uv_sphere.png`. commonpb.Mesh has no
         # texture-bytes slot so no image ships; bug-demo asks what
         # the viewer does when it receives PLY UV props at all.
-        Mesh(
-            "demo_uv_sphere_mesh",
-            pose=Pose.at(x=8 * sp),
-            mesh_path="assets/uv_sphere.ply",
-            opacity=1.0,
-        ),
+        Mesh("demo_uv_sphere_mesh", pose=Pose.at(x=8 * sp), mesh_path="assets/uv_sphere.ply", opacity=1.0),
         # POINT CLOUD version — works because the viewer reads PCD
         # per-point RGB when metadata.colors is absent. Direct
         # comparison with the three mesh siblings to the left.
         # See LESSONS.md::pcd-colors-precedence.
         PointCloud(
-            "demo_colorful_sphere",
-            pose=Pose.at(x=9 * sp),
-            pointcloud_path="assets/colorful_sphere.pcd",
-            opacity=1.0,
+            "demo_colorful_sphere", pose=Pose.at(x=9 * sp), pointcloud_path="assets/colorful_sphere.pcd", opacity=1.0
         ),
         # No `color` on purpose: metadata.colors would override the
         # PCD's per-point RGB. See LESSONS.md::pcd-colors-precedence.
-        PointCloud(
-            "demo_pointcloud",
-            pose=Pose.at(x=10 * sp),
-            pointcloud_path="assets/helix.pcd",
-            opacity=1.0,
-        ),
+        PointCloud("demo_pointcloud", pose=Pose.at(x=10 * sp), pointcloud_path="assets/helix.pcd", opacity=1.0),
         # Chunked-delivery sibling of the helix above. Initial
         # Transform ships first 2000 points inline; rest via the
         # `get_entity_chunk` DoCommand. Sits next to the un-chunked
@@ -368,10 +304,7 @@ def color_wheel(count: int = 10, ring_radius_mm: float = 300.0) -> List[Visual]:
         visuals.append(
             Sphere(
                 f"wheel_{i:02d}",
-                pose=Pose.at(
-                    x=ring_radius_mm * math.cos(angle),
-                    y=ring_radius_mm * math.sin(angle),
-                ),
+                pose=Pose.at(x=ring_radius_mm * math.cos(angle), y=ring_radius_mm * math.sin(angle)),
                 radius_mm=60,
                 color=(int(255 * r), int(255 * g), int(255 * b)),
                 opacity=1.0,
@@ -535,9 +468,7 @@ def orientation_vectors() -> List[Visual]:
     HOST_COLOR = (220, 220, 220)
     HOST_OPACITY = 0.35
 
-    def _frame(
-        label: str, x: float, ox: float, oy: float, oz: float, theta: float = 0.0
-    ) -> Sphere:
+    def _frame(label: str, x: float, ox: float, oy: float, oz: float, theta: float = 0.0) -> Sphere:
         return Sphere(
             label,
             pose=Pose.at(x=x, ox=ox, oy=oy, oz=oz, theta=theta),
@@ -689,11 +620,7 @@ def _color_wheel_visuals(
             Sphere(
                 f"{parent_label}_wheel_{i:02d}",
                 parent_frame=parent_label,
-                pose=Pose.at(
-                    x=ring_radius_mm * math.cos(angle),
-                    y=ring_radius_mm * math.sin(angle),
-                    z=z_mm,
-                ),
+                pose=Pose.at(x=ring_radius_mm * math.cos(angle), y=ring_radius_mm * math.sin(angle), z=z_mm),
                 radius_mm=sphere_radius_mm,
                 color=(int(255 * r), int(255 * g), int(255 * b)),
                 opacity=1.0,
@@ -823,9 +750,7 @@ def all_preset() -> List[Visual]:
     fv = _offset_base_items(fv, "y", 2 * row)
     items.extend(fv)
     # Arm row gets the wide gap.
-    items.extend(
-        _offset_base_items_y(_with_item_labels(frame_composition()), 2 * row + arm_gap)
-    )
+    items.extend(_offset_base_items_y(_with_item_labels(frame_composition()), 2 * row + arm_gap))
 
     # Row-name labels at the left edge of each row, inline with the
     # row's items (same Z plane). Sit at x = -2200 so they extend to
@@ -918,9 +843,7 @@ def trajectory_preview() -> List[Visual]:
             color=(230, 40, 80),
             opacity=0.9,
             show_axes_helper=True,
-            animation=Trajectory(
-                waypoints=[dict(wp) for wp in waypoints], duration_s=12.0, loop=True
-            ),
+            animation=Trajectory(waypoints=[dict(wp) for wp in waypoints], duration_s=12.0, loop=True),
         )
     )
     return visuals
@@ -999,19 +922,14 @@ def geometry_morph() -> List[Visual]:
     grid_spacing = 80.0
     period_s = 4.0
 
-    def _add_grid(
-        prefix: str, origin_x: float, color: Tuple[int, int, int], rotate_uuid: bool
-    ) -> None:
+    def _add_grid(prefix: str, origin_x: float, color: Tuple[int, int, int], rotate_uuid: bool) -> None:
         for row_idx in range(grid_n):
             for col_idx in range(grid_n):
                 phase_offset = (row_idx + col_idx) / (2 * grid_n - 1) * period_s
                 visuals.append(
                     Sphere(
                         f"{prefix}_{row_idx}{col_idx}",
-                        pose=Pose.at(
-                            x=origin_x + col_idx * grid_spacing,
-                            y=row_idx * grid_spacing,
-                        ),
+                        pose=Pose.at(x=origin_x + col_idx * grid_spacing, y=row_idx * grid_spacing),
                         radius_mm=22,
                         color=color,
                         opacity=1.0,
@@ -1105,11 +1023,7 @@ def lifecycle_demo() -> List[Visual]:
                 color=(128, 128, 128),
                 opacity=1.0,
                 animation=Lifecycle(
-                    appear_s=appear_s,
-                    alive_s=alive_s,
-                    disappear_s=disappear_s,
-                    gone_s=gone_s,
-                    phase_offset_s=offset_s,
+                    appear_s=appear_s, alive_s=alive_s, disappear_s=disappear_s, gone_s=gone_s, phase_offset_s=offset_s
                 ),
             )
         )
@@ -1205,7 +1119,5 @@ def load(name: str) -> List[Visual]:
     :meth:`SceneServiceBase.set_scene`."""
     fn = PRESETS.get(name)
     if fn is None:
-        raise ValueError(
-            f"unknown preset {name!r}; available: {sorted(PRESETS.keys())}"
-        )
+        raise ValueError(f"unknown preset {name!r}; available: {sorted(PRESETS.keys())}")
     return fn()

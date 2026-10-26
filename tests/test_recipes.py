@@ -254,9 +254,7 @@ def test_trajectory_runner_initial_installs_plan_and_runner():
         assert f"trajectory_wp_{i}_axis_x" in scene.labels()
     assert "trajectory_runner" in scene.labels()
     # 4 segments connecting 5 waypoints.
-    n_segs = sum(
-        1 for label in scene.labels() if label.startswith("trajectory_path_seg_")
-    )
+    n_segs = sum(1 for label in scene.labels() if label.startswith("trajectory_path_seg_"))
     assert n_segs == 4
 
 
@@ -347,8 +345,7 @@ def test_trajectory_runner_end_of_lap_matches_last_waypoint():
     runner = scene.get("trajectory_runner")
     last = recipe.waypoints[-1]
     assert abs(runner.pose.x - last.x) < 5.0, (
-        f"runner x={runner.pose.x} should be near last wp x={last.x}, "
-        f"not interpolating back toward wp0"
+        f"runner x={runner.pose.x} should be near last wp x={last.x}, not interpolating back toward wp0"
     )
     assert abs(runner.pose.y - last.y) < 5.0
     assert abs(runner.pose.z - last.z) < 5.0
@@ -403,12 +400,7 @@ def test_lifecycle_garden_label_versions_bump_across_cycles():
     # Tick during plot 0's gone phase (local_t in [3.2, 4.0)) so it's
     # REMOVED, then tick after the wrap (back into appear) so it's
     # re-ADDED with a fresh version.
-    gone_t = (
-        LifecycleGarden.APPEAR_S
-        + LifecycleGarden.ALIVE_S
-        + LifecycleGarden.DISAPPEAR_S
-        + 0.1
-    )
+    gone_t = LifecycleGarden.APPEAR_S + LifecycleGarden.ALIVE_S + LifecycleGarden.DISAPPEAR_S + 0.1
     recipe.tick(scene, gone_t)
     recipe.tick(scene, LifecycleGarden.CYCLE_S + 0.1)
     versions_after_second = list(recipe._version)
@@ -426,20 +418,13 @@ def test_lifecycle_garden_re_add_uses_fresh_label():
     recipe.tick(scene, 0.1)
     first_labels = {label for label in scene.labels() if label.startswith("garden_0_v")}
     # Walk through the gone phase explicitly so the recipe REMOVEs.
-    gone_t = (
-        LifecycleGarden.APPEAR_S
-        + LifecycleGarden.ALIVE_S
-        + LifecycleGarden.DISAPPEAR_S
-        + 0.1
-    )
+    gone_t = LifecycleGarden.APPEAR_S + LifecycleGarden.ALIVE_S + LifecycleGarden.DISAPPEAR_S + 0.1
     recipe.tick(scene, gone_t)
     # Now back into appear — recipe ADDs with fresh version.
     recipe.tick(scene, LifecycleGarden.CYCLE_S + 0.1)
     new_labels = {label for label in scene.labels() if label.startswith("garden_0_v")}
     # New labels shouldn't include the previously-removed ones.
-    assert not (first_labels & new_labels), (
-        f"reused stale labels {first_labels & new_labels}"
-    )
+    assert not (first_labels & new_labels), f"reused stale labels {first_labels & new_labels}"
 
 
 def test_lifecycle_garden_color_changes_through_phases():
@@ -450,15 +435,11 @@ def test_lifecycle_garden_color_changes_through_phases():
     scene = Scene()
     # Plot 0 starts at appear (local_t=0 with no phase offset).
     recipe.tick(scene, 0.0)
-    plot0 = next(
-        scene.get(label) for label in scene.labels() if label.startswith("garden_0_v")
-    )
+    plot0 = next(scene.get(label) for label in scene.labels() if label.startswith("garden_0_v"))
     assert plot0.color == recipe.COLOR_APPEAR
     # Step into alive phase.
     recipe.tick(scene, LifecycleGarden.APPEAR_S + 0.1)
-    plot0 = next(
-        scene.get(label) for label in scene.labels() if label.startswith("garden_0_v")
-    )
+    plot0 = next(scene.get(label) for label in scene.labels() if label.startswith("garden_0_v"))
     assert plot0.color == recipe.COLOR_ALIVE
 
 
@@ -572,8 +553,7 @@ def test_breathing_shapes_subsequent_ticks_rotate_labels():
     remove_events = [e for e in events if e.kind == "removed"]
     assert len(add_events) >= 1
     assert len(add_events) == len(remove_events), (
-        f"add and remove counts should match: {len(add_events)} adds, "
-        f"{len(remove_events)} removes"
+        f"add and remove counts should match: {len(add_events)} adds, {len(remove_events)} removes"
     )
 
 

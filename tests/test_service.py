@@ -92,10 +92,7 @@ async def test_subscriber_receives_initial_burst_of_added_for_existing_items():
     msg2 = await gen.__anext__()
     assert msg1.change_type == TransformChangeType.TRANSFORM_CHANGE_TYPE_ADDED
     assert msg2.change_type == TransformChangeType.TRANSFORM_CHANGE_TYPE_ADDED
-    labels = {
-        msg1.transform.physical_object.label,
-        msg2.transform.physical_object.label,
-    }
+    labels = {msg1.transform.physical_object.label, msg2.transform.physical_object.label}
     assert labels == {"a", "b"}
     await gen.aclose()
 
@@ -125,9 +122,7 @@ async def test_subscriber_receives_added_when_add_happens_while_subscribed():
     s = _bare_service()
     gen = s.stream_transform_changes()
     # Burst is empty because no items yet. Sub is now registered.
-    add_task = asyncio.create_task(
-        s.do_command({"command": "add", "item": _sphere_item("late")})
-    )
+    add_task = asyncio.create_task(s.do_command({"command": "add", "item": _sphere_item("late")}))
     msg = await gen.__anext__()
     await add_task
     assert msg.change_type == TransformChangeType.TRANSFORM_CHANGE_TYPE_ADDED
@@ -141,9 +136,7 @@ async def test_subscriber_receives_removed_on_remove():
     gen = s.stream_transform_changes()
     # Drain initial ADDED.
     await gen.__anext__()
-    rm_task = asyncio.create_task(
-        s.do_command({"command": "remove", "label": "doomed"})
-    )
+    rm_task = asyncio.create_task(s.do_command({"command": "remove", "label": "doomed"}))
     msg = await gen.__anext__()
     await rm_task
     assert msg.change_type == TransformChangeType.TRANSFORM_CHANGE_TYPE_REMOVED
@@ -162,9 +155,7 @@ async def test_tick_once_with_stable_uuid_emits_updated_event_with_fieldmask():
     await s.do_command(
         {
             "command": "add",
-            "item": _sphere_item(
-                "spin_me", animated_mode="oscillate", amplitude_mm=200, period_s=4
-            ),
+            "item": _sphere_item("spin_me", animated_mode="oscillate", amplitude_mm=200, period_s=4),
         }
     )
 
@@ -226,9 +217,7 @@ async def test_tick_with_versioned_strategy_emits_removed_plus_added():
     await s.do_command(
         {
             "command": "add",
-            "item": _sphere_item(
-                "v_item", animated_mode="oscillate", amplitude_mm=100, period_s=4
-            ),
+            "item": _sphere_item("v_item", animated_mode="oscillate", amplitude_mm=100, period_s=4),
         }
     )
 
@@ -351,9 +340,7 @@ async def test_flicker_emits_removed_then_added_on_phase_transitions():
     await s.do_command(
         {
             "command": "add",
-            "item": _sphere_item(
-                "blink", animated_mode="flicker", period_s=4.0, duty_cycle=0.5
-            ),
+            "item": _sphere_item("blink", animated_mode="flicker", period_s=4.0, duty_cycle=0.5),
         }
     )
     # Initial state: visible.
@@ -396,9 +383,7 @@ async def test_flicker_uses_fresh_uuid_on_each_rising_edge():
     await s.do_command(
         {
             "command": "add",
-            "item": _sphere_item(
-                "blink", animated_mode="flicker", period_s=4.0, duty_cycle=0.5
-            ),
+            "item": _sphere_item("blink", animated_mode="flicker", period_s=4.0, duty_cycle=0.5),
         }
     )
     initial_uuid = s._state["blink"]["uuid"]
@@ -417,8 +402,7 @@ async def test_flicker_uses_fresh_uuid_on_each_rising_edge():
     assert s._state["blink"]["visible_to_viewer"] is True
     new_uuid = s._state["blink"]["uuid"]
     assert new_uuid != initial_uuid, (
-        "flicker re-add must use a fresh UUID; the viewer caches "
-        "removed UUIDs and silently drops repeats"
+        "flicker re-add must use a fresh UUID; the viewer caches removed UUIDs and silently drops repeats"
     )
     # The new UUID still encodes the label so it's debuggable.
     assert new_uuid.startswith(b"blink_")
@@ -467,9 +451,7 @@ async def test_flicker_removed_item_is_filtered_from_list_uuids_and_get_transfor
     await s.do_command(
         {
             "command": "add",
-            "item": _sphere_item(
-                "blink", animated_mode="flicker", period_s=4.0, duty_cycle=0.5
-            ),
+            "item": _sphere_item("blink", animated_mode="flicker", period_s=4.0, duty_cycle=0.5),
         }
     )
     # Drive a tick that flips it out of the scene.

@@ -60,15 +60,7 @@ async def test_list_returns_one_summary_per_item():
     assert sorted(labels) == ["b1", "b2"]
     # Summary carries the playground-relevant fields.
     for it in out["items"]:
-        for k in (
-            "label",
-            "type",
-            "uuid",
-            "pose",
-            "animation_mode",
-            "color",
-            "opacity",
-        ):
+        for k in ("label", "type", "uuid", "pose", "animation_mode", "color", "opacity"):
             assert k in it
 
 
@@ -319,12 +311,7 @@ async def test_snapshot_returns_pasteable_config():
     validate_config + reconfigure should reproduce the same scene."""
     s = _bare_service()
     await s.do_command({"command": "add", "item": _box_item("snap_box")})
-    await s.do_command(
-        {
-            "command": "add",
-            "item": _box_item("snap_box_2", pose={"x": 200, "y": 0, "z": 0, "oz": 1}),
-        }
-    )
+    await s.do_command({"command": "add", "item": _box_item("snap_box_2", pose={"x": 200, "y": 0, "z": 0, "oz": 1})})
     out = await s.do_command({"command": "snapshot"})
     cfg = out["config"]
     # Top-level service params present.

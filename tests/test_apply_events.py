@@ -109,12 +109,7 @@ async def test_apply_events_mixed_batch():
             "command": "apply_events",
             "events": [
                 {"kind": "added", "label": "b_new", "item": _box_item("b_new")},
-                {
-                    "kind": "updated",
-                    "label": "b_existing",
-                    "item": new,
-                    "paths": ["poseInObserverFrame.pose.y"],
-                },
+                {"kind": "updated", "label": "b_existing", "item": new, "paths": ["poseInObserverFrame.pose.y"]},
                 {"kind": "removed", "label": "b_existing"},
             ],
         }
@@ -176,12 +171,7 @@ async def test_apply_events_records_errors_per_event_without_aborting():
             "command": "apply_events",
             "events": [
                 {"kind": "added", "label": "good", "item": _box_item("good")},
-                {
-                    "kind": "updated",
-                    "label": "ghost",
-                    "item": _box_item("ghost"),
-                    "paths": [],
-                },  # unknown label
+                {"kind": "updated", "label": "ghost", "item": _box_item("ghost"), "paths": []},  # unknown label
                 {"kind": "added", "label": "good", "item": _box_item("good")},  # dup
                 {"kind": "added", "label": "also_good", "item": _box_item("also_good")},
             ],

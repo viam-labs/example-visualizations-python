@@ -61,19 +61,13 @@ class SceneSprites(SceneServiceBase, EasyResource):
     # Required hooks
     # ------------------------------------------------------------------
 
-    def build_geometry(
-        self, item: Mapping[str, Any], override_geom: Mapping[str, Any]
-    ) -> Geometry:
+    def build_geometry(self, item: Mapping[str, Any], override_geom: Mapping[str, Any]) -> Geometry:
         t = item["type"]
         label = item["label"]
         if t == "box":
-            return geometries.build_box(
-                override_geom.get("dims_mm", item["dims_mm"]), label
-            )
+            return geometries.build_box(override_geom.get("dims_mm", item["dims_mm"]), label)
         if t == "sphere":
-            return geometries.build_sphere(
-                override_geom.get("radius_mm", item["radius_mm"]), label
-            )
+            return geometries.build_sphere(override_geom.get("radius_mm", item["radius_mm"]), label)
         if t == "capsule":
             return geometries.build_capsule(
                 override_geom.get("radius_mm", item["radius_mm"]),
@@ -100,9 +94,7 @@ class SceneSprites(SceneServiceBase, EasyResource):
         if t == "pointcloud":
             if "pcd_bytes" in override_geom:
                 return geometries.build_pointcloud(override_geom["pcd_bytes"], label)
-            return geometries.build_pointcloud(
-                self.read_asset(item["pointcloud_path"]), label
-            )
+            return geometries.build_pointcloud(self.read_asset(item["pointcloud_path"]), label)
         raise ValueError(f"unknown type {t!r}")
 
     def read_asset(self, asset_path: str) -> bytes:
@@ -196,18 +188,14 @@ class SceneSprites(SceneServiceBase, EasyResource):
         _validate_item(item, index)
 
     @classmethod
-    def validate_config(
-        cls, config: ComponentConfig
-    ) -> Tuple[Sequence[str], Sequence[str]]:
+    def validate_config(cls, config: ComponentConfig) -> Tuple[Sequence[str], Sequence[str]]:
         """Extends the library's standard validation with the
         playground's preset + items list checks."""
         super().validate_config(config)
         attrs = struct_to_dict(config.attributes)
         preset = attrs.get(ATTR_PRESET)
         if preset is not None and str(preset) not in presets_mod.PRESET_NAMES:
-            raise Exception(
-                f"{ATTR_PRESET} must be one of {presets_mod.PRESET_NAMES}, got {preset!r}"
-            )
+            raise Exception(f"{ATTR_PRESET} must be one of {presets_mod.PRESET_NAMES}, got {preset!r}")
         items = attrs.get(ATTR_ITEMS)
         if items is not None:
             if not isinstance(items, list):
@@ -223,9 +211,7 @@ class SceneSprites(SceneServiceBase, EasyResource):
                 seen_labels.add(label)
         return [], []
 
-    async def handle_custom_command(
-        self, command: Mapping[str, ValueTypes]
-    ) -> Optional[Mapping[str, ValueTypes]]:
+    async def handle_custom_command(self, command: Mapping[str, ValueTypes]) -> Optional[Mapping[str, ValueTypes]]:
         """Handles the playground-specific ``get_entity_chunk`` verb.
         Returns ``None`` for anything else so the base falls through
         to its debug-snapshot reply."""
@@ -287,24 +273,18 @@ def _validate_item(item: Mapping[str, Any], index: int) -> None:
         raise Exception(f"{where} missing 'type'")
     t = item["type"]
     if t not in geometries.SUPPORTED_TYPES:
-        raise Exception(
-            f"{where} unknown type {t!r}; expected one of {geometries.SUPPORTED_TYPES}"
-        )
+        raise Exception(f"{where} unknown type {t!r}; expected one of {geometries.SUPPORTED_TYPES}")
     if "label" not in item or not str(item["label"]).strip():
         raise Exception(f"{where} missing or empty 'label'")
     animation = item.get("animation") or {"mode": "none"}
     mode = animation.get("mode", "none")
     if mode not in anim_mod.SUPPORTED_MODES:
-        raise Exception(
-            f"{where} unknown animation.mode {mode!r}; expected one of "
-            f"{anim_mod.SUPPORTED_MODES}"
-        )
+        raise Exception(f"{where} unknown animation.mode {mode!r}; expected one of {anim_mod.SUPPORTED_MODES}")
     if mode == "trajectory":
         wps = animation.get("waypoints")
         if not isinstance(wps, list) or len(wps) < 2:
             raise Exception(
-                f"{where} animation.mode 'trajectory' requires "
-                f"animation.waypoints to be a list of 2+ pose dicts"
+                f"{where} animation.mode 'trajectory' requires animation.waypoints to be a list of 2+ pose dicts"
             )
         for j, wp in enumerate(wps):
             if not isinstance(wp, Mapping):
@@ -360,10 +340,7 @@ def _validate_item(item: Mapping[str, Any], index: int) -> None:
             if not isinstance(item["raw_stl"], bool):
                 raise Exception(f"{where} mesh 'raw_stl' must be a bool")
             if item["raw_stl"] and fmt != "stl":
-                raise Exception(
-                    f"{where} mesh 'raw_stl' only valid on .stl assets; "
-                    f"got {path!r} (inferred {fmt!r})"
-                )
+                raise Exception(f"{where} mesh 'raw_stl' only valid on .stl assets; got {path!r} (inferred {fmt!r})")
     elif t == "pointcloud":
         path = item.get("pointcloud_path")
         if not path:
@@ -375,13 +352,8 @@ def _validate_item(item: Mapping[str, Any], index: int) -> None:
             raise Exception(f"{where} pointcloud 'chunked' must be a bool")
         if "chunk_size" in item:
             cs = item["chunk_size"]
-            if (
-                not (isinstance(cs, int) or (isinstance(cs, float) and cs.is_integer()))
-                or int(cs) <= 0
-            ):
-                raise Exception(
-                    f"{where} pointcloud 'chunk_size' must be a positive integer"
-                )
+            if not (isinstance(cs, int) or (isinstance(cs, float) and cs.is_integer())) or int(cs) <= 0:
+                raise Exception(f"{where} pointcloud 'chunk_size' must be a positive integer")
 
 
 def _resolve_asset_path(p: str) -> Path:

@@ -228,17 +228,11 @@ def compute_tick(
         delta = amplitude_mm * math.sin(2 * math.pi * t / period_s)
         item_type = item.get("type")
         if item_type == "sphere":
-            new_geom["radius_mm"] = max(
-                0.1, float(base_geom.get("radius_mm", 50.0)) + delta
-            )
+            new_geom["radius_mm"] = max(0.1, float(base_geom.get("radius_mm", 50.0)) + delta)
             paths = [PATH_SPHERE_RADIUS]
         elif item_type == "capsule":
-            new_geom["radius_mm"] = max(
-                0.1, float(base_geom.get("radius_mm", 50.0)) + delta
-            )
-            new_geom["length_mm"] = max(
-                0.1, float(base_geom.get("length_mm", 200.0)) + delta
-            )
+            new_geom["radius_mm"] = max(0.1, float(base_geom.get("radius_mm", 50.0)) + delta)
+            new_geom["length_mm"] = max(0.1, float(base_geom.get("length_mm", 200.0)) + delta)
             paths = [PATH_CAPSULE_RADIUS, PATH_CAPSULE_LENGTH]
         elif item_type == "box":
             # Optional `axis` param targets just one dimension (the
@@ -254,9 +248,7 @@ def compute_tick(
             if box_axis in ("x", "y", "z"):
                 new_dims[box_axis] = max(0.1, new_dims[box_axis] + delta)
                 paths = [
-                    {"x": PATH_BOX_DIMS_X, "y": PATH_BOX_DIMS_Y, "z": PATH_BOX_DIMS_Z}[
-                        box_axis
-                    ],
+                    {"x": PATH_BOX_DIMS_X, "y": PATH_BOX_DIMS_Y, "z": PATH_BOX_DIMS_Z}[box_axis],
                 ]
             else:
                 new_dims["x"] = max(0.1, new_dims["x"] + delta)
@@ -336,9 +328,7 @@ def compute_tick(
         # changing two independent quantities.
         radius_amp = float(anim.get("radius_amplitude_mm", 4.0))
         base_radius = float(base_geom.get("radius_mm", 10.0))
-        new_geom["radius_mm"] = max(
-            0.1, base_radius + radius_amp * math.sin(phase + math.pi / 3)
-        )
+        new_geom["radius_mm"] = max(0.1, base_radius + radius_amp * math.sin(phase + math.pi / 3))
         # Orientation: precess around world +Z at a fixed cone half-
         # angle (``tilt_deg``). The arrow's tip traces a circle at
         # altitude cos(tilt). precession_speed scales the precession
@@ -377,9 +367,7 @@ def compute_tick(
         if period_s <= 0:
             period_s = 4.0
         amplitude = float(anim.get("amplitude", 0.4))
-        base_opacity = float(
-            (item.get("opacity") if item.get("opacity") is not None else 1.0)
-        )
+        base_opacity = float((item.get("opacity") if item.get("opacity") is not None else 1.0))
         opacity = base_opacity + amplitude * math.sin(2 * math.pi * t / period_s)
         opacity = max(0.0, min(1.0, opacity))
         paths = [PATH_METADATA_OPACITY]

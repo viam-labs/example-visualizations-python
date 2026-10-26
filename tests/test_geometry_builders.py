@@ -77,12 +77,8 @@ def test_build_metadata_opacity_packs_as_base64_alpha_byte():
 
 
 def test_build_metadata_opacity_endpoints():
-    assert struct_to_dict(build_metadata(opacity=0.0))["opacities"] == _b64.b64encode(
-        bytes([0])
-    ).decode("ascii")
-    assert struct_to_dict(build_metadata(opacity=1.0))["opacities"] == _b64.b64encode(
-        bytes([255])
-    ).decode("ascii")
+    assert struct_to_dict(build_metadata(opacity=0.0))["opacities"] == _b64.b64encode(bytes([0])).decode("ascii")
+    assert struct_to_dict(build_metadata(opacity=1.0))["opacities"] == _b64.b64encode(bytes([255])).decode("ascii")
 
 
 def test_build_metadata_color_and_opacity_together():
@@ -174,9 +170,7 @@ def test_build_pose_default_is_identity():
 
 
 def test_build_pose_reads_xyz_and_orientation():
-    p = build_pose(
-        {"x": 100, "y": -50, "z": 25, "ox": 0, "oy": 1, "oz": 0, "theta": 90}
-    )
+    p = build_pose({"x": 100, "y": -50, "z": 25, "ox": 0, "oy": 1, "oz": 0, "theta": 90})
     assert (p.x, p.y, p.z) == (100.0, -50.0, 25.0)
     assert (p.o_x, p.o_y, p.o_z, p.theta) == (0.0, 1.0, 0.0, 90.0)
 
@@ -352,10 +346,7 @@ def test_stl_to_ply_one_triangle_roundtrip():
 def test_stl_to_ply_twelve_triangles_emits_36_vertices():
     """No-dedup conversion: each triangle's three vertices become three
     fresh vertex entries. 12 triangles → 36 vertices, 12 faces."""
-    tris = [
-        ((float(i), 0.0, 0.0), (0.0, float(i), 0.0), (0.0, 0.0, float(i)))
-        for i in range(1, 13)
-    ]
+    tris = [((float(i), 0.0, 0.0), (0.0, float(i), 0.0), (0.0, 0.0, float(i))) for i in range(1, 13)]
     ply = stl_to_ply(_build_minimal_stl_bytes(tris)).decode("ascii")
     assert "element vertex 36" in ply
     assert "element face 12" in ply
@@ -577,9 +568,7 @@ def _fake_pcd(n_points: int) -> bytes:
         f"POINTS {n_points}\n"
         "DATA binary\n"
     ).encode("ascii")
-    body = b"".join(
-        struct.pack("<fffI", float(i), 0.0, 0.0, i) for i in range(n_points)
-    )
+    body = b"".join(struct.pack("<fffI", float(i), 0.0, 0.0, i) for i in range(n_points))
     return header + body
 
 

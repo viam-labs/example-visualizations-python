@@ -79,9 +79,7 @@ def _icosahedron(scale_mm: float = 100.0):
     ]
     # Normalize so all vertices sit on a unit sphere, then scale to mm.
     n = math.sqrt(1 + phi * phi)
-    verts = [
-        (scale_mm * x / n, scale_mm * y / n, scale_mm * z / n) for (x, y, z) in raw
-    ]
+    verts = [(scale_mm * x / n, scale_mm * y / n, scale_mm * z / n) for (x, y, z) in raw]
     faces = [
         (0, 11, 5),
         (0, 5, 1),
@@ -285,10 +283,7 @@ def write_bunny_stl(target_height_mm: float = 90.0) -> Path:
     scale_mm_per_unit = target_height_mm / unit_height if unit_height else 1.0
 
     # --- 3. Compute centroid + min-Z post-scale.
-    scaled = [
-        (x * scale_mm_per_unit, y * scale_mm_per_unit, z * scale_mm_per_unit)
-        for (x, y, z) in rotated
-    ]
+    scaled = [(x * scale_mm_per_unit, y * scale_mm_per_unit, z * scale_mm_per_unit) for (x, y, z) in rotated]
     xs = [v[0] for v in scaled]
     ys = [v[1] for v in scaled]
     zs = [v[2] for v in scaled]
@@ -736,9 +731,7 @@ def write_uv_sphere_ply(
     ]
     lines = list(header)
     for (x, y, z), (s, t) in zip(verts_mm, uvs):
-        lines.append(
-            f"{x / 1000.0:.6f} {y / 1000.0:.6f} {z / 1000.0:.6f} {s:.6f} {t:.6f}"
-        )
+        lines.append(f"{x / 1000.0:.6f} {y / 1000.0:.6f} {z / 1000.0:.6f} {s:.6f} {t:.6f}")
     for i0, i1, i2 in faces:
         lines.append(f"3 {i0} {i1} {i2}")
     path = OUT / "uv_sphere.ply"
@@ -1050,9 +1043,7 @@ def text_to_ply(text: str, height_mm: float, depth_mm: float = LABEL_DEPTH_MM) -
     # Because the camera at +Y looking back at -Y sees world-X
     # mirrored on screen, the world-X reversal cancels out — text
     # reads left-to-right from the default camera angle.
-    mesh.apply_transform(
-        trimesh.transformations.rotation_matrix(math.pi / 2, [1, 0, 0])
-    )
+    mesh.apply_transform(trimesh.transformations.rotation_matrix(math.pi / 2, [1, 0, 0]))
     mesh.apply_transform(trimesh.transformations.rotation_matrix(math.pi, [0, 0, 1]))
 
     # Center on (X, Z); rest Y on 0 so the host item's pose lifts the

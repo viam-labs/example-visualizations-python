@@ -68,9 +68,7 @@ class PlaygroundDriver(Generic, EasyResource):
 
         recipe = attrs.get("recipe", DEFAULT_RECIPE)
         if recipe not in RECIPES:
-            raise Exception(
-                f"unknown recipe {recipe!r}; valid: {sorted(RECIPES.keys())}"
-            )
+            raise Exception(f"unknown recipe {recipe!r}; valid: {sorted(RECIPES.keys())}")
 
         tick_hz = attrs.get("tick_hz")
         if tick_hz is not None:
@@ -143,9 +141,7 @@ class PlaygroundDriver(Generic, EasyResource):
         # Async setup + tick loop: spawned as a task so reconfigure
         # stays sync. There's a running event loop here because the
         # framework's add_resource / reconfigure_resource are async.
-        self._tick_task = asyncio.create_task(
-            self._cleanup_then_startup(prev_scene, initial_events)
-        )
+        self._tick_task = asyncio.create_task(self._cleanup_then_startup(prev_scene, initial_events))
 
     async def _cleanup_then_startup(self, prev_scene, initial_events):
         """Push REMOVED for the prior scene's labels, then push the
@@ -237,9 +233,7 @@ class PlaygroundDriver(Generic, EasyResource):
                 "namespace": self._namespace,
                 "scene_size": len(self._scene),
                 "visualizer_type": type(self._visualizer).__name__,
-                "tick_running": (
-                    self._tick_task is not None and not self._tick_task.done()
-                ),
+                "tick_running": (self._tick_task is not None and not self._tick_task.done()),
             }
         if cmd == "recipes":
             return {"recipes": sorted(RECIPES.keys())}

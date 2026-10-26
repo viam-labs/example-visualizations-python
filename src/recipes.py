@@ -159,9 +159,7 @@ class PulsingSpheres:
             if sp is None:
                 continue
             phase = (2 * math.pi) * i / self.N_SPHERES
-            r = self.R_BASE + self.R_AMPLITUDE * math.sin(
-                2 * math.pi * t / self.PERIOD_S + phase
-            )
+            r = self.R_BASE + self.R_AMPLITUDE * math.sin(2 * math.pi * t / self.PERIOD_S + phase)
             sp.radius_mm = r
             out.extend(scene.update(sp))
         return out
@@ -384,12 +382,7 @@ class CoordinateFramesArm:
         L = self.LINK_LENGTH
         events.extend(
             scene.add(
-                Sphere(
-                    label="arm_shoulder",
-                    pose=Pose.at(x=bx, y=by, z=bz),
-                    radius_mm=45,
-                    color=(120, 120, 120),
-                ),
+                Sphere(label="arm_shoulder", pose=Pose.at(x=bx, y=by, z=bz), radius_mm=45, color=(120, 120, 120)),
                 Capsule(
                     label="arm_upper",
                     parent_frame="arm_shoulder",
@@ -446,9 +439,7 @@ class CoordinateFramesArm:
 
         # Arm joints. Each rotates around its parent's Y axis (shoulder
         # / elbow swing) or its own Z (wrist roll).
-        shoulder_theta = self.SHOULDER_AMP_DEG * math.sin(
-            2 * math.pi * t / self.SHOULDER_PERIOD_S
-        )
+        shoulder_theta = self.SHOULDER_AMP_DEG * math.sin(2 * math.pi * t / self.SHOULDER_PERIOD_S)
         shoulder = scene.get("arm_shoulder")
         if shoulder is not None:
             bx = self.ARM_BASE_X
@@ -466,9 +457,7 @@ class CoordinateFramesArm:
             events.extend(scene.update(shoulder))
 
         # Elbow swings on its own Y in the upper-arm's local frame.
-        elbow_theta = self.ELBOW_AMP_DEG * math.sin(
-            2 * math.pi * t / self.ELBOW_PERIOD_S + 0.7
-        )
+        elbow_theta = self.ELBOW_AMP_DEG * math.sin(2 * math.pi * t / self.ELBOW_PERIOD_S + 0.7)
         elbow = scene.get("arm_elbow")
         if elbow is not None:
             elbow.pose = Pose.at(
@@ -481,9 +470,7 @@ class CoordinateFramesArm:
             events.extend(scene.update(elbow))
 
         # Wrist rolls around Z (its own long axis).
-        wrist_theta = self.WRIST_AMP_DEG * math.sin(
-            2 * math.pi * t / self.WRIST_PERIOD_S
-        )
+        wrist_theta = self.WRIST_AMP_DEG * math.sin(2 * math.pi * t / self.WRIST_PERIOD_S)
         wrist = scene.get("arm_wrist")
         if wrist is not None:
             wrist.pose = Pose.at(
@@ -538,9 +525,7 @@ class TrajectoryRunner:
         # wp 4: back to identity (so the loop closes smoothly)
         Pose.at(x=400, y=300, z=100, oz=1, theta=0),
     )
-    LAP_PERIOD_S = (
-        12.0  # time to traverse all segments once (slower for visual clarity)
-    )
+    LAP_PERIOD_S = 12.0  # time to traverse all segments once (slower for visual clarity)
     # Loop semantics: snap-back at end of lap (the runner jumps from
     # the last waypoint to the first to start the next cycle). Matches
     # the all-in-one playground's trajectory_preview; avoids a phantom
@@ -822,9 +807,7 @@ class ForceVector:
             return []
 
         # Length and radius: phase-offset sinusoids.
-        length = self.BASE_LENGTH_MM + self.LENGTH_AMPLITUDE_MM * math.sin(
-            2 * math.pi * t / self.LENGTH_PERIOD_S
-        )
+        length = self.BASE_LENGTH_MM + self.LENGTH_AMPLITUDE_MM * math.sin(2 * math.pi * t / self.LENGTH_PERIOD_S)
         radius = self.BASE_RADIUS_MM + self.RADIUS_AMPLITUDE_MM * math.sin(
             2 * math.pi * t / self.RADIUS_PERIOD_S + math.pi / 2
         )
@@ -899,9 +882,7 @@ class BreathingShapes:
             phase = (2 * math.pi) * i / self.N_SHAPES
             theta = 2 * math.pi * t / self.PERIOD_S + phase
             # Continuous opacity in [OPACITY_MIN, OPACITY_MAX].
-            opacity = self.OPACITY_MIN + (
-                (self.OPACITY_MAX - self.OPACITY_MIN) * (0.5 * (1 + math.sin(theta)))
-            )
+            opacity = self.OPACITY_MIN + ((self.OPACITY_MAX - self.OPACITY_MIN) * (0.5 * (1 + math.sin(theta))))
             # Snap to the nearest step so label rotations happen at
             # a bounded rate.
             step = int(theta / (2 * math.pi / steps)) % steps

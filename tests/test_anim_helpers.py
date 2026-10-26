@@ -81,16 +81,12 @@ def test_oscillate_pose_default_axis_is_y():
 
 
 def test_oscillate_pose_axis_x():
-    p = viz.oscillate_pose(
-        viz.Pose.at(), period_s=4.0, amplitude_mm=50.0, t=1.0, axis="x"
-    )
+    p = viz.oscillate_pose(viz.Pose.at(), period_s=4.0, amplitude_mm=50.0, t=1.0, axis="x")
     assert abs(p.x - 50.0) < 1e-9
 
 
 def test_oscillate_pose_axis_z():
-    p = viz.oscillate_pose(
-        viz.Pose.at(), period_s=4.0, amplitude_mm=50.0, t=1.0, axis="z"
-    )
+    p = viz.oscillate_pose(viz.Pose.at(), period_s=4.0, amplitude_mm=50.0, t=1.0, axis="z")
     assert abs(p.z - 50.0) < 1e-9
 
 

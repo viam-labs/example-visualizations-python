@@ -21,9 +21,7 @@ def _config(attrs: dict) -> ComponentConfig:
         elif isinstance(v, str):
             s.fields[k].string_value = v
         elif isinstance(v, list):
-            s.fields[k].list_value.append(*v) if v else s.fields[k].list_value.append(
-                ""
-            )
+            s.fields[k].list_value.append(*v) if v else s.fields[k].list_value.append("")
         elif isinstance(v, dict):
             sub = Struct()
             for kk, vv in v.items():
@@ -87,9 +85,7 @@ def test_validate_config_rejects_invalid_uuid_strategy():
 
 
 def test_model_name():
-    assert str(PlaygroundVisualizer.MODEL) == (
-        "viam:example-visualizations-python:playground-visualizer"
-    )
+    assert str(PlaygroundVisualizer.MODEL) == ("viam:example-visualizations-python:playground-visualizer")
 
 
 def test_default_preset_is_none():
